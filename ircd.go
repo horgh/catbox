@@ -1,0 +1,5 @@
+/*
+ * IRC daemon.
+ */
+
+package ircd
