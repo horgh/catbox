@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"strings"
 
 	"summercat.com/irc"
 )
@@ -27,7 +28,7 @@ type Client struct {
 	// Whether it completed connection registration.
 	Registered bool
 
-	// Not canonicalized.
+	// Not canonicalized
 	Nick string
 
 	User string
@@ -309,7 +310,7 @@ func (s *Server) nickCommand(c *Client, m irc.Message) {
 	}
 
 	// Nick must be caselessly unique.
-	nickCanon := irc.CanonicalizeNick(nick)
+	nickCanon := canonicalizeNick(nick)
 
 	_, exists := s.Nicks[nickCanon]
 	if exists {
@@ -330,7 +331,7 @@ func (s *Server) nickCommand(c *Client, m irc.Message) {
 	// misbehaving. I suppose we could not let them issue any more NICKs
 	// beyond the first too if they are not registered.
 	if len(oldNick) > 0 {
-		delete(s.Nicks, irc.CanonicalizeNick(oldNick))
+		delete(s.Nicks, canonicalizeNick(oldNick))
 	}
 
 	if c.Registered {
@@ -427,86 +428,86 @@ func (s *Server) joinCommand(c *Client, m irc.Message) {
 
 	// JOIN 0 is a special case. Client leaves all channels.
 	if len(m.Params) == 1 && m.Params[0] == "0" {
-		// TODO: Part all. Inform other clients. Inform the client.
+		for _, channel := range c.Channels {
+			c.part(s, channel.Name, "")
+		}
 		return
 	}
 
 	// Again, we could check if there are too many parameters, but we just
 	// ignore them.
 
-	channels, err := irc.ParseChannels(m.Params[0])
-	if err != nil {
+	// NOTE: I choose to not support comma separated channels. RFC 2812
+	//   allows multiple channels in a single command.
+
+	channelName := canonicalizeChannel(m.Params[0])
+	if !irc.IsValidChannel(channelName) {
 		// 403 ERR_NOSUCHCHANNEL. Used to indicate channel name is invalid.
-		// NOTE: We're guaranteed to have at least one channel.
-		s.messageClient(c, "403", []string{channels[len(channels)-1], err.Error()})
+		s.messageClient(c, "403", []string{channelName, "Invalid channel name"})
 		return
 	}
 
 	// TODO: Support keys.
 
-	// Try to join the client to the channel(s)
+	// Try to join the client to the channel.
 
-	for _, channelName := range channels {
-		// Is the client in the channel already?
-		if c.onChannel(&Channel{Name: channelName}) {
-			// I don't see a good error code for this.
-			s.messageClient(c, "ERROR", []string{"You are on that channel"})
-			// We could try to process any remaining channels. But let's not.
-			// We could just ignore this too...
-			return
+	// Is the client in the channel already?
+	if c.onChannel(&Channel{Name: channelName}) {
+		// We could just ignore it too.
+		s.messageClient(c, "ERROR", []string{"You are on that channel"})
+		return
+	}
+
+	// Look up / create the channel
+	channel, exists := s.Channels[channelName]
+	if !exists {
+		channel = &Channel{
+			Name:    channelName,
+			Members: make(map[uint64]*Client),
+		}
+		s.Channels[channelName] = channel
+	}
+
+	// Add the client to the channel.
+	channel.Members[c.ID] = c
+	c.Channels[channelName] = channel
+
+	// Tell the client about the join. This is what RFC says to send:
+	// Send JOIN, RPL_TOPIC, and RPL_NAMREPLY.
+
+	// JOIN comes from the client, to the client.
+	c.messageClient(c, "JOIN", []string{channel.Name})
+
+	// It appears RPL_TOPIC is optional, at least ircd-ratbox does not send it.
+	// Presumably if there is no topic.
+	// TODO: Send topic when we have one.
+
+	// RPL_NAMREPLY: This tells the client about who is in the channel
+	// (including itself).
+	// It ends with RPL_ENDOFNAMES.
+	for _, member := range channel.Members {
+		// 353 RPL_NAMREPLY
+		s.messageClient(c, "353", []string{
+			// = means public channel. TODO: When we have chan modes +s / +p this
+			// needs to vary
+			// TODO: We need to include @ / + for each nick opped/voiced.
+			// Note we can have multiple nicks per RPL_NAMREPLY. TODO: Do that.
+			"=", channel.Name, fmt.Sprintf(":%s", member.Nick),
+		})
+	}
+
+	// 366 RPL_ENDOFNAMES
+	s.messageClient(c, "366", []string{channel.Name, "End of NAMES list"})
+
+	// Tell each member in the channel about the client.
+	for _, member := range channel.Members {
+		// Don't tell the client. We already did (above).
+		if member.ID == c.ID {
+			continue
 		}
 
-		// Look up / create the channel
-		channel, exists := s.Channels[channelName]
-		if !exists {
-			channel = &Channel{
-				Name:    channelName,
-				Members: make(map[uint64]*Client),
-			}
-			s.Channels[channelName] = channel
-		}
-
-		// Add the client to the channel.
-		channel.Members[c.ID] = c
-		c.Channels[channelName] = channel
-
-		// Tell the client about the join. This is what RFC says to send:
-		// Send JOIN, RPL_TOPIC, and RPL_NAMREPLY.
-
-		// JOIN comes from the client, to the client.
-		c.messageClient(c, "JOIN", []string{channel.Name})
-
-		// It appears RPL_TOPIC is optional, at least ircd-ratbox does not send it.
-		// Presumably if there is no topic.
-		// TODO: Send topic when we have one.
-
-		// RPL_NAMREPLY: This tells the client about who is in the channel
-		// (including itself).
-		// It ends with RPL_ENDOFNAMES.
-		for _, member := range channel.Members {
-			// 353 RPL_NAMREPLY
-			s.messageClient(c, "353", []string{
-				// = means public channel. TODO: When we have chan modes +s / +p this
-				// needs to vary
-				// TODO: We need to include @ / + for each nick opped/voiced.
-				// Note we can have multiple nicks per RPL_NAMREPLY. TODO: Do that.
-				"=", channel.Name, fmt.Sprintf(":%s", member.Nick),
-			})
-		}
-
-		// 366 RPL_ENDOFNAMES
-		s.messageClient(c, "366", []string{channel.Name, "End of NAMES list"})
-
-		// Tell each member in the channel about the client.
-		for _, member := range channel.Members {
-			// Don't tell the client. We already did (above).
-			if member.ID == c.ID {
-				continue
-			}
-
-			// From the client to each member.
-			c.messageClient(member, "JOIN", []string{channel.Name})
-		}
+		// From the client to each member.
+		c.messageClient(member, "JOIN", []string{channel.Name})
 	}
 }
 
@@ -521,53 +522,12 @@ func (s *Server) partCommand(c *Client, m irc.Message) {
 
 	// Again, we don't raise error if there are too many parameters.
 
-	channels, err := irc.ParseChannels(m.Params[0])
-	if err != nil {
-		// 403 ERR_NOSUCHCHANNEL. Used to indicate channel name is invalid.
-		// NOTE: We're guaranteed to have at least one channel.
-		s.messageClient(c, "403",
-			[]string{channels[len(channels)-1], "No such channel"})
-		return
+	partMessage := ""
+	if len(m.Params) >= 2 {
+		partMessage = m.Params[1]
 	}
 
-	for _, channelName := range channels {
-		// Find the channel.
-		channel, exists := s.Channels[channelName]
-		if !exists {
-			// 403 ERR_NOSUCHCHANNEL. Used to indicate channel name is invalid.
-			s.messageClient(c, "403", []string{channelName, "No such channel"})
-			// We could have additional channels to work on. But don't.
-			return
-		}
-
-		// Are they on the channel?
-		if !c.onChannel(channel) {
-			// 403 ERR_NOSUCHCHANNEL. Used to indicate channel name is invalid.
-			s.messageClient(c, "403", []string{channelName, "No such channel"})
-			// We could have additional channels to work on. But don't.
-			return
-		}
-
-		// Tell everyone (including the client) about the part.
-		for _, member := range channel.Members {
-			params := []string{channelName}
-			if len(params) == 2 {
-				params = append(params, params[1])
-			}
-
-			// From the client to each member.
-			c.messageClient(member, "PART", params)
-		}
-
-		// Remove the client from the channel.
-		delete(channel.Members, c.ID)
-		delete(c.Channels, channel.Name)
-
-		// If they are the last member, then drop the channel completely.
-		if len(channel.Members) == 0 {
-			delete(s.Channels, channel.Name)
-		}
-	}
+	c.part(s, m.Params[0], partMessage)
 }
 
 func (s *Server) privmsgCommand(c *Client, m irc.Message) {
@@ -591,7 +551,7 @@ func (s *Server) privmsgCommand(c *Client, m irc.Message) {
 	// I only support # channels right now.
 
 	if target[0] == '#' {
-		channelName := irc.CanonicalizeChannel(target)
+		channelName := canonicalizeChannel(target)
 		if !irc.IsValidChannel(channelName) {
 			// 404 ERR_CANNOTSENDTOCHAN
 			s.messageClient(c, "404", []string{channelName, "Cannot send to channel"})
@@ -630,7 +590,7 @@ func (s *Server) privmsgCommand(c *Client, m irc.Message) {
 
 	// We're messaging a nick directly.
 
-	nickName := irc.CanonicalizeNick(target)
+	nickName := canonicalizeNick(target)
 	if !irc.IsValidNick(nickName) {
 		// 401 ERR_NOSUCHNICK
 		s.messageClient(c, "401", []string{nickName, "No such nick/channel"})
@@ -698,9 +658,77 @@ func (c *Client) writeLoop() {
 }
 
 func (c *Client) String() string {
-	return fmt.Sprintf("%s", c.Conn.RemoteAddr())
+	return fmt.Sprintf("%d %s", c.ID, c.Conn.RemoteAddr())
 }
 
 func (c *Client) nickUhost() string {
 	return fmt.Sprintf("%s!~%s@%s", c.Nick, c.User, c.IP)
+}
+
+// part tries to remove the client from the channel.
+//
+// We send a reply to the client. We also inform any other clients that need to
+// know.
+func (c *Client) part(s *Server, channelName, message string) {
+	// NOTE: Difference from RFC 2812: I only accept one channel at a time.
+	channelName = canonicalizeChannel(channelName)
+
+	if !irc.IsValidChannel(channelName) {
+		// 403 ERR_NOSUCHCHANNEL. Used to indicate channel name is invalid.
+		s.messageClient(c, "403", []string{channelName, "Invalid channel name"})
+		return
+	}
+
+	// Find the channel.
+	channel, exists := s.Channels[channelName]
+	if !exists {
+		// 403 ERR_NOSUCHCHANNEL. Used to indicate channel name is invalid.
+		s.messageClient(c, "403", []string{channelName, "No such channel"})
+		return
+	}
+
+	// Are they on the channel?
+	if !c.onChannel(channel) {
+		// 403 ERR_NOSUCHCHANNEL. Used to indicate channel name is invalid.
+		s.messageClient(c, "403", []string{channelName, "You are not on that channel"})
+		return
+	}
+
+	// Tell everyone (including the client) about the part.
+	for _, member := range channel.Members {
+		params := []string{channelName}
+
+		// Add part message.
+		if len(message) > 0 {
+			params = append(params, message)
+		}
+
+		// From the client to each member.
+		c.messageClient(member, "PART", params)
+	}
+
+	// Remove the client from the channel.
+	delete(channel.Members, c.ID)
+	delete(c.Channels, channel.Name)
+
+	// If they are the last member, then drop the channel completely.
+	if len(channel.Members) == 0 {
+		delete(s.Channels, channel.Name)
+	}
+}
+
+// canonicalizeNick converts the given nick to its canonical representation
+// (which must be unique).
+//
+// Note: We don't check validity or strip whitespace.
+func canonicalizeNick(n string) string {
+	return strings.ToLower(n)
+}
+
+// canonicalizeChannel converts the given channel to its canonical
+// representation (which must be unique).
+//
+// Note: We don't check validity or strip whitespace.
+func canonicalizeChannel(c string) string {
+	return strings.ToLower(c)
 }
