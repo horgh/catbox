@@ -184,7 +184,10 @@ func (s *Server) acceptConnections(ln net.Listener,
 			Channels:  make(map[string]*Channel),
 		}
 
-		// TODO: Handle rollover
+		// Handle rollover of uint64. Unlikely to happen (outside abuse) but.
+		if id+1 == 0 {
+			log.Fatalf("Unique ids rolled over!")
+		}
 		id++
 
 		tcpAddr, err := net.ResolveTCPAddr("tcp", conn.RemoteAddr().String())
