@@ -2,7 +2,7 @@
 
 Yet another IRC server! I'm creating it because I enjoy working with IRC and I
 thought it would be good practice. I run a small IRC network, and it would be
-nice to be able to write my own server for it. Right now I use ircd-ratbox.
+nice to have my own server for it. Right now I use ircd-ratbox.
 
 The main ideas I plan for it are (in no particular order):
 
