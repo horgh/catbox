@@ -286,6 +286,16 @@ func (s *Server) handleMessage(c *Client, m irc.Message) {
 		return
 	}
 
+	if m.Command == "LUSERS" {
+		s.lusersCommand(c)
+		return
+	}
+
+	if m.Command == "MOTD" {
+		s.motdCommand(c)
+		return
+	}
+
 	// Unknown command. We don't handle it yet anyway.
 
 	// 421 ERR_UNKNOWNCOMMAND
@@ -414,10 +424,37 @@ func (s *Server) userCommand(c *Client, m irc.Message) {
 
 	c.Registered = true
 
+	// RFC 2813 specifies messages to send upon registration.
+
 	// 001 RPL_WELCOME
-	s.messageClient(c, "001",
-		[]string{fmt.Sprintf("Welcome to the Internet Relay Network %s",
-			c.nickUhost())})
+	s.messageClient(c, "001", []string{
+		fmt.Sprintf("Welcome to the Internet Relay Network %s", c.nickUhost()),
+	})
+
+	// 002 RPL_YOURHOST
+	s.messageClient(c, "002", []string{
+		fmt.Sprintf("Your host is %s, running version %s", s.Config["server-name"],
+			s.Config["version"]),
+	})
+
+	// 003 RPL_CREATED
+	s.messageClient(c, "003", []string{
+		fmt.Sprintf("This server was created %s", s.Config["created-date"]),
+	})
+
+	// 004 RPL_MYINFO
+	// <servername> <version> <available user modes> <available channel modes>
+	s.messageClient(c, "004", []string{
+		// It seems ambiguous if these are to be separate parameters.
+		s.Config["server-name"],
+		s.Config["version"],
+		"io",
+		"ntsi",
+	})
+
+	s.lusersCommand(c)
+
+	s.motdCommand(c)
 }
 
 func (s *Server) joinCommand(c *Client, m irc.Message) {
@@ -608,6 +645,59 @@ func (s *Server) privmsgCommand(c *Client, m irc.Message) {
 	}
 
 	c.messageClient(targetClient, "PRIVMSG", []string{nickName, m.Params[1]})
+}
+
+func (s *Server) lusersCommand(c *Client) {
+	// We always send RPL_LUSERCLIENT and RPL_LUSERME.
+	// The others only need be sent if the counts are non-zero.
+
+	// 251 RPL_LUSERCLIENT
+	s.messageClient(c, "251", []string{
+		fmt.Sprintf("There are %d users and %d services on %d servers.",
+			len(s.Nicks), 0, 0),
+	})
+
+	// 252 RPL_LUSEROP
+	// TODO: When we have operators.
+
+	// 253 RPL_LUSERUNKNOWN
+	// Unregistered connections.
+	numUnknown := len(s.Clients) - len(s.Nicks)
+	if numUnknown > 0 {
+		s.messageClient(c, "253", []string{
+			fmt.Sprintf("%d", numUnknown),
+			"unknown connection(s)",
+		})
+	}
+
+	// 254 RPL_LUSERCHANNELS
+	if len(s.Channels) > 0 {
+		s.messageClient(c, "254", []string{
+			fmt.Sprintf("%d", len(s.Channels)),
+			"channels formed",
+		})
+	}
+
+	// 255 RPL_LUSERME
+	s.messageClient(c, "255", []string{
+		fmt.Sprintf("I have %d clients and %d servers",
+			len(s.Nicks), 0),
+	})
+}
+
+func (s *Server) motdCommand(c *Client) {
+	// 375 RPL_MOTDSTART
+	s.messageClient(c, "375", []string{
+		fmt.Sprintf("- %s Message of the day - ", s.Config["server-name"]),
+	})
+
+	// 372 RPL_MOTD
+	s.messageClient(c, "372", []string{
+		fmt.Sprintf("- %s", s.Config["motd"]),
+	})
+
+	// 376 RPL_ENDOFMOTD
+	s.messageClient(c, "376", []string{"End of MOTD command"})
 }
 
 // Send an IRC message to a client from another client.

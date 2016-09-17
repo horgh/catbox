@@ -30,12 +30,12 @@ The main ideas I plan for it are (in no particular order):
 
   * Only # channels supported.
   * Much more restricted characters in channels/nicks/users.
+  * Do not support parameters to the LUSERS command.
+  * Do not support parameters to the MOTD command.
 
 
 # Todo
 
-  * Send RPL_YOURHOST, RPL_CREATED, RPL_MYINFO after connection registration
-    And LUSER, MOTD
   * Enforce nick/channel lengths
   * Deal with PRIVMSG length being too long to send to others
   * QUIT
@@ -46,9 +46,11 @@ The main ideas I plan for it are (in no particular order):
   * Clean shutdown
   * Client connection loss
   * Server to server
+    * Update LUSERS counts.
   * Server to server (ircd-ratbox)
   * TLS
   * Upgrade in place
+  * Check required configuration keys on startup
 
 
 ## Maybe
@@ -57,13 +59,11 @@ The main ideas I plan for it are (in no particular order):
   * MODE (channels)
   * MODE (users)
   * LIST
-  * Motd
   * Channel keys
   * INVITE
   * KICK
   * NAMES
   * NOTICE
-  * LUSERS
   * VERSION
   * STATS
   * LINKS
@@ -74,3 +74,5 @@ The main ideas I plan for it are (in no particular order):
   * WHOWAS
   * KILL
   * AWAY
+  * Multi line motd
+  * Reload configuration without restart
