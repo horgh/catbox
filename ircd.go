@@ -27,13 +27,28 @@ type Client struct {
 	// Whether it completed connection registration.
 	Registered bool
 
+	// Not canonicalized.
 	Nick string
 
 	User string
 
 	RealName string
 
+	// Channel name (canonicalized) to Channel.
 	Channels map[string]*Channel
+}
+
+// Channel holds everything to do with a channel.
+type Channel struct {
+	// Canonicalized.
+	Name string
+
+	// Client id to Client.
+	Members map[uint64]*Client
+
+	// TODO: Modes
+
+	// TODO: Topic
 }
 
 // Server holds the state for a server.
@@ -42,28 +57,16 @@ type Client struct {
 type Server struct {
 	Config irc.Config
 
-	// clients maps unique client id to client state.
+	// Client id to Client.
 	Clients map[uint64]*Client
 
-	// clients maps nickname (canonicalized) to client state.
-	// The nick must be canonicalized.
+	// Canoncalized nicknaame to Client.
 	// The reason I have this as well as clients is to track unregistered
 	// clients.
 	Nicks map[string]*Client
 
-	// The channel must be canonicalized.
+	// Channel name (canonlicalized) to Channel.
 	Channels map[string]*Channel
-}
-
-// Channel holds everything to do with a channel.
-type Channel struct {
-	Name string
-
-	Members map[uint64]*Client
-
-	// TODO: Modes
-
-	// TODO: Topic
 }
 
 // ClientMessage holds a message and the client it originated from.
@@ -142,7 +145,7 @@ func (s *Server) start() error {
 	// We hear messages from clients on this channel.
 	messageServerChan := make(chan ClientMessage, 100)
 
-	go acceptConnections(ln, newClientChan, messageServerChan)
+	go s.acceptConnections(ln, newClientChan, messageServerChan)
 
 	for {
 		select {
@@ -161,9 +164,8 @@ func (s *Server) start() error {
 // acceptConnections accepts TCP connections and tells the main server loop
 // through a channel. It sets up separate goroutines for reading/writing to
 // and from the client.
-func acceptConnections(ln net.Listener, newClientChan chan<- *Client,
-	messageServerChan chan<- ClientMessage) {
-
+func (s *Server) acceptConnections(ln net.Listener,
+	newClientChan chan<- *Client, messageServerChan chan<- ClientMessage) {
 	id := uint64(0)
 	for {
 		conn, err := ln.Accept()
@@ -192,10 +194,10 @@ func acceptConnections(ln net.Listener, newClientChan chan<- *Client,
 
 		client.IP = tcpAddr.IP
 
-		newClientChan <- client
+		go client.readLoop(messageServerChan)
+		go client.writeLoop()
 
-		go client.read(messageServerChan)
-		go client.write()
+		newClientChan <- client
 	}
 }
 
@@ -230,23 +232,10 @@ func (s *Server) messageClient(c *Client, command string, params []string) {
 	}
 }
 
-// Send an IRC message to a client from another client.
-// The server is the one sending it, but it appears from the client through use
-// of the prefix.
-//
-// This works by writing to a client's channel.
-func (c *Client) messageClient(to *Client, command string, params []string) {
-	to.WriteChan <- irc.Message{
-		Prefix:  c.nickUhost(),
-		Command: command,
-		Params:  params,
-	}
-}
-
 // handleMessage takes action based on a client's IRC message.
 func (s *Server) handleMessage(c *Client, m irc.Message) {
 	// Clients SHOULD NOT (section 2.3) send a prefix. I'm going to disallow it
-	// completely.
+	// completely for all commands.
 	if m.Prefix != "" {
 		// TODO: For ERROR cases, does RFC mean we should close the connection?
 		//   It seems ambiguous.
@@ -254,111 +243,19 @@ func (s *Server) handleMessage(c *Client, m irc.Message) {
 		return
 	}
 
+	// Non-RFC command that appears to be widely supported. Just ignore it for
+	// now.
+	if m.Command == "CAP" {
+		return
+	}
+
 	if m.Command == "NICK" {
-		// We should have one parameter: The nick they want.
-		if len(m.Params) == 0 {
-			// 431 ERR_NONICKNAMEGIVEN
-			s.messageClient(c, "431", []string{"No nickname given"})
-			return
-		}
-
-		// We could check if there are more than 1 parameters. But it doesn't
-		// seem particularly problematic if there are. We ignore them.
-		// There's not a good error to raise in RFC even if we did check.
-
-		nick := m.Params[0]
-
-		if !irc.IsValidNick(nick) {
-			// 432 ERR_ERRONEUSNICKNAME
-			s.messageClient(c, "432", []string{nick, "Erroneous nickname"})
-			return
-		}
-
-		// Nick must be caselessly unique.
-		nickCanon := irc.CanonicalizeNick(nick)
-
-		// Is the nick taken already?
-		_, exists := s.Nicks[nickCanon]
-		if exists {
-			// 433 ERR_NICKNAMEINUSE
-			s.messageClient(c, "432", []string{nick, "Nickname is already in use"})
-			return
-		}
-
-		// Flag the nick as taken by this client.
-		s.Nicks[nickCanon] = c
-		oldNick := c.Nick
-		c.Nick = nick
-
-		// The NICK command to happen both at connection registration time and
-		// after. There are different rules.
-
-		// Free the old nick (if there is one).
-		// I do this in both registered and not states in case there are clients
-		// misbehaving. I suppose we could not let them issue any more NICKs
-		// beyond the first too if they are not registered.
-		if len(oldNick) > 0 {
-			delete(s.Nicks, irc.CanonicalizeNick(oldNick))
-		}
-
-		if c.Registered {
-			// TODO: We need to inform other clients about the nick change.
-
-			// TODO: Reply to the client.
-		}
-
-		// We don't reply during registration (we don't have enough info).
-
+		s.nickCommand(c, m)
 		return
 	}
 
 	if m.Command == "USER" {
-		// The USER command only occurs during connection registration.
-		if c.Registered {
-			// 462 ERR_ALREADYREGISTRED
-			s.messageClient(c, "462",
-				[]string{"Unauthorized command (already registered)"})
-			return
-		}
-
-		// I'm going to require NICK first. RFC recommends this.
-		if len(c.Nick) == 0 {
-			// No good error code that I see.
-			s.messageClient(c, "ERROR", []string{"Please send NICK first"})
-			return
-		}
-
-		// 4 parameters: <user> <mode> <unused> <realname>
-		if len(m.Params) != 4 {
-			// 461 ERR_NEEDMOREPARAMS
-			s.messageClient(c, "461", []string{m.Command, "Not enough parameters"})
-			return
-		}
-
-		user := m.Params[0]
-
-		if !irc.IsValidUser(user) {
-			// There isn't an appropriate response in the RFC. ircd-ratbox sends an
-			// ERROR message. Do that.
-			s.messageClient(c, "ERROR", []string{"Invalid username"})
-			return
-		}
-		c.User = user
-
-		// TODO: Apply user mode
-
-		// TODO: Validate realname
-
-		c.RealName = m.Params[3]
-
-		// This completes connection registration.
-
-		c.Registered = true
-
-		// 001 RPL_WELCOME
-		s.messageClient(c, "001",
-			[]string{fmt.Sprintf("Welcome to the Internet Relay Network %s",
-				c.nickUhost())})
+		s.userCommand(c, m)
 		return
 	}
 
@@ -389,6 +286,134 @@ func (s *Server) handleMessage(c *Client, m irc.Message) {
 
 	// 421 ERR_UNKNOWNCOMMAND
 	s.messageClient(c, "421", []string{m.Command, "Unknown command"})
+}
+
+func (s *Server) nickCommand(c *Client, m irc.Message) {
+	// We should have one parameter: The nick they want.
+	if len(m.Params) == 0 {
+		// 431 ERR_NONICKNAMEGIVEN
+		s.messageClient(c, "431", []string{"No nickname given"})
+		return
+	}
+
+	// We could check if there is more than 1 parameter. But it doesn't seem
+	// particularly problematic if there are. We ignore them. There's not a good
+	// error to raise in RFC even if we did check.
+
+	nick := m.Params[0]
+
+	if !irc.IsValidNick(nick) {
+		// 432 ERR_ERRONEUSNICKNAME
+		s.messageClient(c, "432", []string{nick, "Erroneous nickname"})
+		return
+	}
+
+	// Nick must be caselessly unique.
+	nickCanon := irc.CanonicalizeNick(nick)
+
+	_, exists := s.Nicks[nickCanon]
+	if exists {
+		// 433 ERR_NICKNAMEINUSE
+		s.messageClient(c, "432", []string{nick, "Nickname is already in use"})
+		return
+	}
+
+	// Flag the nick as taken by this client.
+	s.Nicks[nickCanon] = c
+	oldNick := c.Nick
+
+	// The NICK command to happen both at connection registration time and
+	// after. There are different rules.
+
+	// Free the old nick (if there is one).
+	// I do this in both registered and not states in case there are clients
+	// misbehaving. I suppose we could not let them issue any more NICKs
+	// beyond the first too if they are not registered.
+	if len(oldNick) > 0 {
+		delete(s.Nicks, irc.CanonicalizeNick(oldNick))
+	}
+
+	if c.Registered {
+		// We need to inform other clients about the nick change.
+		// Any that are in the same channel as this client.
+		informedClients := map[uint64]bool{}
+		for _, channel := range c.Channels {
+			for _, member := range channel.Members {
+				// Tell each client only once.
+				_, exists := informedClients[member.ID]
+				if exists {
+					continue
+				}
+
+				// Message needs to come from the OLD nick.
+				c.messageClient(member, "NICK", []string{nick})
+				informedClients[member.ID] = true
+			}
+		}
+
+		// Reply to the client. We should have above, but if they were not on any
+		// channels then we did not.
+		_, exists := informedClients[c.ID]
+		if !exists {
+			c.messageClient(c, "NICK", []string{nick})
+		}
+	}
+
+	// We don't reply during registration (we don't have enough info, no uhost
+	// anyway).
+
+	// Finally, make the update. Do this last as we need to ensure we act
+	// as the old nick when crafting messages.
+	c.Nick = nick
+}
+
+func (s *Server) userCommand(c *Client, m irc.Message) {
+	// The USER command only occurs during connection registration.
+	if c.Registered {
+		// 462 ERR_ALREADYREGISTRED
+		s.messageClient(c, "462",
+			[]string{"Unauthorized command (already registered)"})
+		return
+	}
+
+	// I'm going to require NICK before user. RFC RECOMMENDs this.
+	if len(c.Nick) == 0 {
+		// No good error code that I see.
+		s.messageClient(c, "ERROR", []string{"Please send NICK first"})
+		return
+	}
+
+	// 4 parameters: <user> <mode> <unused> <realname>
+	if len(m.Params) != 4 {
+		// 461 ERR_NEEDMOREPARAMS
+		s.messageClient(c, "461", []string{m.Command, "Not enough parameters"})
+		return
+	}
+
+	user := m.Params[0]
+
+	if !irc.IsValidUser(user) {
+		// There isn't an appropriate response in the RFC. ircd-ratbox sends an
+		// ERROR message. Do that.
+		s.messageClient(c, "ERROR", []string{"Invalid username"})
+		return
+	}
+	c.User = user
+
+	// We could do something with user mode here.
+
+	// TODO: Validate realname
+
+	c.RealName = m.Params[3]
+
+	// This completes connection registration.
+
+	c.Registered = true
+
+	// 001 RPL_WELCOME
+	s.messageClient(c, "001",
+		[]string{fmt.Sprintf("Welcome to the Internet Relay Network %s",
+			c.nickUhost())})
 }
 
 func (s *Server) joinCommand(c *Client, m irc.Message) {
@@ -423,14 +448,12 @@ func (s *Server) joinCommand(c *Client, m irc.Message) {
 
 	for _, channelName := range channels {
 		// Is the client in the channel already?
-		for _, channel := range c.Channels {
-			if channel.Name == channelName {
-				// I don't see a good error code for this.
-				s.messageClient(c, "ERROR", []string{"You are on that channel"})
-				// We could try to process any remaining channels. But let's not.
-				// We could just ignore this too...
-				return
-			}
+		if c.onChannel(&Channel{Name: channelName}) {
+			// I don't see a good error code for this.
+			s.messageClient(c, "ERROR", []string{"You are on that channel"})
+			// We could try to process any remaining channels. But let's not.
+			// We could just ignore this too...
+			return
 		}
 
 		// Look up / create the channel
@@ -476,12 +499,12 @@ func (s *Server) joinCommand(c *Client, m irc.Message) {
 
 		// Tell each member in the channel about the client.
 		for _, member := range channel.Members {
-			// Don't tell the client. We already did.
+			// Don't tell the client. We already did (above).
 			if member.ID == c.ID {
 				continue
 			}
 
-			// From the client, to each member.
+			// From the client to each member.
 			c.messageClient(member, "JOIN", []string{channel.Name})
 		}
 	}
@@ -518,7 +541,7 @@ func (s *Server) partCommand(c *Client, m irc.Message) {
 		}
 
 		// Are they on the channel?
-		if !isOnChannel(channel, c) {
+		if !c.onChannel(channel) {
 			// 403 ERR_NOSUCHCHANNEL. Used to indicate channel name is invalid.
 			s.messageClient(c, "403", []string{channelName, "No such channel"})
 			// We could have additional channels to work on. But don't.
@@ -624,19 +647,28 @@ func (s *Server) privmsgCommand(c *Client, m irc.Message) {
 	c.messageClient(targetClient, "PRIVMSG", []string{nickName, m.Params[1]})
 }
 
-func isOnChannel(channel *Channel, client *Client) bool {
-	for _, member := range channel.Members {
-		if member.ID == client.ID {
-			return true
-		}
+// Send an IRC message to a client from another client.
+// The server is the one sending it, but it appears from the client through use
+// of the prefix.
+//
+// This works by writing to a client's channel.
+func (c *Client) messageClient(to *Client, command string, params []string) {
+	to.WriteChan <- irc.Message{
+		Prefix:  c.nickUhost(),
+		Command: command,
+		Params:  params,
 	}
-
-	return false
 }
 
-// read endlessly reads from the client's TCP connection. It parses each IRC
-// protocol message and passes it to the server through the server's channel.
-func (c *Client) read(messageServerChan chan<- ClientMessage) {
+func (c *Client) onChannel(channel *Channel) bool {
+	_, exists := c.Channels[channel.Name]
+	return exists
+}
+
+// readLoop endlessly reads from the client's TCP connection. It parses each
+// IRC protocol message and passes it to the server through the server's
+// channel.
+func (c *Client) readLoop(messageServerChan chan<- ClientMessage) {
 	for {
 		message, err := c.Conn.ReadMessage()
 		if err != nil {
@@ -652,9 +684,9 @@ func (c *Client) read(messageServerChan chan<- ClientMessage) {
 	}
 }
 
-// write endlessly reads from the client's channel, encodes each message, and
-// writes it to the client's TCP connection.
-func (c *Client) write() {
+// writeLoop endlessly reads from the client's channel, encodes each message,
+// and writes it to the client's TCP connection.
+func (c *Client) writeLoop() {
 	for message := range c.WriteChan {
 		err := c.Conn.WriteMessage(message)
 		if err != nil {
