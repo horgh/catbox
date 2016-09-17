@@ -94,7 +94,10 @@ func main() {
 		log.Fatal(err)
 	}
 
-	server := newServer(config)
+	server, err := newServer(config)
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	err = server.start()
 	if err != nil {
@@ -117,15 +120,49 @@ func getArgs() (Args, error) {
 	return Args{ConfigFile: *configFile}, nil
 }
 
-func newServer(config irc.Config) *Server {
+func newServer(config irc.Config) (*Server, error) {
 	s := Server{
 		Config: config,
 	}
+
+	err := s.checkConfig()
+	if err != nil {
+		return nil, fmt.Errorf("Configuration problem: %s", err)
+	}
+
 	s.Clients = map[uint64]*Client{}
 	s.Nicks = map[string]*Client{}
 	s.Channels = map[string]*Channel{}
 
-	return &s
+	return &s, nil
+}
+
+// checkConfig checks configuration keys are present and in an acceptable
+// format.
+func (s *Server) checkConfig() error {
+	requiredKeys := []string{
+		"listen-port",
+		"listen-host",
+		"server-name",
+		"version",
+		"created-date",
+		"motd",
+	}
+
+	// TODO: Check format of each
+
+	for _, key := range requiredKeys {
+		v, exists := s.Config[key]
+		if !exists {
+			return fmt.Errorf("Missing required key: %s", key)
+		}
+
+		if len(v) == 0 {
+			return fmt.Errorf("Configuration value is blank: %s", key)
+		}
+	}
+
+	return nil
 }
 
 // start starts up the server.
