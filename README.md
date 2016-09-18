@@ -39,8 +39,7 @@ The main ideas I plan for it are (in no particular order):
 
 # Todo
 
-  * Remove deadline from read/write for server, not needed
-  * Set timeouts to something sane
+  * Only send PING every PingTime seconds (max).
   * WHOIS
   * OPER
   * WHO

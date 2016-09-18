@@ -83,6 +83,15 @@ type Server struct {
 
 	// WaitGroup to ensure all goroutines clean up before we end.
 	WG sync.WaitGroup
+
+	// Period of time to wait before waking server up (maximum).
+	WakeupTime time.Duration
+
+	// Period of time a client can be idle before we send it a PING.
+	PingTime time.Duration
+
+	// Period of time a client can be idle before we consider it dead.
+	DeadTime time.Duration
 }
 
 // ClientMessage holds a message and the client it originated from.
@@ -96,15 +105,11 @@ type Args struct {
 	ConfigFile string
 }
 
+// 9 from RFC
 const maxNickLength = 9
 
+// 50 from RFC
 const maxChannelLength = 50
-
-//const idleTimeBeforePing = time.Minute
-const idleTimeBeforePing = 10 * time.Second
-
-//const idleTimeBeforeDead = 3 * time.Minute
-const idleTimeBeforeDead = 30 * time.Second
 
 func main() {
 	log.SetFlags(0)
@@ -150,7 +155,7 @@ func newServer(config irc.Config) (*Server, error) {
 		Config: config,
 	}
 
-	err := s.checkConfig()
+	err := s.checkAndParseConfig()
 	if err != nil {
 		return nil, fmt.Errorf("Configuration problem: %s", err)
 	}
@@ -164,16 +169,20 @@ func newServer(config irc.Config) (*Server, error) {
 	return &s, nil
 }
 
-// checkConfig checks configuration keys are present and in an acceptable
-// format.
-func (s *Server) checkConfig() error {
+// checkAndParseConfig checks configuration keys are present and in an
+// acceptable format.
+// We parse some values into alternate representations.
+func (s *Server) checkAndParseConfig() error {
 	requiredKeys := []string{
-		"listen-port",
 		"listen-host",
+		"listen-port",
 		"server-name",
 		"version",
 		"created-date",
 		"motd",
+		"wakeup-time",
+		"ping-time",
+		"dead-time",
 	}
 
 	// TODO: Check format of each
@@ -187,6 +196,23 @@ func (s *Server) checkConfig() error {
 		if len(v) == 0 {
 			return fmt.Errorf("Configuration value is blank: %s", key)
 		}
+	}
+
+	var err error
+
+	s.WakeupTime, err = time.ParseDuration(s.Config["wakeup-time"])
+	if err != nil {
+		return fmt.Errorf("Wakeup time is in invalid format: %s", err)
+	}
+
+	s.PingTime, err = time.ParseDuration(s.Config["ping-time"])
+	if err != nil {
+		return fmt.Errorf("Ping time is in invalid format: %s", err)
+	}
+
+	s.DeadTime, err = time.ParseDuration(s.Config["dead-time"])
+	if err != nil {
+		return fmt.Errorf("Dead time is in invalid format: %s", err)
 	}
 
 	return nil
@@ -327,6 +353,9 @@ func (s *Server) acceptConnections(newClientChan chan<- *Client,
 			Server:    s,
 		}
 
+		// We're doing reads/writes in separate goroutines. No need for timeout.
+		client.Conn.IOTimeoutDuration = 0
+
 		// Handle rollover of uint64. Unlikely to happen (outside abuse) but.
 		if id+1 == 0 {
 			log.Fatalf("Unique ids rolled over!")
@@ -367,7 +396,7 @@ func (s *Server) alarm(toServer chan<- struct{}) {
 	defer s.WG.Done()
 
 	for {
-		time.Sleep(10 * time.Second)
+		time.Sleep(s.WakeupTime)
 
 		toServer <- struct{}{}
 
@@ -392,11 +421,11 @@ func (s *Server) checkAndPingClients() {
 		timeIdle := now.Sub(client.LastActivityTime)
 
 		if client.Registered {
-			if timeIdle < idleTimeBeforePing {
+			if timeIdle < s.PingTime {
 				continue
 			}
 
-			if timeIdle > idleTimeBeforeDead {
+			if timeIdle > s.DeadTime {
 				client.quit(fmt.Sprintf("Ping timeout: %d seconds",
 					int(timeIdle.Seconds())))
 				continue
@@ -406,7 +435,7 @@ func (s *Server) checkAndPingClients() {
 			continue
 		}
 
-		if timeIdle > idleTimeBeforeDead {
+		if timeIdle > s.DeadTime {
 			client.quit("Idle too long.")
 		}
 	}
