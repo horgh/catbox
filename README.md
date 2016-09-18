@@ -32,32 +32,42 @@ The main ideas I plan for it are (in no particular order):
   * Much more restricted characters in channels/nicks/users.
   * Do not support parameters to the LUSERS command.
   * Do not support parameters to the MOTD command.
+  * Not supporting forwarding PING/PONG to other servers.
+  * No wildcards or target server support in WHOIS command.
+
+
+Enforce nick/user/channel length limits.
+Strip trailing characters from PRIVMSG messages if they are too long to send.
+Nicks can't have digits in first position.
+QUIT command.
+When lose client (e.g. connection loss), send QUIT and do bookkeeping.
+Ping clients periodically, and kill dead clients if they're idle too long.
+Respond to pings.
 
 
 # Todo
 
-  * Enforce nick/channel lengths
-  * Deal with PRIVMSG length being too long to send to others
-  * QUIT
-  * PING response
-  * PING/PONG
+  * Clean shutdown
+  * Remove deadline from read/write for server, not needed
+  * Remove alarm chan
+  * Set timeouts back to normal
+
   * WHOIS
   * OPER
-  * Clean shutdown
+  * WHO
+  * MODE (channels)
+  * MODE (users)
   * Client connection loss
   * Server to server
     * Update LUSERS counts.
   * Server to server (ircd-ratbox)
   * TLS
   * Upgrade in place
-  * Check required configuration keys on startup
 
 
 ## Maybe
   * CTCP PING
   * TOPIC
-  * MODE (channels)
-  * MODE (users)
   * LIST
   * Channel keys
   * INVITE
@@ -70,7 +80,6 @@ The main ideas I plan for it are (in no particular order):
   * TIME
   * ADMIN
   * INFO
-  * WHO
   * WHOWAS
   * KILL
   * AWAY

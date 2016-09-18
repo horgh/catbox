@@ -10,6 +10,7 @@ import (
 	"log"
 	"net"
 	"strings"
+	"time"
 
 	"summercat.com/irc"
 )
@@ -37,6 +38,10 @@ type Client struct {
 
 	// Channel name (canonicalized) to Channel.
 	Channels map[string]*Channel
+
+	Server *Server
+
+	LastActivityTime time.Time
 }
 
 // Channel holds everything to do with a channel.
@@ -61,12 +66,12 @@ type Server struct {
 	// Client id to Client.
 	Clients map[uint64]*Client
 
-	// Canoncalized nicknaame to Client.
+	// Canoncalized nickname to Client.
 	// The reason I have this as well as clients is to track unregistered
 	// clients.
 	Nicks map[string]*Client
 
-	// Channel name (canonlicalized) to Channel.
+	// Channel name (canonicalized) to Channel.
 	Channels map[string]*Channel
 }
 
@@ -80,6 +85,16 @@ type ClientMessage struct {
 type Args struct {
 	ConfigFile string
 }
+
+const maxNickLength = 9
+
+const maxChannelLength = 50
+
+//const idleTimeBeforePing = time.Minute
+const idleTimeBeforePing = 10 * time.Second
+
+//const idleTimeBeforeDead = 3 * time.Minute
+const idleTimeBeforeDead = 30 * time.Second
 
 func main() {
 	log.SetFlags(0)
@@ -183,18 +198,51 @@ func (s *Server) start() error {
 	// We hear messages from clients on this channel.
 	messageServerChan := make(chan ClientMessage, 100)
 
-	go s.acceptConnections(ln, newClientChan, messageServerChan)
+	// We hear messages when client read/write fails so we can clean up the
+	// client.
+	deadClientChan := make(chan *Client, 100)
+
+	go s.acceptConnections(ln, newClientChan, messageServerChan, deadClientChan)
+
+	// Alarm is a goroutine to wake up this one periodically so we can do things
+	// like ping clients.
+	// One channel is for the alarm to send to the server.
+	// The other the server responds to the alarm. The server will close it to
+	// tell alarm to end.
+	fromAlarmChan := make(chan struct{})
+	toAlarmChan := make(chan struct{})
+	go s.alarm(fromAlarmChan, toAlarmChan)
 
 	for {
 		select {
 		case client := <-newClientChan:
 			log.Printf("New client connection: %s", client)
 			s.Clients[client.ID] = client
+			client.LastActivityTime = time.Now()
+
+		case client := <-deadClientChan:
+			log.Printf("Client %s died.", client)
+			// It's possible we already know about it.
+			_, exists := s.Clients[client.ID]
+			if exists {
+				client.quit("I/O error")
+			}
 
 		case clientMessage := <-messageServerChan:
 			log.Printf("Client %s: Message: %s", clientMessage.Client,
 				clientMessage.Message)
-			s.handleMessage(clientMessage.Client, clientMessage.Message)
+
+			// Possibly from a client that disconnected.
+			_, exists := s.Clients[clientMessage.Client.ID]
+			if !exists {
+				log.Printf("Ignoring message from disconnected client.")
+			} else {
+				s.handleMessage(clientMessage.Client, clientMessage.Message)
+			}
+		case <-fromAlarmChan:
+			toAlarmChan <- struct{}{}
+			// TODO: For clean shutdown we need to close the toAlarmChan.
+			s.checkAndPingClients()
 		}
 	}
 }
@@ -203,8 +251,10 @@ func (s *Server) start() error {
 // through a channel. It sets up separate goroutines for reading/writing to
 // and from the client.
 func (s *Server) acceptConnections(ln net.Listener,
-	newClientChan chan<- *Client, messageServerChan chan<- ClientMessage) {
+	newClientChan chan<- *Client, messageServerChan chan<- ClientMessage,
+	deadClientChan chan<- *Client) {
 	id := uint64(0)
+
 	for {
 		conn, err := ln.Accept()
 		if err != nil {
@@ -219,6 +269,7 @@ func (s *Server) acceptConnections(ln net.Listener,
 			WriteChan: clientWriteChan,
 			ID:        id,
 			Channels:  make(map[string]*Channel),
+			Server:    s,
 		}
 
 		// Handle rollover of uint64. Unlikely to happen (outside abuse) but.
@@ -230,15 +281,67 @@ func (s *Server) acceptConnections(ln net.Listener,
 		tcpAddr, err := net.ResolveTCPAddr("tcp", conn.RemoteAddr().String())
 		// This shouldn't happen.
 		if err != nil {
-			log.Printf("Unable to resolve TCP address: %s", err)
+			log.Fatalf("Unable to resolve TCP address: %s", err)
 		}
 
 		client.IP = tcpAddr.IP
 
-		go client.readLoop(messageServerChan)
-		go client.writeLoop()
+		go client.readLoop(messageServerChan, deadClientChan)
+		go client.writeLoop(deadClientChan)
 
 		newClientChan <- client
+	}
+}
+
+// Alarm sends a message to the server goroutine to wake it up.
+// It then receives a message from the server. It does this so it can know if
+// the server wants it to shut down.
+// After both of these actions it will sleep before repeating.
+func (s *Server) alarm(toServer chan<- struct{}, fromServer <-chan struct{}) {
+	for {
+		//time.Sleep(time.Minute)
+		time.Sleep(time.Second)
+
+		toServer <- struct{}{}
+
+		_, ok := <-fromServer
+		if !ok {
+			log.Printf("Alarm shutting down.")
+			return
+		}
+	}
+}
+
+// checkAndPingClients looks at each connected client.
+//
+// If they've been idle a short time, we send them a PING (if they're
+// registered).
+//
+// If they've been idle a long time, we kill their connection.
+func (s *Server) checkAndPingClients() {
+	now := time.Now()
+
+	for _, client := range s.Clients {
+		timeIdle := now.Sub(client.LastActivityTime)
+
+		if client.Registered {
+			if timeIdle < idleTimeBeforePing {
+				continue
+			}
+
+			if timeIdle > idleTimeBeforeDead {
+				client.quit(fmt.Sprintf("Ping timeout: %d seconds",
+					int(timeIdle.Seconds())))
+				continue
+			}
+
+			s.messageClient(client, "PING", []string{s.Config["server-name"]})
+			continue
+		}
+
+		if timeIdle > idleTimeBeforeDead {
+			client.quit("Idle too long.")
+		}
 	}
 }
 
@@ -275,11 +378,12 @@ func (s *Server) messageClient(c *Client, command string, params []string) {
 
 // handleMessage takes action based on a client's IRC message.
 func (s *Server) handleMessage(c *Client, m irc.Message) {
+	// Record that client said something to us just now.
+	c.LastActivityTime = time.Now()
+
 	// Clients SHOULD NOT (section 2.3) send a prefix. I'm going to disallow it
 	// completely for all commands.
 	if m.Prefix != "" {
-		// TODO: For ERROR cases, does RFC mean we should close the connection?
-		//   It seems ambiguous.
 		s.messageClient(c, "ERROR", []string{"Do not send a prefix"})
 		return
 	}
@@ -333,6 +437,21 @@ func (s *Server) handleMessage(c *Client, m irc.Message) {
 		return
 	}
 
+	if m.Command == "QUIT" {
+		s.quitCommand(c, m)
+		return
+	}
+
+	if m.Command == "PONG" {
+		// Not doing anything with this. Just accept it.
+		return
+	}
+
+	if m.Command == "PING" {
+		s.pingCommand(c, m)
+		return
+	}
+
 	// Unknown command. We don't handle it yet anyway.
 
 	// 421 ERR_UNKNOWNCOMMAND
@@ -353,7 +472,7 @@ func (s *Server) nickCommand(c *Client, m irc.Message) {
 
 	nick := m.Params[0]
 
-	if !irc.IsValidNick(nick) {
+	if !isValidNick(nick) {
 		// 432 ERR_ERRONEUSNICKNAME
 		s.messageClient(c, "432", []string{nick, "Erroneous nickname"})
 		return
@@ -387,7 +506,7 @@ func (s *Server) nickCommand(c *Client, m irc.Message) {
 	if c.Registered {
 		// We need to inform other clients about the nick change.
 		// Any that are in the same channel as this client.
-		informedClients := map[uint64]bool{}
+		informedClients := map[uint64]struct{}{}
 		for _, channel := range c.Channels {
 			for _, member := range channel.Members {
 				// Tell each client only once.
@@ -398,7 +517,7 @@ func (s *Server) nickCommand(c *Client, m irc.Message) {
 
 				// Message needs to come from the OLD nick.
 				c.messageClient(member, "NICK", []string{nick})
-				informedClients[member.ID] = true
+				informedClients[member.ID] = struct{}{}
 			}
 		}
 
@@ -443,7 +562,7 @@ func (s *Server) userCommand(c *Client, m irc.Message) {
 
 	user := m.Params[0]
 
-	if !irc.IsValidUser(user) {
+	if !isValidUser(user) {
 		// There isn't an appropriate response in the RFC. ircd-ratbox sends an
 		// ERROR message. Do that.
 		s.messageClient(c, "ERROR", []string{"Invalid username"})
@@ -506,7 +625,7 @@ func (s *Server) joinCommand(c *Client, m irc.Message) {
 	// JOIN 0 is a special case. Client leaves all channels.
 	if len(m.Params) == 1 && m.Params[0] == "0" {
 		for _, channel := range c.Channels {
-			c.part(s, channel.Name, "")
+			c.part(channel.Name, "")
 		}
 		return
 	}
@@ -518,7 +637,7 @@ func (s *Server) joinCommand(c *Client, m irc.Message) {
 	//   allows multiple channels in a single command.
 
 	channelName := canonicalizeChannel(m.Params[0])
-	if !irc.IsValidChannel(channelName) {
+	if !isValidChannel(channelName) {
 		// 403 ERR_NOSUCHCHANNEL. Used to indicate channel name is invalid.
 		s.messageClient(c, "403", []string{channelName, "Invalid channel name"})
 		return
@@ -604,11 +723,12 @@ func (s *Server) partCommand(c *Client, m irc.Message) {
 		partMessage = m.Params[1]
 	}
 
-	c.part(s, m.Params[0], partMessage)
+	c.part(m.Params[0], partMessage)
 }
 
 func (s *Server) privmsgCommand(c *Client, m irc.Message) {
 	// Parameters: <msgtarget> <text to be sent>
+
 	if len(m.Params) == 0 {
 		// 411 ERR_NORECIPIENT
 		s.messageClient(c, "411", []string{"No recipient given (PRIVMSG)"})
@@ -625,11 +745,23 @@ func (s *Server) privmsgCommand(c *Client, m irc.Message) {
 
 	target := m.Params[0]
 
+	msg := m.Params[1]
+
+	// The message may be too long once we add the prefix/encode the message.
+	// Strip any trailing characters until it's short enough.
+	// TODO: Other messages can have this problem too (PART, QUIT, etc...)
+	msgLen := len(":") + len(c.nickUhost()) + len(" PRIVMSG ") + len(target) +
+		len(" ") + len(":") + len(msg) + len("\r\n")
+	if msgLen > irc.MaxLineLength {
+		trimCount := msgLen - irc.MaxLineLength
+		msg = msg[:len(msg)-trimCount]
+	}
+
 	// I only support # channels right now.
 
 	if target[0] == '#' {
 		channelName := canonicalizeChannel(target)
-		if !irc.IsValidChannel(channelName) {
+		if !isValidChannel(channelName) {
 			// 404 ERR_CANNOTSENDTOCHAN
 			s.messageClient(c, "404", []string{channelName, "Cannot send to channel"})
 			return
@@ -645,8 +777,7 @@ func (s *Server) privmsgCommand(c *Client, m irc.Message) {
 		// Are they on it?
 		// TODO: Technically we should allow messaging if they aren't on it
 		//   depending on the mode.
-		_, exists = channel.Members[c.ID]
-		if !exists {
+		if !c.onChannel(channel) {
 			// 404 ERR_CANNOTSENDTOCHAN
 			s.messageClient(c, "404", []string{channelName, "Cannot send to channel"})
 			return
@@ -659,7 +790,7 @@ func (s *Server) privmsgCommand(c *Client, m irc.Message) {
 			}
 
 			// From the client to each member.
-			c.messageClient(member, "PRIVMSG", []string{channel.Name, m.Params[1]})
+			c.messageClient(member, "PRIVMSG", []string{channel.Name, msg})
 		}
 
 		return
@@ -668,7 +799,7 @@ func (s *Server) privmsgCommand(c *Client, m irc.Message) {
 	// We're messaging a nick directly.
 
 	nickName := canonicalizeNick(target)
-	if !irc.IsValidNick(nickName) {
+	if !isValidNick(nickName) {
 		// 401 ERR_NOSUCHNICK
 		s.messageClient(c, "401", []string{nickName, "No such nick/channel"})
 		return
@@ -681,7 +812,7 @@ func (s *Server) privmsgCommand(c *Client, m irc.Message) {
 		return
 	}
 
-	c.messageClient(targetClient, "PRIVMSG", []string{nickName, m.Params[1]})
+	c.messageClient(targetClient, "PRIVMSG", []string{nickName, msg})
 }
 
 func (s *Server) lusersCommand(c *Client) {
@@ -737,6 +868,34 @@ func (s *Server) motdCommand(c *Client) {
 	s.messageClient(c, "376", []string{"End of MOTD command"})
 }
 
+func (s *Server) quitCommand(c *Client, m irc.Message) {
+	msg := "Quit:"
+	if len(m.Params) > 0 {
+		msg += " " + m.Params[0]
+	}
+
+	c.quit(msg)
+}
+
+func (s *Server) pingCommand(c *Client, m irc.Message) {
+	// Parameters: <server> (I choose to not support forwarding)
+	if len(m.Params) == 0 {
+		// 409 ERR_NOORIGIN
+		s.messageClient(c, "409", []string{"No origin specified"})
+		return
+	}
+
+	server := m.Params[0]
+
+	if server != s.Config["server-name"] {
+		// 402 ERR_NOSUCHSERVER
+		s.messageClient(c, "402", []string{server, "No such server"})
+		return
+	}
+
+	s.messageClient(c, "PONG", []string{server})
+}
+
 // Send an IRC message to a client from another client.
 // The server is the one sending it, but it appears from the client through use
 // of the prefix.
@@ -758,12 +917,13 @@ func (c *Client) onChannel(channel *Channel) bool {
 // readLoop endlessly reads from the client's TCP connection. It parses each
 // IRC protocol message and passes it to the server through the server's
 // channel.
-func (c *Client) readLoop(messageServerChan chan<- ClientMessage) {
+func (c *Client) readLoop(messageServerChan chan<- ClientMessage,
+	deadClientChan chan<- *Client) {
 	for {
 		message, err := c.Conn.ReadMessage()
 		if err != nil {
-			// TODO: We need to inform the server if we're giving up on this client.
-			log.Printf("Client %s: Unable to read message: %s", c, err)
+			log.Printf("Client %s: %s", c, err)
+			deadClientChan <- c
 			return
 		}
 
@@ -776,15 +936,24 @@ func (c *Client) readLoop(messageServerChan chan<- ClientMessage) {
 
 // writeLoop endlessly reads from the client's channel, encodes each message,
 // and writes it to the client's TCP connection.
-func (c *Client) writeLoop() {
+func (c *Client) writeLoop(deadClientChan chan<- *Client) {
 	for message := range c.WriteChan {
 		err := c.Conn.WriteMessage(message)
 		if err != nil {
-			// TODO: We need to inform the server if we're giving up on this client.
-			log.Printf("Client %s: Unable to write message: %s", c, err)
-			return
+			log.Printf("Client %s: %s", c, err)
+			deadClientChan <- c
+			break
 		}
 	}
+
+	// Close the TCP connection. We do this here because we need to be sure we've
+	// processed all messages to the client before closing the socket.
+	err := c.Conn.Close()
+	if err != nil {
+		log.Printf("Client %s: Problem closing connection: %s", c, err)
+	}
+
+	log.Printf("Client %s write goroutine terminating.", c)
 }
 
 func (c *Client) String() string {
@@ -799,28 +968,28 @@ func (c *Client) nickUhost() string {
 //
 // We send a reply to the client. We also inform any other clients that need to
 // know.
-func (c *Client) part(s *Server, channelName, message string) {
+func (c *Client) part(channelName, message string) {
 	// NOTE: Difference from RFC 2812: I only accept one channel at a time.
 	channelName = canonicalizeChannel(channelName)
 
-	if !irc.IsValidChannel(channelName) {
+	if !isValidChannel(channelName) {
 		// 403 ERR_NOSUCHCHANNEL. Used to indicate channel name is invalid.
-		s.messageClient(c, "403", []string{channelName, "Invalid channel name"})
+		c.Server.messageClient(c, "403", []string{channelName, "Invalid channel name"})
 		return
 	}
 
 	// Find the channel.
-	channel, exists := s.Channels[channelName]
+	channel, exists := c.Server.Channels[channelName]
 	if !exists {
 		// 403 ERR_NOSUCHCHANNEL. Used to indicate channel name is invalid.
-		s.messageClient(c, "403", []string{channelName, "No such channel"})
+		c.Server.messageClient(c, "403", []string{channelName, "No such channel"})
 		return
 	}
 
 	// Are they on the channel?
 	if !c.onChannel(channel) {
 		// 403 ERR_NOSUCHCHANNEL. Used to indicate channel name is invalid.
-		s.messageClient(c, "403", []string{channelName, "You are not on that channel"})
+		c.Server.messageClient(c, "403", []string{channelName, "You are not on that channel"})
 		return
 	}
 
@@ -843,8 +1012,54 @@ func (c *Client) part(s *Server, channelName, message string) {
 
 	// If they are the last member, then drop the channel completely.
 	if len(channel.Members) == 0 {
-		delete(s.Channels, channel.Name)
+		delete(c.Server.Channels, channel.Name)
 	}
+}
+
+func (c *Client) quit(msg string) {
+	if c.Registered {
+		// Tell all clients the client is in the channel with.
+		// Also remove the client from each channel.
+		toldClients := map[uint64]struct{}{}
+		for _, channel := range c.Channels {
+			for _, client := range channel.Members {
+				_, exists := toldClients[client.ID]
+				if exists {
+					continue
+				}
+
+				c.messageClient(client, "QUIT", []string{msg})
+
+				toldClients[client.ID] = struct{}{}
+			}
+
+			delete(channel.Members, c.ID)
+			if len(channel.Members) == 0 {
+				delete(c.Server.Channels, channel.Name)
+			}
+		}
+
+		// Ensure we tell the client (e.g., if in no channels).
+		_, exists := toldClients[c.ID]
+		if !exists {
+			c.messageClient(c, "QUIT", []string{msg})
+		}
+
+		delete(c.Server.Nicks, canonicalizeNick(c.Nick))
+	} else {
+		// May have set a nick.
+		if len(c.Nick) > 0 {
+			delete(c.Server.Nicks, canonicalizeNick(c.Nick))
+		}
+	}
+
+	c.Server.messageClient(c, "ERROR", []string{msg})
+
+	// Close their connection and channels.
+	// Closing the channel leads to closing the TCP connection.
+	close(c.WriteChan)
+
+	delete(c.Server.Clients, c.ID)
 }
 
 // canonicalizeNick converts the given nick to its canonical representation
@@ -861,4 +1076,89 @@ func canonicalizeNick(n string) string {
 // Note: We don't check validity or strip whitespace.
 func canonicalizeChannel(c string) string {
 	return strings.ToLower(c)
+}
+
+// isValidNick checks if a nickname is valid.
+func isValidNick(n string) bool {
+	if len(n) == 0 || len(n) > maxNickLength {
+		return false
+	}
+
+	// TODO: For now I accept only a-z, 0-9, or _. RFC is more lenient.
+	for i, char := range n {
+		if char >= 'a' && char <= 'z' {
+			continue
+		}
+
+		if char >= '0' && char <= '9' {
+			// No digits in first position.
+			if i == 0 {
+				return false
+			}
+			continue
+		}
+
+		if char == '_' {
+			continue
+		}
+
+		return false
+	}
+
+	return true
+}
+
+// isValidUser checks if a user (USER command) is valid
+func isValidUser(u string) bool {
+	if len(u) == 0 || len(u) > maxNickLength {
+		return false
+	}
+
+	// TODO: For now I accept only a-z or 0-9. RFC is more lenient.
+	for _, char := range u {
+		if char >= 'a' && char <= 'z' {
+			continue
+		}
+
+		if char >= '0' && char <= '9' {
+			continue
+		}
+
+		return false
+	}
+
+	return true
+}
+
+// isValidChannel checks a channel name for validity.
+//
+// You should canonicalize it before using this function.
+func isValidChannel(c string) bool {
+	if len(c) == 0 || len(c) > maxChannelLength {
+		return false
+	}
+
+	// TODO: I accept only a-z or 0-9 as valid characters right now. RFC
+	//   accepts more.
+	for i, char := range c {
+		if i == 0 {
+			// TODO: I only allow # channels right now.
+			if char == '#' {
+				continue
+			}
+			return false
+		}
+
+		if char >= 'a' && char <= 'z' {
+			continue
+		}
+
+		if char >= '0' && char <= '9' {
+			continue
+		}
+
+		return false
+	}
+
+	return true
 }
