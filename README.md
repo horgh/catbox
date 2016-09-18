@@ -39,7 +39,6 @@ The main ideas I plan for it are (in no particular order):
 
 # Todo
 
-  * Only send PING every PingTime seconds (max).
   * WHOIS
   * OPER
   * WHO

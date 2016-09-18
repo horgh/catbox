@@ -42,7 +42,11 @@ type Client struct {
 
 	Server *Server
 
+	// The last time we heard from the client.
 	LastActivityTime time.Time
+
+	// The last time we sent the client a PING.
+	LastPingTime time.Time
 }
 
 // Channel holds everything to do with a channel.
@@ -419,19 +423,30 @@ func (s *Server) checkAndPingClients() {
 
 	for _, client := range s.Clients {
 		timeIdle := now.Sub(client.LastActivityTime)
+		timeSincePing := now.Sub(client.LastPingTime)
 
 		if client.Registered {
+			// Was it active recently enough that we don't need to do anything?
 			if timeIdle < s.PingTime {
 				continue
 			}
 
+			// It's been idle a while.
+
+			// Has it been idle long enough that we consider it dead?
 			if timeIdle > s.DeadTime {
 				client.quit(fmt.Sprintf("Ping timeout: %d seconds",
 					int(timeIdle.Seconds())))
 				continue
 			}
 
+			// Should we ping it? We might have pinged it recently.
+			if timeSincePing < s.PingTime {
+				continue
+			}
+
 			s.messageClient(client, "PING", []string{s.Config["server-name"]})
+			client.LastPingTime = now
 			continue
 		}
 
