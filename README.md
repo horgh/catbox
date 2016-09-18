@@ -34,24 +34,13 @@ The main ideas I plan for it are (in no particular order):
   * Do not support parameters to the MOTD command.
   * Not supporting forwarding PING/PONG to other servers.
   * No wildcards or target server support in WHOIS command.
-
-
-Enforce nick/user/channel length limits.
-Strip trailing characters from PRIVMSG messages if they are too long to send.
-Nicks can't have digits in first position.
-QUIT command.
-When lose client (e.g. connection loss), send QUIT and do bookkeeping.
-Ping clients periodically, and kill dead clients if they're idle too long.
-Respond to pings.
+  * Added DIE command.
 
 
 # Todo
 
-  * Clean shutdown
   * Remove deadline from read/write for server, not needed
-  * Remove alarm chan
-  * Set timeouts back to normal
-
+  * Set timeouts to something sane
   * WHOIS
   * OPER
   * WHO
