@@ -181,6 +181,7 @@ func (s *Server) checkAndParseConfig() error {
 		"listen-host",
 		"listen-port",
 		"server-name",
+		"server-info",
 		"version",
 		"created-date",
 		"motd",
@@ -568,6 +569,11 @@ func (s *Server) handleMessage(c *Client, m irc.Message) {
 		return
 	}
 
+	if m.Command == "WHOIS" {
+		s.whoisCommand(c, m)
+		return
+	}
+
 	// Unknown command. We don't handle it yet anyway.
 
 	// 421 ERR_UNKNOWNCOMMAND
@@ -688,8 +694,12 @@ func (s *Server) userCommand(c *Client, m irc.Message) {
 
 	// We could do something with user mode here.
 
-	// TODO: Validate realname
-
+	// Validate realname.
+	// Arbitrary. Length only.
+	if len(m.Params[3]) > 64 {
+		s.messageClient(c, "ERROR", []string{"Invalid realname"})
+		return
+	}
 	c.RealName = m.Params[3]
 
 	// This completes connection registration.
@@ -1017,6 +1027,68 @@ func (s *Server) dieCommand(c *Client, m irc.Message) {
 
 	// die is not an RFC command. I use it to shut down the server.
 	s.shutdown()
+}
+
+func (s *Server) whoisCommand(c *Client, m irc.Message) {
+	// Difference from RFC: I support only a single nickname (no mask), and no
+	// server target.
+	if len(m.Params) == 0 {
+		// 431 ERR_NONICKNAMEGIVEN
+		s.messageClient(c, "431", []string{"No nickname given"})
+		return
+	}
+
+	nick := m.Params[0]
+	nickCanonical := canonicalizeNick(nick)
+
+	targetClient, exists := s.Nicks[nickCanonical]
+	if !exists {
+		// 401 ERR_NOSUCHNICK
+		s.messageClient(c, "401", []string{nick, "No such nick/channel"})
+		return
+	}
+
+	// 311 RPL_WHOISUSER
+	s.messageClient(c, "311", []string{
+		targetClient.Nick,
+		targetClient.User,
+		fmt.Sprintf("%s", targetClient.IP),
+		"*",
+		targetClient.RealName,
+	})
+
+	// 319 RPL_WHOISCHANNELS
+	// I choose to not show any.
+
+	// 312 RPL_WHOISSERVER
+	s.messageClient(c, "312", []string{
+		targetClient.Nick,
+		s.Config["server-name"],
+		s.Config["server-info"],
+	})
+
+	// 301 RPL_AWAY
+	// TODO: AWAY not implemented yet.
+
+	// 313 RPL_WHOISOPERATOR
+	// TODO: Operators not implemented yet.
+
+	// TODO: TLS information
+
+	// 317 RPL_WHOISIDLE
+	idleDuration := time.Now().Sub(targetClient.LastActivityTime)
+	idleSeconds := int(idleDuration.Seconds())
+	s.messageClient(c, "317", []string{
+		targetClient.Nick,
+		fmt.Sprintf("%d", idleSeconds),
+		"seconds idle",
+	})
+
+	// 318 RPL_ENDOFWHOIS
+	s.messageClient(c, "318", []string{
+		targetClient.Nick,
+		"End of WHOIS list",
+	})
 }
 
 // Send an IRC message to a client from another client.

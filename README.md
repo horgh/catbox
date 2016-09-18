@@ -35,11 +35,12 @@ The main ideas I plan for it are (in no particular order):
   * Not supporting forwarding PING/PONG to other servers.
   * No wildcards or target server support in WHOIS command.
   * Added DIE command.
+  * WHOIS command: No server target, and only single nicks.
+  * WHOIS command: Currently not going to show any channels.
 
 
 # Todo
 
-  * WHOIS
   * OPER
   * WHO
   * MODE (channels)
