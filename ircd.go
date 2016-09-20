@@ -47,6 +47,9 @@ type Client struct {
 
 	// The last time we sent the client a PING.
 	LastPingTime time.Time
+
+	// User modes
+	Modes []byte
 }
 
 // Channel holds everything to do with a channel.
@@ -96,6 +99,9 @@ type Server struct {
 
 	// Period of time a client can be idle before we consider it dead.
 	DeadTime time.Duration
+
+	// Oper name to password.
+	Opers map[string]string
 }
 
 // ClientMessage holds a message and the client it originated from.
@@ -188,6 +194,7 @@ func (s *Server) checkAndParseConfig() error {
 		"wakeup-time",
 		"ping-time",
 		"dead-time",
+		"opers-config",
 	}
 
 	// TODO: Check format of each
@@ -219,6 +226,13 @@ func (s *Server) checkAndParseConfig() error {
 	if err != nil {
 		return fmt.Errorf("Dead time is in invalid format: %s", err)
 	}
+
+	opers, err := irc.LoadConfig(s.Config["opers-config"])
+	if err != nil {
+		return fmt.Errorf("Unable to load opers config: %s", err)
+	}
+
+	s.Opers = opers
 
 	return nil
 }
@@ -571,6 +585,11 @@ func (s *Server) handleMessage(c *Client, m irc.Message) {
 
 	if m.Command == "WHOIS" {
 		s.whoisCommand(c, m)
+		return
+	}
+
+	if m.Command == "OPER" {
+		s.operCommand(c, m)
 		return
 	}
 
@@ -1071,7 +1090,12 @@ func (s *Server) whoisCommand(c *Client, m irc.Message) {
 	// TODO: AWAY not implemented yet.
 
 	// 313 RPL_WHOISOPERATOR
-	// TODO: Operators not implemented yet.
+	if targetClient.isOperator() {
+		s.messageClient(c, "313", []string{
+			targetClient.Nick,
+			"is an IRC operator",
+		})
+	}
 
 	// TODO: TLS information
 
@@ -1089,6 +1113,38 @@ func (s *Server) whoisCommand(c *Client, m irc.Message) {
 		targetClient.Nick,
 		"End of WHOIS list",
 	})
+}
+
+func (s *Server) operCommand(c *Client, m irc.Message) {
+	// Parameters: <name> <password>
+	if len(m.Params) < 2 {
+		// 461 ERR_NEEDMOREPARAMS
+		s.messageClient(c, "461", []string{"OPER", "Not enough parameters"})
+		return
+	}
+
+	if c.isOperator() {
+		s.messageClient(c, "ERROR", []string{"You are already an operator."})
+		return
+	}
+
+	// TODO: Host matching
+
+	// Check if they gave acceptable permissions.
+	pass, exists := s.Opers[m.Params[0]]
+	if !exists || pass != m.Params[1] {
+		// 464 ERR_PASSWDMISMATCH
+		s.messageClient(c, "464", []string{"Password incorrect"})
+		return
+	}
+
+	// Give them oper status.
+	c.Modes = append(c.Modes, 'o')
+
+	c.messageClient(c, "MODE", []string{c.Nick, "+o"})
+
+	// 381 RPL_YOUREOPER
+	s.messageClient(c, "381", []string{"You are now an IRC operator"})
 }
 
 // Send an IRC message to a client from another client.
@@ -1273,6 +1329,16 @@ func (c *Client) quit(msg string) {
 	close(c.WriteChan)
 
 	delete(c.Server.Clients, c.ID)
+}
+
+func (c *Client) isOperator() bool {
+	for _, mode := range c.Modes {
+		if mode == 'o' {
+			return true
+		}
+	}
+
+	return false
 }
 
 // canonicalizeNick converts the given nick to its canonical representation

@@ -41,11 +41,9 @@ The main ideas I plan for it are (in no particular order):
 
 # Todo
 
-  * OPER
   * WHO
   * MODE (channels)
   * MODE (users)
-  * Client connection loss
   * Server to server
     * Update LUSERS counts.
   * Server to server (ircd-ratbox)
@@ -54,6 +52,7 @@ The main ideas I plan for it are (in no particular order):
 
 
 ## Maybe
+
   * CTCP PING
   * TOPIC
   * LIST
