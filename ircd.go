@@ -5,7 +5,6 @@
 package main
 
 import (
-	"flag"
 	"fmt"
 	"log"
 	"net"
@@ -69,7 +68,7 @@ type Channel struct {
 // I put everything global to a server in an instance of struct rather than
 // have global variables.
 type Server struct {
-	Config irc.Config
+	Config Config
 
 	// Client id to Client.
 	Clients map[uint64]*Client
@@ -86,33 +85,17 @@ type Server struct {
 	// Other goroutines can check if this channel is closed.
 	ShutdownChan chan struct{}
 
+	// TCP listener.
 	Listener net.Listener
 
 	// WaitGroup to ensure all goroutines clean up before we end.
 	WG sync.WaitGroup
-
-	// Period of time to wait before waking server up (maximum).
-	WakeupTime time.Duration
-
-	// Period of time a client can be idle before we send it a PING.
-	PingTime time.Duration
-
-	// Period of time a client can be idle before we consider it dead.
-	DeadTime time.Duration
-
-	// Oper name to password.
-	Opers map[string]string
 }
 
 // ClientMessage holds a message and the client it originated from.
 type ClientMessage struct {
 	Client  *Client
 	Message irc.Message
-}
-
-// Args are command line arguments.
-type Args struct {
-	ConfigFile string
 }
 
 // 9 from RFC
@@ -129,12 +112,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	config, err := irc.LoadConfig(args.ConfigFile)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	server, err := newServer(config)
+	server, err := newServer(args.ConfigFile)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -147,94 +125,20 @@ func main() {
 	log.Printf("Server shutdown cleanly.")
 }
 
-func getArgs() (Args, error) {
-	configFile := flag.String("config", "", "Configuration file.")
-
-	flag.Parse()
-
-	if len(*configFile) == 0 {
-		flag.PrintDefaults()
-		return Args{}, fmt.Errorf("You must provie a configuration file.")
-	}
-
-	return Args{ConfigFile: *configFile}, nil
-}
-
-func newServer(config irc.Config) (*Server, error) {
+func newServer(configFile string) (*Server, error) {
 	s := Server{
-		Config: config,
+		Clients:      make(map[uint64]*Client),
+		Nicks:        make(map[string]*Client),
+		Channels:     make(map[string]*Channel),
+		ShutdownChan: make(chan struct{}),
 	}
 
-	err := s.checkAndParseConfig()
+	err := s.checkAndParseConfig(configFile)
 	if err != nil {
 		return nil, fmt.Errorf("Configuration problem: %s", err)
 	}
 
-	s.Clients = map[uint64]*Client{}
-	s.Nicks = map[string]*Client{}
-	s.Channels = map[string]*Channel{}
-
-	s.ShutdownChan = make(chan struct{})
-
 	return &s, nil
-}
-
-// checkAndParseConfig checks configuration keys are present and in an
-// acceptable format.
-// We parse some values into alternate representations.
-func (s *Server) checkAndParseConfig() error {
-	requiredKeys := []string{
-		"listen-host",
-		"listen-port",
-		"server-name",
-		"server-info",
-		"version",
-		"created-date",
-		"motd",
-		"wakeup-time",
-		"ping-time",
-		"dead-time",
-		"opers-config",
-	}
-
-	// TODO: Check format of each
-
-	for _, key := range requiredKeys {
-		v, exists := s.Config[key]
-		if !exists {
-			return fmt.Errorf("Missing required key: %s", key)
-		}
-
-		if len(v) == 0 {
-			return fmt.Errorf("Configuration value is blank: %s", key)
-		}
-	}
-
-	var err error
-
-	s.WakeupTime, err = time.ParseDuration(s.Config["wakeup-time"])
-	if err != nil {
-		return fmt.Errorf("Wakeup time is in invalid format: %s", err)
-	}
-
-	s.PingTime, err = time.ParseDuration(s.Config["ping-time"])
-	if err != nil {
-		return fmt.Errorf("Ping time is in invalid format: %s", err)
-	}
-
-	s.DeadTime, err = time.ParseDuration(s.Config["dead-time"])
-	if err != nil {
-		return fmt.Errorf("Dead time is in invalid format: %s", err)
-	}
-
-	opers, err := irc.LoadConfig(s.Config["opers-config"])
-	if err != nil {
-		return fmt.Errorf("Unable to load opers config: %s", err)
-	}
-
-	s.Opers = opers
-
-	return nil
 }
 
 // start starts up the server.
@@ -243,8 +147,8 @@ func (s *Server) checkAndParseConfig() error {
 // the channels.
 func (s *Server) start() error {
 	// TODO: TLS
-	ln, err := net.Listen("tcp", fmt.Sprintf("%s:%s", s.Config["listen-host"],
-		s.Config["listen-port"]))
+	ln, err := net.Listen("tcp", fmt.Sprintf("%s:%s", s.Config.ListenHost,
+		s.Config.ListenPort))
 	if err != nil {
 		return fmt.Errorf("Unable to listen: %s", err)
 	}
@@ -416,7 +320,7 @@ func (s *Server) alarm(toServer chan<- struct{}) {
 	defer s.WG.Done()
 
 	for {
-		time.Sleep(s.WakeupTime)
+		time.Sleep(s.Config.WakeupTime)
 
 		toServer <- struct{}{}
 
@@ -443,30 +347,30 @@ func (s *Server) checkAndPingClients() {
 
 		if client.Registered {
 			// Was it active recently enough that we don't need to do anything?
-			if timeIdle < s.PingTime {
+			if timeIdle < s.Config.PingTime {
 				continue
 			}
 
 			// It's been idle a while.
 
 			// Has it been idle long enough that we consider it dead?
-			if timeIdle > s.DeadTime {
+			if timeIdle > s.Config.DeadTime {
 				client.quit(fmt.Sprintf("Ping timeout: %d seconds",
 					int(timeIdle.Seconds())))
 				continue
 			}
 
 			// Should we ping it? We might have pinged it recently.
-			if timeSincePing < s.PingTime {
+			if timeSincePing < s.Config.PingTime {
 				continue
 			}
 
-			s.messageClient(client, "PING", []string{s.Config["server-name"]})
+			s.messageClient(client, "PING", []string{s.Config.ServerName})
 			client.LastPingTime = now
 			continue
 		}
 
-		if timeIdle > s.DeadTime {
+		if timeIdle > s.Config.DeadTime {
 			client.quit("Idle too long.")
 		}
 	}
@@ -497,7 +401,7 @@ func (s *Server) messageClient(c *Client, command string, params []string) {
 	}
 
 	c.WriteChan <- irc.Message{
-		Prefix:  s.Config["server-name"],
+		Prefix:  s.Config.ServerName,
 		Command: command,
 		Params:  params,
 	}
@@ -745,21 +649,21 @@ func (s *Server) userCommand(c *Client, m irc.Message) {
 
 	// 002 RPL_YOURHOST
 	s.messageClient(c, "002", []string{
-		fmt.Sprintf("Your host is %s, running version %s", s.Config["server-name"],
-			s.Config["version"]),
+		fmt.Sprintf("Your host is %s, running version %s", s.Config.ServerName,
+			s.Config.Version),
 	})
 
 	// 003 RPL_CREATED
 	s.messageClient(c, "003", []string{
-		fmt.Sprintf("This server was created %s", s.Config["created-date"]),
+		fmt.Sprintf("This server was created %s", s.Config.CreatedDate),
 	})
 
 	// 004 RPL_MYINFO
 	// <servername> <version> <available user modes> <available channel modes>
 	s.messageClient(c, "004", []string{
 		// It seems ambiguous if these are to be separate parameters.
-		s.Config["server-name"],
-		s.Config["version"],
+		s.Config.ServerName,
+		s.Config.Version,
 		"o",
 		"n",
 	})
@@ -1024,12 +928,12 @@ func (s *Server) lusersCommand(c *Client) {
 func (s *Server) motdCommand(c *Client) {
 	// 375 RPL_MOTDSTART
 	s.messageClient(c, "375", []string{
-		fmt.Sprintf("- %s Message of the day - ", s.Config["server-name"]),
+		fmt.Sprintf("- %s Message of the day - ", s.Config.ServerName),
 	})
 
 	// 372 RPL_MOTD
 	s.messageClient(c, "372", []string{
-		fmt.Sprintf("- %s", s.Config["motd"]),
+		fmt.Sprintf("- %s", s.Config.MOTD),
 	})
 
 	// 376 RPL_ENDOFMOTD
@@ -1055,7 +959,7 @@ func (s *Server) pingCommand(c *Client, m irc.Message) {
 
 	server := m.Params[0]
 
-	if server != s.Config["server-name"] {
+	if server != s.Config.ServerName {
 		// 402 ERR_NOSUCHSERVER
 		s.messageClient(c, "402", []string{server, "No such server"})
 		return
@@ -1105,8 +1009,8 @@ func (s *Server) whoisCommand(c *Client, m irc.Message) {
 	// 312 RPL_WHOISSERVER
 	s.messageClient(c, "312", []string{
 		targetClient.DisplayNick,
-		s.Config["server-name"],
-		s.Config["server-info"],
+		s.Config.ServerName,
+		s.Config.ServerInfo,
 	})
 
 	// 301 RPL_AWAY
@@ -1154,7 +1058,7 @@ func (s *Server) operCommand(c *Client, m irc.Message) {
 	// TODO: Host matching
 
 	// Check if they gave acceptable permissions.
-	pass, exists := s.Opers[m.Params[0]]
+	pass, exists := s.Config.Opers[m.Params[0]]
 	if !exists || pass != m.Params[1] {
 		// 464 ERR_PASSWDMISMATCH
 		s.messageClient(c, "464", []string{"Password incorrect"})
@@ -1338,7 +1242,7 @@ func (s *Server) whoCommand(c *Client, m irc.Message) {
 		}
 		s.messageClient(c, "352", []string{
 			channel.Name, member.User, fmt.Sprintf("%s", member.IP),
-			s.Config["server-name"], member.DisplayNick,
+			s.Config.ServerName, member.DisplayNick,
 			mode, "0 " + member.RealName,
 		})
 	}
