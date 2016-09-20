@@ -39,11 +39,11 @@ The main ideas I plan for it are (in no particular order):
   * WHOIS command: Currently not going to show any channels.
   * User modes: Only +o
   * Channel modes: Only +n
+  * WHO: Support only 'WHO #channel'. And shows all nicks on that channel.
 
 
 # Todo
 
-  * WHO
   * Server to server
     * Update LUSERS counts.
   * Server to server (ircd-ratbox)

@@ -599,6 +599,11 @@ func (s *Server) handleMessage(c *Client, m irc.Message) {
 		return
 	}
 
+	if m.Command == "WHO" {
+		s.whoCommand(c, m)
+		return
+	}
+
 	// Unknown command. We don't handle it yet anyway.
 
 	// 421 ERR_UNKNOWNCOMMAND
@@ -1258,8 +1263,11 @@ func (s *Server) userModeCommand(c, targetClient *Client, modes string) {
 
 func (s *Server) channelModeCommand(c *Client, channel *Channel,
 	modes string) {
-	// We could check if the client is on the channel. But for us there is
-	// no real need. Nothing private to expose.
+	if !c.onChannel(channel) {
+		// 442 ERR_NOTONCHANNEL
+		s.messageClient(c, "442", []string{channel.Name, "You're not on that channel"})
+		return
+	}
 
 	// No modes? Send back the channel's modes.
 	// Always send back +n. That's only I support right now.
@@ -1269,10 +1277,62 @@ func (s *Server) channelModeCommand(c *Client, channel *Channel,
 		return
 	}
 
+	// Listing bans. I don't support bans at this time, but say that there are
+	// none.
+	if modes == "b" || modes == "+b" {
+		// 368 RPL_ENDOFBANLIST
+		s.messageClient(c, "368", []string{channel.Name, "End of channel ban list"})
+		return
+	}
+
 	// Since I don't have channel operators implemented, all attempts to alter
 	// mode is an error.
 	// 482 ERR_CHANOPRIVSNEEDED
 	s.messageClient(c, "482", []string{channel.Name, "You're not channel operator"})
+}
+
+func (s *Server) whoCommand(c *Client, m irc.Message) {
+	// Contrary to RFC 2812, I support only 'WHO #channel'.
+	if len(m.Params) < 1 {
+		// 461 ERR_NEEDMOREPARAMS
+		s.messageClient(c, "461", []string{m.Command, "Not enough parameters"})
+		return
+	}
+
+	channel, exists := s.Channels[canonicalizeChannel(m.Params[0])]
+	if !exists {
+		// 403 ERR_NOSUCHCHANNEL. Used to indicate channel name is invalid.
+		c.Server.messageClient(c, "403", []string{m.Params[0], "Invalid channel name"})
+		return
+	}
+
+	// Only works if they are on the channel.
+	if !c.onChannel(channel) {
+		// 442 ERR_NOTONCHANNEL
+		s.messageClient(c, "442", []string{channel.Name, "You're not on that channel"})
+		return
+	}
+
+	for _, member := range channel.Members {
+		// 352 RPL_WHOREPLY
+		// "<channel> <user> <host> <server> <nick>
+		// ( "H" / "G" > ["*"] [ ( "@" / "+" ) ]
+		// :<hopcount> <real name>"
+		// NOTE: I'm not sure what H/G mean.
+		// Hopcount seems unimportant also.
+		mode := "H"
+		if member.isOperator() {
+			mode += "*"
+		}
+		s.messageClient(c, "352", []string{
+			channel.Name, member.User, fmt.Sprintf("%s", member.IP),
+			s.Config["server-name"], member.Nick,
+			mode, "0 " + member.RealName,
+		})
+	}
+
+	// 315 RPL_ENDOFWHO
+	s.messageClient(c, "315", []string{channel.Name, "End of WHO list"})
 }
 
 // Send an IRC message to a client from another client.
