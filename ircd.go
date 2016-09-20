@@ -49,7 +49,7 @@ type Client struct {
 	LastPingTime time.Time
 
 	// User modes
-	Modes []byte
+	Modes map[byte]struct{}
 }
 
 // Channel holds everything to do with a channel.
@@ -370,6 +370,7 @@ func (s *Server) acceptConnections(newClientChan chan<- *Client,
 			ID:        id,
 			Channels:  make(map[string]*Channel),
 			Server:    s,
+			Modes:     make(map[byte]struct{}),
 		}
 
 		// We're doing reads/writes in separate goroutines. No need for timeout.
@@ -593,6 +594,11 @@ func (s *Server) handleMessage(c *Client, m irc.Message) {
 		return
 	}
 
+	if m.Command == "MODE" {
+		s.modeCommand(c, m)
+		return
+	}
+
 	// Unknown command. We don't handle it yet anyway.
 
 	// 421 ERR_UNKNOWNCOMMAND
@@ -749,8 +755,8 @@ func (s *Server) userCommand(c *Client, m irc.Message) {
 		// It seems ambiguous if these are to be separate parameters.
 		s.Config["server-name"],
 		s.Config["version"],
-		"io",
-		"ntsi",
+		"o",
+		"n",
 	})
 
 	s.lusersCommand(c)
@@ -1139,12 +1145,134 @@ func (s *Server) operCommand(c *Client, m irc.Message) {
 	}
 
 	// Give them oper status.
-	c.Modes = append(c.Modes, 'o')
+	c.Modes['o'] = struct{}{}
 
 	c.messageClient(c, "MODE", []string{c.Nick, "+o"})
 
 	// 381 RPL_YOUREOPER
 	s.messageClient(c, "381", []string{"You are now an IRC operator"})
+}
+
+// MODE command applies either to nicknames or to channels.
+func (s *Server) modeCommand(c *Client, m irc.Message) {
+	// User mode:
+	// Parameters: <nickname> *( ( "+" / "-" ) *( "i" / "w" / "o" / "O" / "r" ) )
+
+	// Channel mode:
+	// Parameters: <channel> *( ( "-" / "+" ) *<modes> *<modeparams> )
+
+	if len(m.Params) < 1 {
+		// 461 ERR_NEEDMOREPARAMS
+		s.messageClient(c, "461", []string{"MODE", "Not enough parameters"})
+		return
+	}
+
+	target := m.Params[0]
+
+	// We can have blank mode. This will cause server to send current settings.
+	modes := ""
+	if len(m.Params) > 1 {
+		modes = m.Params[1]
+	}
+
+	// Is it a nickname?
+	targetClient, exists := s.Nicks[canonicalizeNick(target)]
+	if exists {
+		s.userModeCommand(c, targetClient, modes)
+		return
+	}
+
+	// Is it a channel?
+	targetChannel, exists := s.Channels[canonicalizeChannel(target)]
+	if exists {
+		s.channelModeCommand(c, targetChannel, modes)
+		return
+	}
+
+	// Well... Not found. Send a channel not found. It seems the closest matching
+	// extant error in RFC.
+	// 403 ERR_NOSUCHCHANNEL
+	s.messageClient(c, "403", []string{target, "No such channel"})
+}
+
+func (s *Server) userModeCommand(c, targetClient *Client, modes string) {
+	// They can only change their own mode.
+	if targetClient != c {
+		// 502 ERR_USERSDONTMATCH
+		s.messageClient(c, "502", []string{"Cannot change mode for other users"})
+		return
+	}
+
+	// No modes given means we should send back their current mode.
+	if len(modes) == 0 {
+		modeReturn := "+"
+		for k := range c.Modes {
+			modeReturn += string(k)
+		}
+
+		// 221 RPL_UMODEIS
+		s.messageClient(c, "221", []string{modeReturn})
+		return
+	}
+
+	action := ' '
+	for _, char := range modes {
+		if char == '+' || char == '-' {
+			action = char
+			continue
+		}
+
+		if action == ' ' {
+			// Malformed. No +/-.
+			s.messageClient(c, "ERROR", []string{"Malformed MODE"})
+			continue
+		}
+
+		// Only mode I support right now is 'o' (operator).
+		// But some others I will ignore silently to avoid clients getting unknown
+		// mode messages.
+		if char == 'i' || char == 'w' || char == 's' {
+			continue
+		}
+
+		if char != 'o' {
+			// 501 ERR_UMODEUNKNOWNFLAG
+			s.messageClient(c, "501", []string{"Unknown MODE flag"})
+			continue
+		}
+
+		// Ignore it if they try to +o (operator) themselves. RFC says to do so.
+		if action == '+' {
+			continue
+		}
+
+		// This is -o. They have to be operator for there to be any effect.
+		if !c.isOperator() {
+			continue
+		}
+
+		delete(c.Modes, 'o')
+		c.messageClient(c, "MODE", []string{"-o", c.Nick})
+	}
+}
+
+func (s *Server) channelModeCommand(c *Client, channel *Channel,
+	modes string) {
+	// We could check if the client is on the channel. But for us there is
+	// no real need. Nothing private to expose.
+
+	// No modes? Send back the channel's modes.
+	// Always send back +n. That's only I support right now.
+	if len(modes) == 0 {
+		// 324 RPL_CHANNELMODEIS
+		s.messageClient(c, "324", []string{channel.Name, "+n"})
+		return
+	}
+
+	// Since I don't have channel operators implemented, all attempts to alter
+	// mode is an error.
+	// 482 ERR_CHANOPRIVSNEEDED
+	s.messageClient(c, "482", []string{channel.Name, "You're not channel operator"})
 }
 
 // Send an IRC message to a client from another client.
@@ -1332,13 +1460,8 @@ func (c *Client) quit(msg string) {
 }
 
 func (c *Client) isOperator() bool {
-	for _, mode := range c.Modes {
-		if mode == 'o' {
-			return true
-		}
-	}
-
-	return false
+	_, exists := c.Modes['o']
+	return exists
 }
 
 // canonicalizeNick converts the given nick to its canonical representation

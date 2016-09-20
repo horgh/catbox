@@ -37,13 +37,13 @@ The main ideas I plan for it are (in no particular order):
   * Added DIE command.
   * WHOIS command: No server target, and only single nicks.
   * WHOIS command: Currently not going to show any channels.
+  * User modes: Only +o
+  * Channel modes: Only +n
 
 
 # Todo
 
   * WHO
-  * MODE (channels)
-  * MODE (users)
   * Server to server
     * Update LUSERS counts.
   * Server to server (ircd-ratbox)
