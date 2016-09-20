@@ -30,8 +30,8 @@ type Client struct {
 	// Whether it completed connection registration.
 	Registered bool
 
-	// Not canonicalized
-	Nick string
+	// Nick. Not canonicalized.
+	DisplayNick string
 
 	User string
 
@@ -487,8 +487,8 @@ func (s *Server) messageClient(c *Client, command string, params []string) {
 
 	if isNumeric {
 		nick := "*"
-		if len(c.Nick) > 0 {
-			nick = c.Nick
+		if len(c.DisplayNick) > 0 {
+			nick = c.DisplayNick
 		}
 		newParams := []string{nick}
 
@@ -642,7 +642,7 @@ func (s *Server) nickCommand(c *Client, m irc.Message) {
 
 	// Flag the nick as taken by this client.
 	s.Nicks[nickCanon] = c
-	oldNick := c.Nick
+	oldDisplayNick := c.DisplayNick
 
 	// The NICK command to happen both at connection registration time and
 	// after. There are different rules.
@@ -651,8 +651,8 @@ func (s *Server) nickCommand(c *Client, m irc.Message) {
 	// I do this in both registered and not states in case there are clients
 	// misbehaving. I suppose we could not let them issue any more NICKs
 	// beyond the first too if they are not registered.
-	if len(oldNick) > 0 {
-		delete(s.Nicks, canonicalizeNick(oldNick))
+	if len(oldDisplayNick) > 0 {
+		delete(s.Nicks, canonicalizeNick(oldDisplayNick))
 	}
 
 	if c.Registered {
@@ -686,7 +686,7 @@ func (s *Server) nickCommand(c *Client, m irc.Message) {
 
 	// Finally, make the update. Do this last as we need to ensure we act
 	// as the old nick when crafting messages.
-	c.Nick = nick
+	c.DisplayNick = nick
 }
 
 func (s *Server) userCommand(c *Client, m irc.Message) {
@@ -699,7 +699,7 @@ func (s *Server) userCommand(c *Client, m irc.Message) {
 	}
 
 	// I'm going to require NICK before user. RFC RECOMMENDs this.
-	if len(c.Nick) == 0 {
+	if len(c.DisplayNick) == 0 {
 		// No good error code that I see.
 		s.messageClient(c, "ERROR", []string{"Please send NICK first"})
 		return
@@ -844,7 +844,7 @@ func (s *Server) joinCommand(c *Client, m irc.Message) {
 			// needs to vary
 			// TODO: We need to include @ / + for each nick opped/voiced.
 			// Note we can have multiple nicks per RPL_NAMREPLY. TODO: Do that.
-			"=", channel.Name, fmt.Sprintf(":%s", member.Nick),
+			"=", channel.Name, fmt.Sprintf(":%s", member.DisplayNick),
 		})
 	}
 
@@ -982,7 +982,19 @@ func (s *Server) lusersCommand(c *Client) {
 	})
 
 	// 252 RPL_LUSEROP
-	// TODO: When we have operators.
+	operCount := 0
+	for _, client := range s.Nicks {
+		if client.isOperator() {
+			operCount++
+		}
+	}
+	if operCount > 0 {
+		// 252 RPL_LUSEROP
+		s.messageClient(c, "252", []string{
+			fmt.Sprintf("%d", operCount),
+			"operator(s) online",
+		})
+	}
 
 	// 253 RPL_LUSERUNKNOWN
 	// Unregistered connections.
@@ -1080,7 +1092,7 @@ func (s *Server) whoisCommand(c *Client, m irc.Message) {
 
 	// 311 RPL_WHOISUSER
 	s.messageClient(c, "311", []string{
-		targetClient.Nick,
+		targetClient.DisplayNick,
 		targetClient.User,
 		fmt.Sprintf("%s", targetClient.IP),
 		"*",
@@ -1092,7 +1104,7 @@ func (s *Server) whoisCommand(c *Client, m irc.Message) {
 
 	// 312 RPL_WHOISSERVER
 	s.messageClient(c, "312", []string{
-		targetClient.Nick,
+		targetClient.DisplayNick,
 		s.Config["server-name"],
 		s.Config["server-info"],
 	})
@@ -1103,7 +1115,7 @@ func (s *Server) whoisCommand(c *Client, m irc.Message) {
 	// 313 RPL_WHOISOPERATOR
 	if targetClient.isOperator() {
 		s.messageClient(c, "313", []string{
-			targetClient.Nick,
+			targetClient.DisplayNick,
 			"is an IRC operator",
 		})
 	}
@@ -1114,14 +1126,14 @@ func (s *Server) whoisCommand(c *Client, m irc.Message) {
 	idleDuration := time.Now().Sub(targetClient.LastActivityTime)
 	idleSeconds := int(idleDuration.Seconds())
 	s.messageClient(c, "317", []string{
-		targetClient.Nick,
+		targetClient.DisplayNick,
 		fmt.Sprintf("%d", idleSeconds),
 		"seconds idle",
 	})
 
 	// 318 RPL_ENDOFWHOIS
 	s.messageClient(c, "318", []string{
-		targetClient.Nick,
+		targetClient.DisplayNick,
 		"End of WHOIS list",
 	})
 }
@@ -1152,7 +1164,7 @@ func (s *Server) operCommand(c *Client, m irc.Message) {
 	// Give them oper status.
 	c.Modes['o'] = struct{}{}
 
-	c.messageClient(c, "MODE", []string{c.Nick, "+o"})
+	c.messageClient(c, "MODE", []string{c.DisplayNick, "+o"})
 
 	// 381 RPL_YOUREOPER
 	s.messageClient(c, "381", []string{"You are now an IRC operator"})
@@ -1257,7 +1269,7 @@ func (s *Server) userModeCommand(c, targetClient *Client, modes string) {
 		}
 
 		delete(c.Modes, 'o')
-		c.messageClient(c, "MODE", []string{"-o", c.Nick})
+		c.messageClient(c, "MODE", []string{"-o", c.DisplayNick})
 	}
 }
 
@@ -1326,7 +1338,7 @@ func (s *Server) whoCommand(c *Client, m irc.Message) {
 		}
 		s.messageClient(c, "352", []string{
 			channel.Name, member.User, fmt.Sprintf("%s", member.IP),
-			s.Config["server-name"], member.Nick,
+			s.Config["server-name"], member.DisplayNick,
 			mode, "0 " + member.RealName,
 		})
 	}
@@ -1418,7 +1430,7 @@ func (c *Client) String() string {
 }
 
 func (c *Client) nickUhost() string {
-	return fmt.Sprintf("%s!~%s@%s", c.Nick, c.User, c.IP)
+	return fmt.Sprintf("%s!~%s@%s", c.DisplayNick, c.User, c.IP)
 }
 
 // part tries to remove the client from the channel.
@@ -1502,11 +1514,11 @@ func (c *Client) quit(msg string) {
 			c.messageClient(c, "QUIT", []string{msg})
 		}
 
-		delete(c.Server.Nicks, canonicalizeNick(c.Nick))
+		delete(c.Server.Nicks, canonicalizeNick(c.DisplayNick))
 	} else {
 		// May have set a nick.
-		if len(c.Nick) > 0 {
-			delete(c.Server.Nicks, canonicalizeNick(c.Nick))
+		if len(c.DisplayNick) > 0 {
+			delete(c.Server.Nicks, canonicalizeNick(c.DisplayNick))
 		}
 	}
 
