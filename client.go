@@ -11,7 +11,7 @@ import (
 
 // Client holds state about a single client connection.
 type Client struct {
-	Conn irc.Conn
+	Conn Conn
 
 	WriteChan chan irc.Message
 
@@ -43,6 +43,25 @@ type Client struct {
 
 	// User modes
 	Modes map[byte]struct{}
+}
+
+// NewClient creates a Client
+func NewClient(s *Server, id uint64, conn net.Conn) *Client {
+	tcpAddr, err := net.ResolveTCPAddr("tcp", conn.RemoteAddr().String())
+	// This shouldn't happen.
+	if err != nil {
+		log.Fatalf("Unable to resolve TCP address: %s", err)
+	}
+
+	return &Client{
+		Conn:      NewConn(conn),
+		WriteChan: make(chan irc.Message, 100),
+		ID:        id,
+		Channels:  make(map[string]*Channel),
+		Server:    s,
+		Modes:     make(map[byte]struct{}),
+		IP:        tcpAddr.IP,
+	}
 }
 
 // Send an IRC message to a client from another client.

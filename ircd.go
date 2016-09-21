@@ -219,33 +219,13 @@ func (s *Server) acceptConnections(newClientChan chan<- *Client,
 			continue
 		}
 
-		clientWriteChan := make(chan irc.Message, 100)
-
-		client := &Client{
-			Conn:      irc.NewConn(conn),
-			WriteChan: clientWriteChan,
-			ID:        id,
-			Channels:  make(map[string]*Channel),
-			Server:    s,
-			Modes:     make(map[byte]struct{}),
-		}
-
-		// We're doing reads/writes in separate goroutines. No need for timeout.
-		client.Conn.IOTimeoutDuration = 0
+		client := NewClient(s, id, conn)
 
 		// Handle rollover of uint64. Unlikely to happen (outside abuse) but.
 		if id+1 == 0 {
 			log.Fatalf("Unique ids rolled over!")
 		}
 		id++
-
-		tcpAddr, err := net.ResolveTCPAddr("tcp", conn.RemoteAddr().String())
-		// This shouldn't happen.
-		if err != nil {
-			log.Fatalf("Unable to resolve TCP address: %s", err)
-		}
-
-		client.IP = tcpAddr.IP
 
 		s.WG.Add(1)
 		go client.readLoop(messageServerChan, deadClientChan)
