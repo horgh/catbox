@@ -569,7 +569,11 @@ func (s *Server) pingCommand(c *Client, m irc.Message) {
 }
 
 func (s *Server) dieCommand(c *Client, m irc.Message) {
-	// TODO: Operators only.
+	if !c.isOperator() {
+		// 481 ERR_NOPRIVILEGES
+		s.messageClient(c, "481", []string{"Permission Denied- You're not an IRC operator"})
+		return
+	}
 
 	// die is not an RFC command. I use it to shut down the server.
 	s.shutdown()
