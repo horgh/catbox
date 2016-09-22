@@ -55,7 +55,7 @@ func NewClient(s *Server, id uint64, conn net.Conn) *Client {
 
 	return &Client{
 		Conn:      NewConn(conn),
-		WriteChan: make(chan irc.Message, 100),
+		WriteChan: make(chan irc.Message),
 		ID:        id,
 		Channels:  make(map[string]*Channel),
 		Server:    s,
@@ -69,6 +69,8 @@ func NewClient(s *Server, id uint64, conn net.Conn) *Client {
 // of the prefix.
 //
 // This works by writing to a client's channel.
+//
+// Note: Only the server goroutine should call this (due to channel use).
 func (c *Client) messageClient(to *Client, command string, params []string) {
 	to.WriteChan <- irc.Message{
 		Prefix:  c.nickUhost(),
@@ -85,58 +87,38 @@ func (c *Client) onChannel(channel *Channel) bool {
 // readLoop endlessly reads from the client's TCP connection. It parses each
 // IRC protocol message and passes it to the server through the server's
 // channel.
-func (c *Client) readLoop(messageServerChan chan<- ClientMessage,
-	deadClientChan chan<- *Client) {
+func (c *Client) readLoop() {
 	defer c.Server.WG.Done()
 
 	for {
-		message, err := c.Conn.ReadMessage()
-		if err != nil {
-			log.Printf("Client %s: %s", c, err)
-			// To not block forever if shutting down.
-			select {
-			case deadClientChan <- c:
-			case <-c.Server.ShutdownChan:
-			}
+		if c.Server.shuttingDown() {
+			log.Printf("Client %s: Read goroutine shutting down", c)
 			return
 		}
 
-		// We want to tell the server about this message.
-		// We also try to receive from the shutdown channel. This is so we will
-		// not block forever when shutting down. The ShutdownChan closes when we
-		// shutdown.
-		select {
-		case messageServerChan <- ClientMessage{Client: c, Message: message}:
-		case <-c.Server.ShutdownChan:
-			log.Printf("Client %s shutting down", c)
+		message, err := c.Conn.ReadMessage()
+		if err != nil {
+			log.Printf("Client %s: %s", c, err)
+			c.Server.newDeadClient(c)
 			return
 		}
+
+		c.Server.newClientMessage(c, message)
 	}
 }
 
 // writeLoop endlessly reads from the client's channel, encodes each message,
 // and writes it to the client's TCP connection.
-func (c *Client) writeLoop(deadClientChan chan<- *Client) {
+func (c *Client) writeLoop() {
 	defer c.Server.WG.Done()
 
 	for message := range c.WriteChan {
 		err := c.Conn.WriteMessage(message)
 		if err != nil {
 			log.Printf("Client %s: %s", c, err)
-			// To not block forever if shutting down.
-			select {
-			case deadClientChan <- c:
-			case <-c.Server.ShutdownChan:
-			}
+			c.Server.newDeadClient(c)
 			break
 		}
-	}
-
-	// Close the TCP connection. We do this here because we need to be sure we've
-	// processed all messages to the client before closing the socket.
-	err := c.Conn.Close()
-	if err != nil {
-		log.Printf("Client %s: Problem closing connection: %s", c, err)
 	}
 
 	log.Printf("Client %s write goroutine terminating.", c)
@@ -154,6 +136,9 @@ func (c *Client) nickUhost() string {
 //
 // We send a reply to the client. We also inform any other clients that need to
 // know.
+//
+// NOTE: Only the server goroutine should call this (as we interact with its
+//   member variables).
 func (c *Client) part(channelName, message string) {
 	// NOTE: Difference from RFC 2812: I only accept one channel at a time.
 	channelName = canonicalizeChannel(channelName)
@@ -202,6 +187,7 @@ func (c *Client) part(channelName, message string) {
 	}
 }
 
+// Note: Only the server goroutine should call this (due to closing channel).
 func (c *Client) quit(msg string) {
 	if c.Registered {
 		// Tell all clients the client is in the channel with.
@@ -239,11 +225,17 @@ func (c *Client) quit(msg string) {
 		}
 	}
 
+	// messageClient blocks on sending to the client's channel.
 	c.Server.messageClient(c, "ERROR", []string{msg})
 
-	// Close their connection and channels.
-	// Closing the channel leads to closing the TCP connection.
+	// Close the channel to write to the client's connection.
 	close(c.WriteChan)
+
+	// Close the client's TCP connection.
+	err := c.Conn.Close()
+	if err != nil {
+		log.Printf("Client %s: Problem closing connection: %s", c, err)
+	}
 
 	delete(c.Server.Clients, c.ID)
 }
