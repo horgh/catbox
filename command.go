@@ -53,7 +53,8 @@ func (s *Server) handleMessage(c *Client, m irc.Message) {
 		return
 	}
 
-	if m.Command == "PRIVMSG" {
+	// Per RFC these commands are near identical.
+	if m.Command == "PRIVMSG" || m.Command == "NOTICE" {
 		s.privmsgCommand(c, m)
 		return
 	}
@@ -394,6 +395,8 @@ func (s *Server) partCommand(c *Client, m irc.Message) {
 	c.part(m.Params[0], partMessage)
 }
 
+// Per RFC 2812, PRIVMSG and NOTICE are essentially the same, so both PRIVMSG
+// and NOTICE use this command function.
 func (s *Server) privmsgCommand(c *Client, m irc.Message) {
 	// Parameters: <msgtarget> <text to be sent>
 
@@ -418,8 +421,8 @@ func (s *Server) privmsgCommand(c *Client, m irc.Message) {
 	// The message may be too long once we add the prefix/encode the message.
 	// Strip any trailing characters until it's short enough.
 	// TODO: Other messages can have this problem too (PART, QUIT, etc...)
-	msgLen := len(":") + len(c.nickUhost()) + len(" PRIVMSG ") + len(target) +
-		len(" ") + len(":") + len(msg) + len("\r\n")
+	msgLen := len(":") + len(c.nickUhost()) + len(" ") + len(m.Command) +
+		len(" ") + len(target) + len(" ") + len(":") + len(msg) + len("\r\n")
 	if msgLen > irc.MaxLineLength {
 		trimCount := msgLen - irc.MaxLineLength
 		msg = msg[:len(msg)-trimCount]
@@ -458,7 +461,7 @@ func (s *Server) privmsgCommand(c *Client, m irc.Message) {
 			}
 
 			// From the client to each member.
-			c.messageClient(member, "PRIVMSG", []string{channel.Name, msg})
+			c.messageClient(member, m.Command, []string{channel.Name, msg})
 		}
 
 		return
@@ -480,7 +483,7 @@ func (s *Server) privmsgCommand(c *Client, m irc.Message) {
 		return
 	}
 
-	c.messageClient(targetClient, "PRIVMSG", []string{nickName, msg})
+	c.messageClient(targetClient, m.Command, []string{nickName, msg})
 }
 
 func (s *Server) lusersCommand(c *Client) {
