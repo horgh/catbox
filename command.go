@@ -322,8 +322,10 @@ func (s *Server) joinCommand(c *Client, m irc.Message) {
 
 	// Is the client in the channel already?
 	if c.onChannel(&Channel{Name: channelName}) {
-		// We could just ignore it too.
-		s.messageClient(c, "ERROR", []string{"You are on that channel"})
+		// 443 ERR_USERONCHANNEL
+		// This error code is supposed to be for inviting a user on a channel
+		// already, but it works.
+		s.messageClient(c, "443", []string{c.DisplayNick, channelName, "is already on channel"})
 		return
 	}
 
@@ -673,7 +675,8 @@ func (s *Server) operCommand(c *Client, m irc.Message) {
 	}
 
 	if c.isOperator() {
-		s.messageClient(c, "ERROR", []string{"You are already an operator."})
+		// 381 RPL_YOUREOPER
+		s.messageClient(c, "381", []string{"You are already an IRC operator"})
 		return
 	}
 
@@ -767,7 +770,8 @@ func (s *Server) userModeCommand(c, targetClient *Client, modes string) {
 
 		if action == ' ' {
 			// Malformed. No +/-.
-			s.messageClient(c, "ERROR", []string{"Malformed MODE"})
+			// 472 ERR_UNKNOWNMODE
+			s.messageClient(c, "472", []string{modes, "is unknown mode to me"})
 			continue
 		}
 
