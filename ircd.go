@@ -42,20 +42,8 @@ type Server struct {
 	// Other goroutines can check if this channel is closed.
 	ShutdownChan chan struct{}
 
-	// We hear about new client connections on this channel.
-	NewClientChan chan *Client
-
-	// When clients die (such as I/O error), the server hears about it on this
-	// channel. This is so we can clean up the client.
-	// It's useful to be able to know immediately and inform the client if we're
-	// going to decide they are getting cut off (e.g., malformed message).
-	DeadClientChan chan *Client
-
-	// We hear messages from clients on this channel.
-	MessageServerChan chan ClientMessage
-
-	// The Alarm goroutine sends messages on this channel to wake the server up.
-	FromAlarmChan chan struct{}
+	// Tell the server something on this channel.
+	ToServerChan chan Event
 
 	// TCP listener.
 	Listener net.Listener
@@ -64,11 +52,34 @@ type Server struct {
 	WG sync.WaitGroup
 }
 
-// ClientMessage holds a message and the client it originated from.
-type ClientMessage struct {
+// Event holds a message containing something to tell the server.
+type Event struct {
+	Type    EventType
 	Client  *Client
 	Message irc.Message
 }
+
+// EventType is a type of event we can tell the server about.
+type EventType int
+
+const (
+	// NullEvent is a default event. This means the event was not populated.
+	NullEvent EventType = iota
+
+	// NewClientEvent means a new client connected.
+	NewClientEvent
+
+	// DeadClientEvent means client died for some reason. Clean it up.
+	// It's useful to be able to know immediately and inform the client if we're
+	// going to decide they are getting cut off (e.g., malformed message).
+	DeadClientEvent
+
+	// MessageFromClientEvent means a client sent a message.
+	MessageFromClientEvent
+
+	// WakeUpEvent means the server should wake up and do bookkeeping.
+	WakeUpEvent
+)
 
 func main() {
 	log.SetFlags(0)
@@ -100,19 +111,8 @@ func newServer(configFile string) (*Server, error) {
 		// shutdown() closes this channel.
 		ShutdownChan: make(chan struct{}),
 
-		// acceptConnections() closes this channel.
-		NewClientChan: make(chan *Client),
-
-		// We don't ever manually close this channel.
-		// This channel can be buffered or not. Order is not important.
-		DeadClientChan: make(chan *Client, 100),
-
-		// We don't ever manually close this channel.
-		// This channel can be buffered or not. Order is not important.
-		MessageServerChan: make(chan ClientMessage, 100),
-
-		// alarm() closes this channel.
-		FromAlarmChan: make(chan struct{}),
+		// We never manually close this channel.
+		ToServerChan: make(chan Event),
 	}
 
 	err := s.checkAndParseConfig(configFile)
@@ -148,52 +148,45 @@ func (s *Server) start() error {
 MessageLoop:
 	for {
 		select {
-		case client := <-s.NewClientChan:
-			// The channel will close when we shut down, so make sure we actually
-			// received a non-default message.
-			if client != nil {
-				log.Printf("New client connection: %s", client)
-				s.Clients[client.ID] = client
-				client.LastActivityTime = time.Now()
-				client.LastMessageTime = time.Now()
+		case evt := <-s.ToServerChan:
+			if evt.Type == NewClientEvent {
+				log.Printf("New client connection: %s", evt.Client)
+				s.Clients[evt.Client.ID] = evt.Client
+				continue
 			}
 
-		case clientMessage := <-s.MessageServerChan:
-			log.Printf("Client %s: Message: %s", clientMessage.Client,
-				clientMessage.Message)
-
-			// This could be from a client that disconnected. Ignore it if so.
-			_, exists := s.Clients[clientMessage.Client.ID]
-			if exists {
-				s.handleMessage(clientMessage.Client, clientMessage.Message)
+			if evt.Type == DeadClientEvent {
+				_, exists := s.Clients[evt.Client.ID]
+				if exists {
+					log.Printf("Client %s died.", evt.Client)
+					evt.Client.quit("I/O error")
+				}
+				continue
 			}
 
-		case client := <-s.DeadClientChan:
-			_, exists := s.Clients[client.ID]
-			if exists {
-				log.Printf("Client %s died.", client)
-				client.quit("I/O error")
+			if evt.Type == MessageFromClientEvent {
+				_, exists := s.Clients[evt.Client.ID]
+				if exists {
+					log.Printf("Client %s: Message: %s", evt.Client, evt.Message)
+					s.handleMessage(evt.Client, evt.Message)
+				}
+				continue
 			}
 
-		case <-s.FromAlarmChan:
-			s.checkAndPingClients()
+			if evt.Type == WakeUpEvent {
+				s.checkAndPingClients()
+				continue
+			}
+
+			log.Fatalf("Unexpected event: %d", evt.Type)
 
 		case <-s.ShutdownChan:
 			break MessageLoop
 		}
 	}
 
-	// We're shutting down. Drain all channels. We want goroutines that send on
-	// them to not be blocked.
-	for range s.NewClientChan {
-	}
-	for range s.FromAlarmChan {
-	}
-
-	// We don't need to drain messageServerChan or deadClientChan.
-	// We can't in fact, since if we close them then client goroutines may panic.
-	// The client goroutines won't block sending to them as they will check
-	// ShutdownChan.
+	// We don't need to drain any channels. None close that will have any
+	// goroutines blocked on them.
 
 	s.WG.Wait()
 
@@ -228,7 +221,7 @@ func (s *Server) acceptConnections() {
 	id := uint64(0)
 
 	for {
-		if s.shuttingDown() {
+		if s.isShuttingDown() {
 			break
 		}
 
@@ -246,10 +239,10 @@ func (s *Server) acceptConnections() {
 		}
 		id++
 
-		// NewClientChan is synchronous. We want to make sure server knows about
-		// the client before it starts hearing anything from its other channels
-		// about the client.
-		s.NewClientChan <- client
+		// ToServerChan is synchronous. We want to make sure server knows about the
+		// client before it starts hearing anything from its other channels about
+		// the client.
+		s.newEvent(Event{Type: NewClientEvent, Client: client})
 
 		s.WG.Add(1)
 		go client.readLoop()
@@ -258,11 +251,10 @@ func (s *Server) acceptConnections() {
 	}
 
 	log.Printf("Connection accepter shutting down.")
-	close(s.NewClientChan)
 }
 
 // Return true if the server is shutting down.
-func (s *Server) shuttingDown() bool {
+func (s *Server) isShuttingDown() bool {
 	// No messages get sent to this channel, so if we receive a message on it,
 	// then we know the channel was closed.
 	select {
@@ -279,16 +271,16 @@ func (s *Server) alarm() {
 	defer s.WG.Done()
 
 	for {
+		if s.isShuttingDown() {
+			break
+		}
+
 		time.Sleep(s.Config.WakeupTime)
 
-		select {
-		case s.FromAlarmChan <- struct{}{}:
-		case <-s.ShutdownChan:
-			log.Printf("Alarm shutting down.")
-			close(s.FromAlarmChan)
-			return
-		}
+		s.newEvent(Event{Type: WakeUpEvent})
 	}
+
+	log.Printf("Alarm shutting down.")
 }
 
 // checkAndPingClients looks at each connected client.
@@ -368,31 +360,18 @@ func (s *Server) messageClient(c *Client, command string, params []string) {
 	}
 }
 
-// This function informs the server there is a new dead client.
+// newEvent tells the server something happens.
 //
-// It can be called from any goroutine.
+// Any goroutine can call this function.
 //
-// It sends a message on a channel to the server.
+// It sends the server a message on its ToServerChan.
 //
-// We take steps to not be blocked forever if the server's dead client channel
-// are closed (such as during shutdown) by select'ing on the shutdown channel.
-func (s *Server) newDeadClient(c *Client) {
+// It will not block on shutdown as we select on the shutdown channel which we
+// close when shutting down the server. This means receive on the shutdown
+// channel will proceed at that point.
+func (s *Server) newEvent(evt Event) {
 	select {
-	case s.DeadClientChan <- c:
-	case <-s.ShutdownChan:
-	}
-}
-
-// Tell the server about a new message from a client.
-//
-// You can call this function from any goroutine.
-//
-// We try to not block send to the channel on shutdown by select'ing on the
-// shutdown channel (which never receives messages, and will be closed when we
-// shutdown, so will receive the default at that point).
-func (s *Server) newClientMessage(c *Client, m irc.Message) {
-	select {
-	case s.MessageServerChan <- ClientMessage{Client: c, Message: m}:
+	case s.ToServerChan <- evt:
 	case <-s.ShutdownChan:
 	}
 }

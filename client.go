@@ -57,14 +57,18 @@ func NewClient(s *Server, id uint64, conn net.Conn) *Client {
 		log.Fatalf("Unable to resolve TCP address: %s", err)
 	}
 
+	now := time.Now()
+
 	return &Client{
-		Conn:      NewConn(conn),
-		WriteChan: make(chan irc.Message),
-		ID:        id,
-		Channels:  make(map[string]*Channel),
-		Server:    s,
-		Modes:     make(map[byte]struct{}),
-		IP:        tcpAddr.IP,
+		Conn:             NewConn(conn),
+		WriteChan:        make(chan irc.Message),
+		ID:               id,
+		Channels:         make(map[string]*Channel),
+		Server:           s,
+		Modes:            make(map[byte]struct{}),
+		IP:               tcpAddr.IP,
+		LastActivityTime: now,
+		LastMessageTime:  now,
 	}
 }
 
@@ -95,7 +99,7 @@ func (c *Client) readLoop() {
 	defer c.Server.WG.Done()
 
 	for {
-		if c.Server.shuttingDown() {
+		if c.Server.isShuttingDown() {
 			break
 		}
 
@@ -103,14 +107,18 @@ func (c *Client) readLoop() {
 		message, err := c.Conn.ReadMessage()
 		if err != nil {
 			log.Printf("Client %s: %s", c, err)
-			c.Server.newDeadClient(c)
+			c.Server.newEvent(Event{Type: DeadClientEvent, Client: c})
 			break
 		}
 
-		c.Server.newClientMessage(c, message)
+		c.Server.newEvent(Event{
+			Type:    MessageFromClientEvent,
+			Client:  c,
+			Message: message,
+		})
 	}
 
-	log.Printf("Client %s: Read goroutine shutting down", c)
+	log.Printf("Client %s: Reader shutting down.", c)
 }
 
 // writeLoop endlessly reads from the client's channel, encodes each message,
@@ -122,12 +130,12 @@ func (c *Client) writeLoop() {
 		err := c.Conn.WriteMessage(message)
 		if err != nil {
 			log.Printf("Client %s: %s", c, err)
-			c.Server.newDeadClient(c)
+			c.Server.newEvent(Event{Type: DeadClientEvent, Client: c})
 			break
 		}
 	}
 
-	log.Printf("Client %s write goroutine terminating.", c)
+	log.Printf("Client %s: Writer shutting down.", c)
 }
 
 func (c *Client) String() string {
