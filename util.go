@@ -8,6 +8,9 @@ const maxNickLength = 9
 // 50 from RFC
 const maxChannelLength = 50
 
+// Arbitrary. Something low enough we won't hit message limit.
+const maxTopicLength = 300
+
 // canonicalizeNick converts the given nick to its canonical representation
 // (which must be unique).
 //

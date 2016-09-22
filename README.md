@@ -44,26 +44,26 @@ The main ideas I plan for it are (in no particular order):
 
 # Todo
 
+  * CTCP PING
+  * NOTICE
   * Server to server
     * Update LUSERS counts.
   * Server to server (ircd-ratbox)
+  * LINKS
   * TLS
   * Upgrade in place
+  * Don't exit on invalid message.
 
 
 ## Maybe
 
-  * CTCP PING
-  * TOPIC
   * LIST
   * Channel keys
   * INVITE
   * KICK
   * NAMES
-  * NOTICE
   * VERSION
   * STATS
-  * LINKS
   * TIME
   * ADMIN
   * INFO

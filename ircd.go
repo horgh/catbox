@@ -18,9 +18,7 @@ type Channel struct {
 	// Client id to Client.
 	Members map[uint64]*Client
 
-	// TODO: Modes
-
-	// TODO: Topic
+	Topic string
 }
 
 // Server holds the state for a server.

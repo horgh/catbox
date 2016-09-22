@@ -108,6 +108,11 @@ func (s *Server) handleMessage(c *Client, m irc.Message) {
 		return
 	}
 
+	if m.Command == "TOPIC" {
+		s.topicCommand(c, m)
+		return
+	}
+
 	// Unknown command. We don't handle it yet anyway.
 
 	// 421 ERR_UNKNOWNCOMMAND
@@ -336,7 +341,10 @@ func (s *Server) joinCommand(c *Client, m irc.Message) {
 
 	// It appears RPL_TOPIC is optional, at least ircd-ratbox does not send it.
 	// Presumably if there is no topic.
-	// TODO: Send topic when we have one.
+	if len(channel.Topic) > 0 {
+		// 332 RPL_TOPIC
+		s.messageClient(c, "332", []string{channel.Name, channel.Topic})
+	}
 
 	// RPL_NAMREPLY: This tells the client about who is in the channel
 	// (including itself).
@@ -805,7 +813,7 @@ func (s *Server) channelModeCommand(c *Client, channel *Channel,
 		return
 	}
 
-	// Since I don't have channel operators implemented, all attempts to alter
+	// Since we don't have channel operators implemented, any attempt to alter
 	// mode is an error.
 	// 482 ERR_CHANOPRIVSNEEDED
 	s.messageClient(c, "482", []string{channel.Name, "You're not channel operator"})
@@ -853,4 +861,59 @@ func (s *Server) whoCommand(c *Client, m irc.Message) {
 
 	// 315 RPL_ENDOFWHO
 	s.messageClient(c, "315", []string{channel.Name, "End of WHO list"})
+}
+
+func (s *Server) topicCommand(c *Client, m irc.Message) {
+	// Params: <channel> [ <topic> ]
+	if len(m.Params) == 0 {
+		s.messageClient(c, "461", []string{m.Command, "Not enough parameters"})
+		return
+	}
+
+	channelName := canonicalizeChannel(m.Params[0])
+	channel, exists := s.Channels[channelName]
+	if !exists {
+		// 403 ERR_NOSUCHCHANNEL. Used to indicate channel name is invalid.
+		c.Server.messageClient(c, "403", []string{m.Params[0], "Invalid channel name"})
+		return
+	}
+
+	if !c.onChannel(channel) {
+		// 442 ERR_NOTONCHANNEL
+		s.messageClient(c, "442", []string{channel.Name, "You're not on that channel"})
+		return
+	}
+
+	// If there is no new topic, then just send back the current one.
+	if len(m.Params) < 2 {
+		if len(channel.Topic) == 0 {
+			// 331 RPL_NOTOPIC
+			s.messageClient(c, "331", []string{channel.Name, "No topic is set"})
+			return
+		}
+
+		// 332 RPL_TOPIC
+		s.messageClient(c, "332", []string{channel.Name, channel.Topic})
+		return
+	}
+
+	// Set new topic.
+
+	topic := m.Params[1]
+	if len(topic) > maxTopicLength {
+		topic = topic[:maxTopicLength]
+	}
+	if len(topic) == 0 {
+		topic = ":"
+	}
+
+	// TODO: If/when we have channel operators then we need additional logic
+
+	channel.Topic = topic
+
+	// Tell all members of the channel, including the client.
+	for _, member := range channel.Members {
+		// 332 RPL_TOPIC
+		c.messageClient(member, "TOPIC", []string{channel.Name, channel.Topic})
+	}
 }
