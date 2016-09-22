@@ -463,6 +463,8 @@ func (s *Server) privmsgCommand(c *Client, m irc.Message) {
 			return
 		}
 
+		c.LastMessageTime = time.Now()
+
 		// Send to all members of the channel. Except the client itself it seems.
 		for _, member := range channel.Members {
 			if member.ID == c.ID {
@@ -491,6 +493,8 @@ func (s *Server) privmsgCommand(c *Client, m irc.Message) {
 		s.messageClient(c, "401", []string{nickName, "No such nick/channel"})
 		return
 	}
+
+	c.LastMessageTime = time.Now()
 
 	c.messageClient(targetClient, m.Command, []string{nickName, msg})
 }
@@ -651,7 +655,7 @@ func (s *Server) whoisCommand(c *Client, m irc.Message) {
 	// TODO: TLS information
 
 	// 317 RPL_WHOISIDLE
-	idleDuration := time.Now().Sub(targetClient.LastActivityTime)
+	idleDuration := time.Now().Sub(targetClient.LastMessageTime)
 	idleSeconds := int(idleDuration.Seconds())
 	s.messageClient(c, "317", []string{
 		targetClient.DisplayNick,

@@ -35,8 +35,12 @@ type Client struct {
 
 	Server *Server
 
-	// The last time we heard from the client.
+	// The last time we heard anything from the client.
 	LastActivityTime time.Time
+
+	// The last time the client sent a PRIVMSG/NOTICE. We use this to decide
+	// idle time.
+	LastMessageTime time.Time
 
 	// The last time we sent the client a PING.
 	LastPingTime time.Time

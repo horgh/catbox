@@ -51,7 +51,6 @@ The main ideas I plan for it are (in no particular order):
   * TLS
   * Upgrade in place
   * Don't exit on invalid message.
-  * PING shouldn't change idle time. Only PRIVMSG?
 
 
 ## Maybe

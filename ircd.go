@@ -155,6 +155,7 @@ MessageLoop:
 				log.Printf("New client connection: %s", client)
 				s.Clients[client.ID] = client
 				client.LastActivityTime = time.Now()
+				client.LastMessageTime = time.Now()
 			}
 
 		case clientMessage := <-s.MessageServerChan:
