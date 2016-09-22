@@ -145,7 +145,20 @@ func (s *Server) start() error {
 	s.WG.Add(1)
 	go s.alarm()
 
-MessageLoop:
+	s.eventLoop()
+
+	// We don't need to drain any channels. None close that will have any
+	// goroutines blocked on them.
+
+	s.WG.Wait()
+
+	return nil
+}
+
+// eventLoop processes events on the server's channel.
+//
+// It continues until the shutdown channel closes, indicating shutdown.
+func (s *Server) eventLoop() {
 	for {
 		select {
 		case evt := <-s.ToServerChan:
@@ -181,16 +194,9 @@ MessageLoop:
 			log.Fatalf("Unexpected event: %d", evt.Type)
 
 		case <-s.ShutdownChan:
-			break MessageLoop
+			return
 		}
 	}
-
-	// We don't need to drain any channels. None close that will have any
-	// goroutines blocked on them.
-
-	s.WG.Wait()
-
-	return nil
 }
 
 // shutdown starts server shutdown.
