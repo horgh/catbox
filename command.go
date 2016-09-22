@@ -146,7 +146,7 @@ func (s *Server) nickCommand(c *Client, m irc.Message) {
 	_, exists := s.Nicks[nickCanon]
 	if exists {
 		// 433 ERR_NICKNAMEINUSE
-		s.messageClient(c, "432", []string{nick, "Nickname is already in use"})
+		s.messageClient(c, "433", []string{nick, "Nickname is already in use"})
 		return
 	}
 
@@ -197,6 +197,11 @@ func (s *Server) nickCommand(c *Client, m irc.Message) {
 	// Finally, make the update. Do this last as we need to ensure we act
 	// as the old nick when crafting messages.
 	c.DisplayNick = nick
+
+	// If we have USER done already, then we're done registration.
+	if len(c.User) > 0 {
+		s.completeRegistration(c)
+	}
 }
 
 func (s *Server) userCommand(c *Client, m irc.Message) {
@@ -208,12 +213,9 @@ func (s *Server) userCommand(c *Client, m irc.Message) {
 		return
 	}
 
-	// I'm going to require NICK before user. RFC RECOMMENDs this.
-	if len(c.DisplayNick) == 0 {
-		// No good error code that I see.
-		s.messageClient(c, "ERROR", []string{"Please send NICK first"})
-		return
-	}
+	// RFC RECOMMENDs NICK before USER. But I'm going to allow either way now.
+	// One reason to do so is how to react if NICK was taken and client
+	// proceeded to USER.
 
 	// 4 parameters: <user> <mode> <unused> <realname>
 	if len(m.Params) != 4 {
@@ -242,8 +244,13 @@ func (s *Server) userCommand(c *Client, m irc.Message) {
 	}
 	c.RealName = m.Params[3]
 
-	// This completes connection registration.
+	// If we have a nick, then we're done registration.
+	if len(c.DisplayNick) > 0 {
+		s.completeRegistration(c)
+	}
+}
 
+func (s *Server) completeRegistration(c *Client) {
 	c.Registered = true
 
 	// RFC 2813 specifies messages to send upon registration.
