@@ -96,19 +96,21 @@ func (c *Client) readLoop() {
 
 	for {
 		if c.Server.shuttingDown() {
-			log.Printf("Client %s: Read goroutine shutting down", c)
-			return
+			break
 		}
 
+		// This means if a client sends us an invalid message that we cut them off.
 		message, err := c.Conn.ReadMessage()
 		if err != nil {
 			log.Printf("Client %s: %s", c, err)
 			c.Server.newDeadClient(c)
-			return
+			break
 		}
 
 		c.Server.newClientMessage(c, message)
 	}
+
+	log.Printf("Client %s: Read goroutine shutting down", c)
 }
 
 // writeLoop endlessly reads from the client's channel, encodes each message,

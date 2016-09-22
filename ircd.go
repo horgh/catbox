@@ -229,9 +229,7 @@ func (s *Server) acceptConnections() {
 
 	for {
 		if s.shuttingDown() {
-			log.Printf("Connection accepter shutting down.")
-			close(s.NewClientChan)
-			return
+			break
 		}
 
 		conn, err := s.Listener.Accept()
@@ -258,6 +256,9 @@ func (s *Server) acceptConnections() {
 		s.WG.Add(1)
 		go client.writeLoop()
 	}
+
+	log.Printf("Connection accepter shutting down.")
+	close(s.NewClientChan)
 }
 
 // Return true if the server is shutting down.

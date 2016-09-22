@@ -46,11 +46,12 @@ The main ideas I plan for it are (in no particular order):
 
   * Server to server
     * Update LUSERS counts.
-  * Server to server (ircd-ratbox)
   * LINKS
+  * Server to server (ircd-ratbox)
   * TLS
-  * Upgrade in place
-  * Don't exit on invalid message.
+  * Upgrade in place (is this possible with TLS connections?)
+  * Log to file.
+  * Server console.
 
 
 ## Maybe
