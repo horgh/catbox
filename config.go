@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"strconv"
 	"time"
 
 	"summercat.com/config"
@@ -16,6 +17,8 @@ type Config struct {
 	Version     string
 	CreatedDate string
 	MOTD        string
+
+	MaxNickLength int
 
 	// Period of time to wait before waking server up (maximum).
 	WakeupTime time.Duration
@@ -50,6 +53,7 @@ func (s *Server) checkAndParseConfig(file string) error {
 		"version",
 		"created-date",
 		"motd",
+		"max-nick-length",
 		"wakeup-time",
 		"ping-time",
 		"dead-time",
@@ -77,6 +81,12 @@ func (s *Server) checkAndParseConfig(file string) error {
 	s.Config.Version = configMap["version"]
 	s.Config.CreatedDate = configMap["created-date"]
 	s.Config.MOTD = configMap["motd"]
+
+	nickLen64, err := strconv.ParseInt(configMap["max-nick-length"], 10, 8)
+	if err != nil {
+		return fmt.Errorf("Max nick length is not valid: %s", err)
+	}
+	s.Config.MaxNickLength = int(nickLen64)
 
 	s.Config.WakeupTime, err = time.ParseDuration(configMap["wakeup-time"])
 	if err != nil {

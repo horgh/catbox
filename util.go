@@ -2,9 +2,6 @@ package main
 
 import "strings"
 
-// 9 from RFC
-const maxNickLength = 9
-
 // 50 from RFC
 const maxChannelLength = 50
 
@@ -28,8 +25,8 @@ func canonicalizeChannel(c string) string {
 }
 
 // isValidNick checks if a nickname is valid.
-func isValidNick(n string) bool {
-	if len(n) == 0 || len(n) > maxNickLength {
+func isValidNick(maxLen int, n string) bool {
+	if len(n) == 0 || len(n) > maxLen {
 		return false
 	}
 
@@ -58,8 +55,8 @@ func isValidNick(n string) bool {
 }
 
 // isValidUser checks if a user (USER command) is valid
-func isValidUser(u string) bool {
-	if len(u) == 0 || len(u) > maxNickLength {
+func isValidUser(maxLen int, u string) bool {
+	if len(u) == 0 || len(u) > maxLen {
 		return false
 	}
 

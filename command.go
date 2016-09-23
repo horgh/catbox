@@ -134,7 +134,11 @@ func (s *Server) nickCommand(c *Client, m irc.Message) {
 
 	nick := m.Params[0]
 
-	if !isValidNick(nick) {
+	if len(nick) > s.Config.MaxNickLength {
+		nick = nick[0:s.Config.MaxNickLength]
+	}
+
+	if !isValidNick(s.Config.MaxNickLength, nick) {
 		// 432 ERR_ERRONEUSNICKNAME
 		s.messageClient(c, "432", []string{nick, "Erroneous nickname"})
 		return
@@ -226,7 +230,11 @@ func (s *Server) userCommand(c *Client, m irc.Message) {
 
 	user := m.Params[0]
 
-	if !isValidUser(user) {
+	if len(user) > s.Config.MaxNickLength {
+		user = user[0:s.Config.MaxNickLength]
+	}
+
+	if !isValidUser(s.Config.MaxNickLength, user) {
 		// There isn't an appropriate response in the RFC. ircd-ratbox sends an
 		// ERROR message. Do that.
 		s.messageClient(c, "ERROR", []string{"Invalid username"})
@@ -481,7 +489,7 @@ func (s *Server) privmsgCommand(c *Client, m irc.Message) {
 	// We're messaging a nick directly.
 
 	nickName := canonicalizeNick(target)
-	if !isValidNick(nickName) {
+	if !isValidNick(s.Config.MaxNickLength, nickName) {
 		// 401 ERR_NOSUCHNICK
 		s.messageClient(c, "401", []string{nickName, "No such nick/channel"})
 		return
