@@ -872,7 +872,7 @@ func (s *Server) whoCommand(c *Client, m irc.Message) {
 		// "<channel> <user> <host> <server> <nick>
 		// ( "H" / "G" > ["*"] [ ( "@" / "+" ) ]
 		// :<hopcount> <real name>"
-		// NOTE: I'm not sure what H/G mean.
+		// NOTE: I'm not sure what H/G mean. I think G is away.
 		// Hopcount seems unimportant also.
 		mode := "H"
 		if member.isOperator() {

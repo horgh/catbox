@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"regexp"
 	"strconv"
 	"time"
 
@@ -31,6 +32,9 @@ type Config struct {
 
 	// Oper name to password.
 	Opers map[string]string
+
+	// TS6 SID. Must be unique in the network. Format: [0-9][A-Z0-9]{2}
+	TS6SID string
 }
 
 // checkAndParseConfig checks configuration keys are present and in an
@@ -58,6 +62,7 @@ func (s *Server) checkAndParseConfig(file string) error {
 		"ping-time",
 		"dead-time",
 		"opers-config",
+		"ts6-sid",
 	}
 
 	// Check each key we want is present and non-blank.
@@ -109,6 +114,15 @@ func (s *Server) checkAndParseConfig(file string) error {
 	}
 
 	s.Config.Opers = opers
+
+	matched, err := regexp.MatchString("^[0-9][0-9A-Z]{2}$", configMap["ts6-sid"])
+	if err != nil {
+		return fmt.Errorf("Unable to validate ts6-sid: %s", err)
+	}
+	if !matched {
+		return fmt.Errorf("ts6-sid is in invalid format")
+	}
+	s.Config.TS6SID = configMap["ts6-sid"]
 
 	return nil
 }

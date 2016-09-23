@@ -42,6 +42,15 @@ The main ideas I plan for it are (in no particular order):
   * WHO: Support only 'WHO #channel'. And shows all nicks on that channel.
 
 
+# Docs/references
+
+  * TS6 docs:
+    * charybdis's ts6-protocol.txt
+    * ircd-ratbox's ts6.txt, ts5.txt, README.TSora
+  * ircv3
+  * http://ircdocs.horse/
+
+
 # Todo
 
   * Server to server

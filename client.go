@@ -15,7 +15,7 @@ type Client struct {
 
 	WriteChan chan irc.Message
 
-	// A unique id.
+	// A unique id. Internal to this server only.
 	ID uint64
 
 	IP net.IP
@@ -257,4 +257,47 @@ func (c *Client) quit(msg string) {
 func (c *Client) isOperator() bool {
 	_, exists := c.Modes['o']
 	return exists
+}
+
+// TS6 ID. 6 characters long, [A-Z]{6}. Must be unique on this server.
+// Digits are legal too (after position 0), but I'm not using them at this
+// time.
+// I already assign clients a unique integer ID per server. Use this to generate
+// a TS6 ID.
+// Take integer ID and convert it to base 26. (A-Z)
+func (c *Client) getTS6ID() (string, error) {
+	// Check the integer ID is < 26**6. If it's not then we've overflowed.
+	// This means we can have at most 26**6 (308,915,776) connections.
+	if c.ID >= 308915776 {
+		return "", fmt.Errorf("TS6 ID overflow")
+	}
+
+	id := c.ID
+
+	ts6id := []byte("AAAAAA")
+	pos := 5
+
+	for id >= 26 {
+		rem := id % 26
+		char := byte(rem) + 'A'
+
+		ts6id[pos] = char
+		pos--
+
+		id = id / 26
+	}
+	char := byte(id + 'A')
+	ts6id[pos] = char
+
+	return string(ts6id), nil
+}
+
+// UID = SID concatenated with ID
+func (c *Client) getTS6UID() (string, error) {
+	id, err := c.getTS6ID()
+	if err != nil {
+		return "", err
+	}
+
+	return c.Server.Config.TS6SID + id, nil
 }
