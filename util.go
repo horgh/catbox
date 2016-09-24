@@ -108,3 +108,12 @@ func isValidChannel(c string) bool {
 
 	return true
 }
+
+func isNumericCommand(command string) bool {
+	for _, c := range command {
+		if c < 48 || c > 57 {
+			return false
+		}
+	}
+	return true
+}

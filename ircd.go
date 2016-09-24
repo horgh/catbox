@@ -392,40 +392,6 @@ func (c *Client) messageFromServer(command string, params []string) {
 	}
 }
 
-// Send an IRC message to a client. Appears to be from the server.
-// This works by writing to a client's channel.
-//
-// Note: Only the server goroutine should call this (due to channel use).
-func (c *UserClient) messageFromServer(command string, params []string) {
-	// For numeric messages, we need to prepend the nick.
-	// Use * for the nick in cases where the client doesn't have one yet.
-	// This is what ircd-ratbox does. Maybe not RFC...
-	if isNumericCommand(command) {
-		nick := "*"
-		if len(c.DisplayNick) > 0 {
-			nick = c.DisplayNick
-		}
-		newParams := []string{nick}
-		newParams = append(newParams, params...)
-		params = newParams
-	}
-
-	c.WriteChan <- irc.Message{
-		Prefix:  c.Server.Config.ServerName,
-		Command: command,
-		Params:  params,
-	}
-}
-
-func isNumericCommand(command string) bool {
-	for _, c := range command {
-		if c < 48 || c > 57 {
-			return false
-		}
-	}
-	return true
-}
-
 // newEvent tells the server something happens.
 //
 // Any goroutine can call this function.
