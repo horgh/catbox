@@ -61,6 +61,7 @@ The main ideas I plan for it are (in no particular order):
   * Upgrade in place (is this possible with TLS connections?)
   * Log to file.
   * Server console.
+  * If unregistered for too long, kill them (idle or not).
 
 
 ## Maybe

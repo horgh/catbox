@@ -17,13 +17,22 @@ type Conn struct {
 
 	// rw: Read/write handle to the connection
 	rw *bufio.ReadWriter
+
+	IP net.IP
 }
 
 // NewConn initializes a Conn struct
 func NewConn(conn net.Conn) Conn {
+	tcpAddr, err := net.ResolveTCPAddr("tcp", conn.RemoteAddr().String())
+	// This shouldn't happen.
+	if err != nil {
+		log.Fatalf("Unable to resolve TCP address: %s", err)
+	}
+
 	return Conn{
 		conn: conn,
 		rw:   bufio.NewReadWriter(bufio.NewReader(conn), bufio.NewWriter(conn)),
+		IP:   tcpAddr.IP,
 	}
 }
 

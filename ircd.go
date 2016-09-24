@@ -15,8 +15,8 @@ type Channel struct {
 	// Canonicalized.
 	Name string
 
-	// Client id to Client.
-	Members map[uint64]*Client
+	// Client id to UserClient.
+	Members map[uint64]*UserClient
 
 	Topic string
 }
@@ -28,12 +28,17 @@ type Server struct {
 	Config Config
 
 	// Client id to Client.
-	Clients map[uint64]*Client
+	UnregisteredClients map[uint64]*Client
 
-	// Canonicalized nickname to Client.
-	// The reason I have this as well as clients is to track unregistered
-	// clients.
-	Nicks map[string]*Client
+	// Client id to UserClient.
+	UserClients map[uint64]*UserClient
+
+	// Client id to ServerClient.
+	ServerClients map[uint64]*ServerClient
+
+	// Canonicalized nickname to client id.
+	// Client may be registered or not.
+	Nicks map[string]uint64
 
 	// Channel name (canonicalized) to Channel.
 	Channels map[string]*Channel
@@ -54,8 +59,14 @@ type Server struct {
 
 // Event holds a message containing something to tell the server.
 type Event struct {
-	Type    EventType
-	Client  *Client
+	Type EventType
+
+	// We don't always know what type of client we're sending about. Use ID
+	// where possible.
+	ClientID uint64
+
+	Client *Client
+
 	Message irc.Message
 }
 
@@ -104,9 +115,11 @@ func main() {
 
 func newServer(configFile string) (*Server, error) {
 	s := Server{
-		Clients:  make(map[uint64]*Client),
-		Nicks:    make(map[string]*Client),
-		Channels: make(map[string]*Channel),
+		UnregisteredClients: make(map[uint64]*Client),
+		UserClients:         make(map[uint64]*UserClient),
+		ServerClients:       make(map[uint64]*ServerClient),
+		Nicks:               make(map[string]uint64),
+		Channels:            make(map[string]*Channel),
 
 		// shutdown() closes this channel.
 		ShutdownChan: make(chan struct{}),
@@ -164,25 +177,37 @@ func (s *Server) eventLoop() {
 		case evt := <-s.ToServerChan:
 			if evt.Type == NewClientEvent {
 				log.Printf("New client connection: %s", evt.Client)
-				s.Clients[evt.Client.ID] = evt.Client
+				s.UnregisteredClients[evt.Client.ID] = evt.Client
 				continue
 			}
 
 			if evt.Type == DeadClientEvent {
-				_, exists := s.Clients[evt.Client.ID]
+				client, exists := s.UnregisteredClients[evt.ClientID]
 				if exists {
-					log.Printf("Client %s died.", evt.Client)
-					evt.Client.quit("I/O error")
+					log.Printf("Client %s died.", client)
+					client.quit("I/O error")
 				}
+				regClient, exists := s.UserClients[evt.ClientID]
+				if exists {
+					log.Printf("Client %s died.", regClient)
+					regClient.quit("I/O error")
+				}
+				// TODO: server client
 				continue
 			}
 
 			if evt.Type == MessageFromClientEvent {
-				_, exists := s.Clients[evt.Client.ID]
+				client, exists := s.UnregisteredClients[evt.ClientID]
 				if exists {
-					log.Printf("Client %s: Message: %s", evt.Client, evt.Message)
-					s.handleMessage(evt.Client, evt.Message)
+					log.Printf("Client %s: Message: %s", client, evt.Message)
+					client.handleMessage(evt.Message)
 				}
+				regClient, exists := s.UserClients[evt.ClientID]
+				if exists {
+					log.Printf("Client %s: Message: %s", regClient, evt.Message)
+					regClient.handleMessage(evt.Message)
+				}
+				// TODO: server client
 				continue
 			}
 
@@ -213,9 +238,14 @@ func (s *Server) shutdown() {
 	}
 
 	// All clients need to be told. This also closes their write channels.
-	for _, client := range s.Clients {
+	for _, client := range s.UnregisteredClients {
 		client.quit("Server shutting down")
 	}
+	for _, client := range s.UserClients {
+		client.quit("Server shutting down")
+	}
+
+	// TODO: server clients
 }
 
 // acceptConnections accepts TCP connections and tells the main server loop
@@ -298,38 +328,67 @@ func (s *Server) alarm() {
 func (s *Server) checkAndPingClients() {
 	now := time.Now()
 
-	for _, client := range s.Clients {
+	for _, client := range s.UnregisteredClients {
 		timeIdle := now.Sub(client.LastActivityTime)
-		timeSincePing := now.Sub(client.LastPingTime)
-
-		if client.Registered {
-			// Was it active recently enough that we don't need to do anything?
-			if timeIdle < s.Config.PingTime {
-				continue
-			}
-
-			// It's been idle a while.
-
-			// Has it been idle long enough that we consider it dead?
-			if timeIdle > s.Config.DeadTime {
-				client.quit(fmt.Sprintf("Ping timeout: %d seconds",
-					int(timeIdle.Seconds())))
-				continue
-			}
-
-			// Should we ping it? We might have pinged it recently.
-			if timeSincePing < s.Config.PingTime {
-				continue
-			}
-
-			s.messageClient(client, "PING", []string{s.Config.ServerName})
-			client.LastPingTime = now
-			continue
-		}
 
 		if timeIdle > s.Config.DeadTime {
 			client.quit("Idle too long.")
 		}
+	}
+
+	for _, client := range s.UserClients {
+		timeIdle := now.Sub(client.LastActivityTime)
+		timeSincePing := now.Sub(client.LastPingTime)
+
+		// Was it active recently enough that we don't need to do anything?
+		if timeIdle < s.Config.PingTime {
+			continue
+		}
+
+		// It's been idle a while.
+
+		// Has it been idle long enough that we consider it dead?
+		if timeIdle > s.Config.DeadTime {
+			client.quit(fmt.Sprintf("Ping timeout: %d seconds",
+				int(timeIdle.Seconds())))
+			continue
+		}
+
+		// Should we ping it? We might have pinged it recently.
+		if timeSincePing < s.Config.PingTime {
+			continue
+		}
+
+		client.messageFromServer("PING", []string{s.Config.ServerName})
+		client.LastPingTime = now
+		continue
+	}
+
+	// TODO: Ping/kill server clients.
+}
+
+// Send an IRC message to a client. Appears to be from the server.
+// This works by writing to a client's channel.
+//
+// Note: Only the server goroutine should call this (due to channel use).
+func (c *Client) messageFromServer(command string, params []string) {
+	// For numeric messages, we need to prepend the nick.
+	// Use * for the nick in cases where the client doesn't have one yet.
+	// This is what ircd-ratbox does. Maybe not RFC...
+	if isNumericCommand(command) {
+		nick := "*"
+		if len(c.PreRegDisplayNick) > 0 {
+			nick = c.PreRegDisplayNick
+		}
+		newParams := []string{nick}
+		newParams = append(newParams, params...)
+		params = newParams
+	}
+
+	c.WriteChan <- irc.Message{
+		Prefix:  c.Server.Config.ServerName,
+		Command: command,
+		Params:  params,
 	}
 }
 
@@ -337,33 +396,34 @@ func (s *Server) checkAndPingClients() {
 // This works by writing to a client's channel.
 //
 // Note: Only the server goroutine should call this (due to channel use).
-func (s *Server) messageClient(c *Client, command string, params []string) {
+func (c *UserClient) messageFromServer(command string, params []string) {
 	// For numeric messages, we need to prepend the nick.
 	// Use * for the nick in cases where the client doesn't have one yet.
 	// This is what ircd-ratbox does. Maybe not RFC...
-	isNumeric := true
-	for _, c := range command {
-		if c < 48 || c > 57 {
-			isNumeric = false
-		}
-	}
-
-	if isNumeric {
+	if isNumericCommand(command) {
 		nick := "*"
 		if len(c.DisplayNick) > 0 {
 			nick = c.DisplayNick
 		}
 		newParams := []string{nick}
-
 		newParams = append(newParams, params...)
 		params = newParams
 	}
 
 	c.WriteChan <- irc.Message{
-		Prefix:  s.Config.ServerName,
+		Prefix:  c.Server.Config.ServerName,
 		Command: command,
 		Params:  params,
 	}
+}
+
+func isNumericCommand(command string) bool {
+	for _, c := range command {
+		if c < 48 || c > 57 {
+			return false
+		}
+	}
+	return true
 }
 
 // newEvent tells the server something happens.

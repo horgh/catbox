@@ -10,66 +10,105 @@ import (
 )
 
 // Client holds state about a single client connection.
+// All clients are in this state until they register as either a user client
+// or as a server.
 type Client struct {
+	// Conn holds the TCP connection to the client.
 	Conn Conn
 
+	// WriteChan is the channel to send to to write to the client.
 	WriteChan chan irc.Message
 
 	// A unique id. Internal to this server only.
 	ID uint64
 
-	IP net.IP
-
-	// Whether it completed connection registration.
-	Registered bool
-
-	// Nick. Not canonicalized.
-	DisplayNick string
-
-	User string
-
-	RealName string
-
-	// Channel name (canonicalized) to Channel.
-	Channels map[string]*Channel
-
+	// Server references the main server the client is connected to (local
+	// client).
+	// It's helpful to have to avoid passing server all over the place.
 	Server *Server
 
 	// The last time we heard anything from the client.
 	LastActivityTime time.Time
 
+	// The last time we sent the client a PING.
+	LastPingTime time.Time
+
+	// Info client may send us before we complete its registration and promote it
+	// to UserClient or ServerClient.
+	PreRegDisplayNick string
+	PreRegUser        string
+	PreRegRealName    string
+}
+
+// UserClient holds information relevant only to a regular user (non-server)
+// client.
+type UserClient struct {
+	Client
+
+	// Nick. Not canonicalized.
+	DisplayNick string
+
+	// Sent by USER command
+	User string
+
+	// Sent by USER command
+	RealName string
+
+	// Channel name (canonicalized) to Channel.
+	Channels map[string]*Channel
+
 	// The last time the client sent a PRIVMSG/NOTICE. We use this to decide
 	// idle time.
 	LastMessageTime time.Time
-
-	// The last time we sent the client a PING.
-	LastPingTime time.Time
 
 	// User modes
 	Modes map[byte]struct{}
 }
 
+// ServerClient means the client registered as a server. This holds its info.
+type ServerClient struct {
+	Client
+
+	// Its TS6 SID
+	TS6SID string
+}
+
 // NewClient creates a Client
 func NewClient(s *Server, id uint64, conn net.Conn) *Client {
-	tcpAddr, err := net.ResolveTCPAddr("tcp", conn.RemoteAddr().String())
-	// This shouldn't happen.
-	if err != nil {
-		log.Fatalf("Unable to resolve TCP address: %s", err)
-	}
-
 	now := time.Now()
 
 	return &Client{
 		Conn:             NewConn(conn),
 		WriteChan:        make(chan irc.Message),
 		ID:               id,
-		Channels:         make(map[string]*Channel),
 		Server:           s,
-		Modes:            make(map[byte]struct{}),
-		IP:               tcpAddr.IP,
 		LastActivityTime: now,
-		LastMessageTime:  now,
+		LastPingTime:     now,
 	}
+}
+
+// NewUserClient makes a UserClient from a Client.
+func NewUserClient(c *Client) *UserClient {
+	rc := &UserClient{
+		// UserClient members.
+		Channels:        make(map[string]*Channel),
+		LastMessageTime: time.Now(),
+		Modes:           make(map[byte]struct{}),
+	}
+
+	// Copy Client members. TODO: is there a nicer syntax?
+	rc.Conn = c.Conn
+	rc.WriteChan = c.WriteChan
+	rc.ID = c.ID
+	rc.Server = c.Server
+	rc.LastActivityTime = c.LastActivityTime
+	rc.LastPingTime = c.LastPingTime
+
+	rc.DisplayNick = c.PreRegDisplayNick
+	rc.User = c.PreRegUser
+	rc.RealName = c.PreRegRealName
+
+	return rc
 }
 
 // Send an IRC message to a client from another client.
@@ -79,7 +118,8 @@ func NewClient(s *Server, id uint64, conn net.Conn) *Client {
 // This works by writing to a client's channel.
 //
 // Note: Only the server goroutine should call this (due to channel use).
-func (c *Client) messageClient(to *Client, command string, params []string) {
+func (c *UserClient) messageClient(to *UserClient, command string,
+	params []string) {
 	to.WriteChan <- irc.Message{
 		Prefix:  c.nickUhost(),
 		Command: command,
@@ -87,7 +127,7 @@ func (c *Client) messageClient(to *Client, command string, params []string) {
 	}
 }
 
-func (c *Client) onChannel(channel *Channel) bool {
+func (c *UserClient) onChannel(channel *Channel) bool {
 	_, exists := c.Channels[channel.Name]
 	return exists
 }
@@ -142,8 +182,8 @@ func (c *Client) String() string {
 	return fmt.Sprintf("%d %s", c.ID, c.Conn.RemoteAddr())
 }
 
-func (c *Client) nickUhost() string {
-	return fmt.Sprintf("%s!~%s@%s", c.DisplayNick, c.User, c.IP)
+func (c *UserClient) nickUhost() string {
+	return fmt.Sprintf("%s!~%s@%s", c.DisplayNick, c.User, c.Conn.IP)
 }
 
 // part tries to remove the client from the channel.
@@ -153,13 +193,13 @@ func (c *Client) nickUhost() string {
 //
 // NOTE: Only the server goroutine should call this (as we interact with its
 //   member variables).
-func (c *Client) part(channelName, message string) {
+func (c *UserClient) part(channelName, message string) {
 	// NOTE: Difference from RFC 2812: I only accept one channel at a time.
 	channelName = canonicalizeChannel(channelName)
 
 	if !isValidChannel(channelName) {
 		// 403 ERR_NOSUCHCHANNEL. Used to indicate channel name is invalid.
-		c.Server.messageClient(c, "403", []string{channelName, "Invalid channel name"})
+		c.messageFromServer("403", []string{channelName, "Invalid channel name"})
 		return
 	}
 
@@ -167,14 +207,14 @@ func (c *Client) part(channelName, message string) {
 	channel, exists := c.Server.Channels[channelName]
 	if !exists {
 		// 403 ERR_NOSUCHCHANNEL. Used to indicate channel name is invalid.
-		c.Server.messageClient(c, "403", []string{channelName, "No such channel"})
+		c.messageFromServer("403", []string{channelName, "No such channel"})
 		return
 	}
 
 	// Are they on the channel?
 	if !c.onChannel(channel) {
 		// 403 ERR_NOSUCHCHANNEL. Used to indicate channel name is invalid.
-		c.Server.messageClient(c, "403", []string{channelName, "You are not on that channel"})
+		c.messageFromServer("403", []string{channelName, "You are not on that channel"})
 		return
 	}
 
@@ -202,46 +242,59 @@ func (c *Client) part(channelName, message string) {
 }
 
 // Note: Only the server goroutine should call this (due to closing channel).
-func (c *Client) quit(msg string) {
-	if c.Registered {
-		// Tell all clients the client is in the channel with.
-		// Also remove the client from each channel.
-		toldClients := map[uint64]struct{}{}
-		for _, channel := range c.Channels {
-			for _, client := range channel.Members {
-				_, exists := toldClients[client.ID]
-				if exists {
-					continue
-				}
-
-				c.messageClient(client, "QUIT", []string{msg})
-
-				toldClients[client.ID] = struct{}{}
+func (c *UserClient) quit(msg string) {
+	// Tell all clients the client is in the channel with.
+	// Also remove the client from each channel.
+	toldClients := map[uint64]struct{}{}
+	for _, channel := range c.Channels {
+		for _, client := range channel.Members {
+			_, exists := toldClients[client.ID]
+			if exists {
+				continue
 			}
 
-			delete(channel.Members, c.ID)
-			if len(channel.Members) == 0 {
-				delete(c.Server.Channels, channel.Name)
-			}
+			c.messageClient(client, "QUIT", []string{msg})
+
+			toldClients[client.ID] = struct{}{}
 		}
 
-		// Ensure we tell the client (e.g., if in no channels).
-		_, exists := toldClients[c.ID]
-		if !exists {
-			c.messageClient(c, "QUIT", []string{msg})
-		}
-
-		delete(c.Server.Nicks, canonicalizeNick(c.DisplayNick))
-	} else {
-		// May have set a nick.
-		if len(c.DisplayNick) > 0 {
-			delete(c.Server.Nicks, canonicalizeNick(c.DisplayNick))
+		delete(channel.Members, c.ID)
+		if len(channel.Members) == 0 {
+			delete(c.Server.Channels, channel.Name)
 		}
 	}
 
-	// messageClient blocks on sending to the client's channel.
-	c.Server.messageClient(c, "ERROR", []string{msg})
+	// Ensure we tell the client (e.g., if in no channels).
+	_, exists := toldClients[c.ID]
+	if !exists {
+		c.messageClient(c, "QUIT", []string{msg})
+	}
 
+	delete(c.Server.Nicks, canonicalizeNick(c.DisplayNick))
+
+	// blocks on sending to the client's channel.
+	c.messageFromServer("ERROR", []string{msg})
+
+	c.destroy()
+
+	delete(c.Server.UserClients, c.ID)
+}
+
+func (c *Client) quit(msg string) {
+	// May have set a nick.
+	if len(c.PreRegDisplayNick) > 0 {
+		delete(c.Server.Nicks, canonicalizeNick(c.PreRegDisplayNick))
+	}
+
+	// blocks on sending to the client's channel.
+	c.messageFromServer("ERROR", []string{msg})
+
+	delete(c.Server.UnregisteredClients, c.ID)
+
+	c.destroy()
+}
+
+func (c *Client) destroy() {
 	// Close the channel to write to the client's connection.
 	close(c.WriteChan)
 
@@ -250,11 +303,9 @@ func (c *Client) quit(msg string) {
 	if err != nil {
 		log.Printf("Client %s: Problem closing connection: %s", c, err)
 	}
-
-	delete(c.Server.Clients, c.ID)
 }
 
-func (c *Client) isOperator() bool {
+func (c *UserClient) isOperator() bool {
 	_, exists := c.Modes['o']
 	return exists
 }
