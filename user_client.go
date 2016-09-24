@@ -115,6 +115,95 @@ func (c *UserClient) messageClient(to *UserClient, command string,
 	}
 }
 
+// handleMessage takes action based on a client's IRC message.
+func (c *UserClient) handleMessage(m irc.Message) {
+	// Record that client said something to us just now.
+	c.LastActivityTime = time.Now()
+
+	// Clients SHOULD NOT (section 2.3) send a prefix. I'm going to disallow it
+	// completely for all commands.
+	if m.Prefix != "" {
+		c.messageFromServer("ERROR", []string{"Do not send a prefix"})
+		return
+	}
+
+	if m.Command == "JOIN" {
+		c.joinCommand(m)
+		return
+	}
+
+	if m.Command == "PART" {
+		c.partCommand(m)
+		return
+	}
+
+	// Per RFC these commands are near identical.
+	if m.Command == "PRIVMSG" || m.Command == "NOTICE" {
+		c.privmsgCommand(m)
+		return
+	}
+
+	if m.Command == "LUSERS" {
+		c.lusersCommand()
+		return
+	}
+
+	if m.Command == "MOTD" {
+		c.motdCommand()
+		return
+	}
+
+	if m.Command == "QUIT" {
+		c.quitCommand(m)
+		return
+	}
+
+	if m.Command == "PONG" {
+		// Not doing anything with this. Just accept it.
+		return
+	}
+
+	if m.Command == "PING" {
+		c.pingCommand(m)
+		return
+	}
+
+	if m.Command == "DIE" {
+		c.dieCommand(m)
+		return
+	}
+
+	if m.Command == "WHOIS" {
+		c.whoisCommand(m)
+		return
+	}
+
+	if m.Command == "OPER" {
+		c.operCommand(m)
+		return
+	}
+
+	if m.Command == "MODE" {
+		c.modeCommand(m)
+		return
+	}
+
+	if m.Command == "WHO" {
+		c.whoCommand(m)
+		return
+	}
+
+	if m.Command == "TOPIC" {
+		c.topicCommand(m)
+		return
+	}
+
+	// Unknown command. We don't handle it yet anyway.
+
+	// 421 ERR_UNKNOWNCOMMAND
+	c.messageFromServer("421", []string{m.Command, "Unknown command"})
+}
+
 // part tries to remove the client from the channel.
 //
 // We send a reply to the client. We also inform any other clients that need to
@@ -204,7 +293,7 @@ func (c *UserClient) quit(msg string) {
 	// blocks on sending to the client's channel.
 	c.messageFromServer("ERROR", []string{msg})
 
-	c.destroy()
+	c.close()
 
 	delete(c.Server.UserClients, c.ID)
 }

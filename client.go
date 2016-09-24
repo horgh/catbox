@@ -123,11 +123,11 @@ func (c *Client) quit(msg string) {
 
 	delete(c.Server.UnregisteredClients, c.ID)
 
-	c.destroy()
+	c.close()
 }
 
-// destroy closes the client's channel and TCP connection.
-func (c *Client) destroy() {
+// close closes the client's channel and TCP connection.
+func (c *Client) close() {
 	// Close the channel to write to the client's connection.
 	close(c.WriteChan)
 
@@ -136,6 +136,40 @@ func (c *Client) destroy() {
 	if err != nil {
 		log.Printf("Client %s: Problem closing connection: %s", c, err)
 	}
+}
+
+func (c *Client) handleMessage(m irc.Message) {
+	// Record that client said something to us just now.
+	c.LastActivityTime = time.Now()
+
+	// Clients SHOULD NOT (section 2.3) send a prefix. I'm going to disallow it
+	// completely for all commands.
+	// TODO: May need to allow it for pre-registered servers.
+	if m.Prefix != "" {
+		c.messageFromServer("ERROR", []string{"Do not send a prefix"})
+		return
+	}
+
+	// Non-RFC command that appears to be widely supported. Just ignore it for
+	// now.
+	if m.Command == "CAP" {
+		return
+	}
+
+	if m.Command == "NICK" {
+		c.nickCommand(m)
+		return
+	}
+
+	if m.Command == "USER" {
+		c.userCommand(m)
+		return
+	}
+
+	// Let's say *all* other commands require you to be registered.
+	// This is likely stricter than RFC.
+	// 451 ERR_NOTREGISTERED
+	c.messageFromServer("451", []string{fmt.Sprintf("You have not registered.")})
 }
 
 func (c *Client) completeRegistration() {
