@@ -170,9 +170,7 @@ func (c *Client) userCommand(m irc.Message) {
 // The USER command only occurs during connection registration.
 func (c *UserClient) userCommand(m irc.Message) {
 	// 462 ERR_ALREADYREGISTRED
-	c.messageFromServer("462",
-		[]string{"Unauthorized command (already registered)"})
-	return
+	c.messageFromServer("462", []string{"Unauthorized command (already registered)"})
 }
 
 func (c *UserClient) joinCommand(m irc.Message) {
@@ -397,7 +395,9 @@ func (c *UserClient) lusersCommand() {
 	// 251 RPL_LUSERCLIENT
 	c.messageFromServer("251", []string{
 		fmt.Sprintf("There are %d users and %d services on %d servers.",
-			len(c.Server.UserClients), 0, 0),
+			len(c.Server.UserClients), 0,
+			// +1 to count ourself.
+			len(c.Server.ServerClients)+1),
 	})
 
 	// 252 RPL_LUSEROP

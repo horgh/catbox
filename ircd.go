@@ -184,14 +184,14 @@ func (s *Server) eventLoop() {
 			if evt.Type == DeadClientEvent {
 				client, exists := s.UnregisteredClients[evt.ClientID]
 				if exists {
-					log.Printf("Client %s died.", client)
 					client.quit("I/O error")
 				}
-				regClient, exists := s.UserClients[evt.ClientID]
+
+				userClient, exists := s.UserClients[evt.ClientID]
 				if exists {
-					log.Printf("Client %s died.", regClient)
-					regClient.quit("I/O error")
+					userClient.quit("I/O error")
 				}
+
 				// TODO: server client
 				continue
 			}
@@ -199,14 +199,14 @@ func (s *Server) eventLoop() {
 			if evt.Type == MessageFromClientEvent {
 				client, exists := s.UnregisteredClients[evt.ClientID]
 				if exists {
-					log.Printf("Client %s: Message: %s", client, evt.Message)
 					client.handleMessage(evt.Message)
 				}
-				regClient, exists := s.UserClients[evt.ClientID]
+
+				userClient, exists := s.UserClients[evt.ClientID]
 				if exists {
-					log.Printf("Client %s: Message: %s", regClient, evt.Message)
-					regClient.handleMessage(evt.Message)
+					userClient.handleMessage(evt.Message)
 				}
+
 				// TODO: server client
 				continue
 			}

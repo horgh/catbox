@@ -83,11 +83,7 @@ func (c *UserClient) messageFromServer(command string, params []string) {
 	// Use * for the nick in cases where the client doesn't have one yet.
 	// This is what ircd-ratbox does. Maybe not RFC...
 	if isNumericCommand(command) {
-		nick := "*"
-		if len(c.DisplayNick) > 0 {
-			nick = c.DisplayNick
-		}
-		newParams := []string{nick}
+		newParams := []string{c.DisplayNick}
 		newParams = append(newParams, params...)
 		params = newParams
 	}
