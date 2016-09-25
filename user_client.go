@@ -35,23 +35,15 @@ type UserClient struct {
 // NewUserClient makes a UserClient from a Client.
 func NewUserClient(c *Client) *UserClient {
 	rc := &UserClient{
+		Client: *c,
 		// UserClient members.
+		DisplayNick:     c.PreRegDisplayNick,
+		User:            c.PreRegUser,
+		RealName:        c.PreRegRealName,
 		Channels:        make(map[string]*Channel),
 		LastMessageTime: time.Now(),
 		Modes:           make(map[byte]struct{}),
 	}
-
-	// Copy Client members. TODO: is there a nicer syntax?
-	rc.Conn = c.Conn
-	rc.WriteChan = c.WriteChan
-	rc.ID = c.ID
-	rc.Server = c.Server
-	rc.LastActivityTime = c.LastActivityTime
-	rc.LastPingTime = c.LastPingTime
-
-	rc.DisplayNick = c.PreRegDisplayNick
-	rc.User = c.PreRegUser
-	rc.RealName = c.PreRegRealName
 
 	return rc
 }
@@ -88,11 +80,11 @@ func (c *UserClient) messageFromServer(command string, params []string) {
 		params = newParams
 	}
 
-	c.WriteChan <- irc.Message{
+	c.maybeQueueMessage(irc.Message{
 		Prefix:  c.Server.Config.ServerName,
 		Command: command,
 		Params:  params,
-	}
+	})
 }
 
 // Send an IRC message to a client from another client.
@@ -104,11 +96,11 @@ func (c *UserClient) messageFromServer(command string, params []string) {
 // Note: Only the server goroutine should call this (due to channel use).
 func (c *UserClient) messageClient(to *UserClient, command string,
 	params []string) {
-	to.WriteChan <- irc.Message{
+	to.maybeQueueMessage(irc.Message{
 		Prefix:  c.nickUhost(),
 		Command: command,
 		Params:  params,
-	}
+	})
 }
 
 // handleMessage takes action based on a client's IRC message.
@@ -120,6 +112,22 @@ func (c *UserClient) handleMessage(m irc.Message) {
 	// completely for all commands.
 	if m.Prefix != "" {
 		c.messageFromServer("ERROR", []string{"Do not send a prefix"})
+		return
+	}
+
+	// Non-RFC command that appears to be widely supported. Just ignore it for
+	// now.
+	if m.Command == "CAP" {
+		return
+	}
+
+	if m.Command == "NICK" {
+		c.nickCommand(m)
+		return
+	}
+
+	if m.Command == "USER" {
+		c.userCommand(m)
 		return
 	}
 
@@ -257,9 +265,13 @@ func (c *UserClient) part(channelName, message string) {
 
 // Note: Only the server goroutine should call this (due to closing channel).
 func (c *UserClient) quit(msg string) {
-	// Tell all clients the client is in the channel with.
-	// Also remove the client from each channel.
+	// Tell all clients the client is in the channel with, and remove the client
+	// from each channel it is in.
+
+	// Tell each client only once.
+
 	toldClients := map[uint64]struct{}{}
+
 	for _, channel := range c.Channels {
 		for _, client := range channel.Members {
 			_, exists := toldClients[client.ID]
@@ -284,13 +296,10 @@ func (c *UserClient) quit(msg string) {
 		c.messageClient(c, "QUIT", []string{msg})
 	}
 
-	delete(c.Server.Nicks, canonicalizeNick(c.DisplayNick))
-
-	// blocks on sending to the client's channel.
 	c.messageFromServer("ERROR", []string{msg})
+	close(c.WriteChan)
 
-	c.close()
-
+	delete(c.Server.Nicks, canonicalizeNick(c.DisplayNick))
 	delete(c.Server.UserClients, c.ID)
 }
 

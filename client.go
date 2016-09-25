@@ -33,6 +33,9 @@ type Client struct {
 	// The last time we sent the client a PING.
 	LastPingTime time.Time
 
+	// Track if we overflow our send queue. If we do, we'll kill the client.
+	SendQueueExceeded bool
+
 	// Info client may send us before we complete its registration and promote it
 	// to UserClient or ServerClient.
 	PreRegDisplayNick string
@@ -53,8 +56,13 @@ func NewClient(s *Server, id uint64, conn net.Conn) *Client {
 	now := time.Now()
 
 	return &Client{
-		Conn:             NewConn(conn),
-		WriteChan:        make(chan irc.Message),
+		Conn: NewConn(conn, s.Config.DeadTime),
+
+		// Buffered channel. We don't want to block sending to the client from the
+		// server. The client may be stuck. Make the buffer large enough that it
+		// should only max out in case of connection issues.
+		WriteChan: make(chan irc.Message, 32768),
+
 		ID:               id,
 		Server:           s,
 		LastActivityTime: now,
@@ -97,6 +105,10 @@ func (c *Client) readLoop() {
 
 // writeLoop endlessly reads from the client's channel, encodes each message,
 // and writes it to the client's TCP connection.
+//
+// When the channel is closed, or if we have a write error, close the TCP
+// connection. I have this here so that we try to deliver messages to the
+// client before closing its socket and giving up.
 func (c *Client) writeLoop() {
 	defer c.Server.WG.Done()
 
@@ -109,33 +121,24 @@ func (c *Client) writeLoop() {
 		}
 	}
 
-	log.Printf("Client %s: Writer shutting down.", c)
-}
-
-func (c *Client) quit(msg string) {
-	// May have set a nick.
-	if len(c.PreRegDisplayNick) > 0 {
-		delete(c.Server.Nicks, canonicalizeNick(c.PreRegDisplayNick))
-	}
-
-	// blocks on sending to the client's channel.
-	c.messageFromServer("ERROR", []string{msg})
-
-	delete(c.Server.UnregisteredClients, c.ID)
-
-	c.close()
-}
-
-// close closes the client's channel and TCP connection.
-func (c *Client) close() {
-	// Close the channel to write to the client's connection.
-	close(c.WriteChan)
-
-	// Close the client's TCP connection.
 	err := c.Conn.Close()
 	if err != nil {
 		log.Printf("Client %s: Problem closing connection: %s", c, err)
 	}
+
+	log.Printf("Client %s: Writer shutting down.", c)
+}
+
+// quit means the client is quitting. Tell it why and clean up.
+func (c *Client) quit(msg string) {
+	c.messageFromServer("ERROR", []string{msg})
+	close(c.WriteChan)
+
+	if len(c.PreRegDisplayNick) > 0 {
+		delete(c.Server.Nicks, canonicalizeNick(c.PreRegDisplayNick))
+	}
+
+	delete(c.Server.UnregisteredClients, c.ID)
 }
 
 func (c *Client) handleMessage(m irc.Message) {
@@ -212,4 +215,49 @@ func (c *Client) completeRegistration() {
 	delete(c.Server.UnregisteredClients, c.ID)
 
 	c.Server.UserClients[c.ID] = userClient
+}
+
+// Send an IRC message to a client. Appears to be from the server.
+// This works by writing to a client's channel.
+//
+// Note: Only the server goroutine should call this (due to channel use).
+func (c *Client) messageFromServer(command string, params []string) {
+	// For numeric messages, we need to prepend the nick.
+	// Use * for the nick in cases where the client doesn't have one yet.
+	// This is what ircd-ratbox does. Maybe not RFC...
+	if isNumericCommand(command) {
+		nick := "*"
+		if len(c.PreRegDisplayNick) > 0 {
+			nick = c.PreRegDisplayNick
+		}
+		newParams := []string{nick}
+		newParams = append(newParams, params...)
+		params = newParams
+	}
+
+	c.maybeQueueMessage(irc.Message{
+		Prefix:  c.Server.Config.ServerName,
+		Command: command,
+		Params:  params,
+	})
+}
+
+// Send a message to the client. We send it to its write channel, which in turn
+// leads to writing it to its TCP socket.
+//
+// This function won't block. If the client's queue is full, we flag it as
+// having a full send queue.
+//
+// Not blocking is important because the server sends the client messages this
+// way, and if we block on a problem client, everything would grind to a halt.
+func (c *Client) maybeQueueMessage(m irc.Message) {
+	if c.SendQueueExceeded {
+		return
+	}
+
+	select {
+	case c.WriteChan <- m:
+	default:
+		c.SendQueueExceeded = true
+	}
 }

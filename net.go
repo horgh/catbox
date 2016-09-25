@@ -6,6 +6,7 @@ import (
 	"log"
 	"net"
 	"strings"
+	"time"
 
 	"summercat.com/irc"
 )
@@ -18,11 +19,13 @@ type Conn struct {
 	// rw: Read/write handle to the connection
 	rw *bufio.ReadWriter
 
+	ioWait time.Duration
+
 	IP net.IP
 }
 
 // NewConn initializes a Conn struct
-func NewConn(conn net.Conn) Conn {
+func NewConn(conn net.Conn, ioWait time.Duration) Conn {
 	tcpAddr, err := net.ResolveTCPAddr("tcp", conn.RemoteAddr().String())
 	// This shouldn't happen.
 	if err != nil {
@@ -30,9 +33,10 @@ func NewConn(conn net.Conn) Conn {
 	}
 
 	return Conn{
-		conn: conn,
-		rw:   bufio.NewReadWriter(bufio.NewReader(conn), bufio.NewWriter(conn)),
-		IP:   tcpAddr.IP,
+		conn:   conn,
+		rw:     bufio.NewReadWriter(bufio.NewReader(conn), bufio.NewWriter(conn)),
+		ioWait: ioWait,
+		IP:     tcpAddr.IP,
 	}
 }
 
@@ -48,6 +52,12 @@ func (c Conn) RemoteAddr() net.Addr {
 
 // Read reads a line from the connection.
 func (c Conn) Read() (string, error) {
+	// Deadline so we will eventually give up.
+	err := c.conn.SetDeadline(time.Now().Add(c.ioWait))
+	if err != nil {
+		return "", fmt.Errorf("Unable to set deadline: %s", err)
+	}
+
 	line, err := c.rw.ReadString('\n')
 	if err != nil {
 		return "", err
@@ -76,6 +86,12 @@ func (c Conn) ReadMessage() (irc.Message, error) {
 
 // Write writes a string to the connection
 func (c Conn) Write(s string) error {
+	// Deadline so we will eventually give up.
+	err := c.conn.SetDeadline(time.Now().Add(c.ioWait))
+	if err != nil {
+		return fmt.Errorf("Unable to set deadline: %s", err)
+	}
+
 	sz, err := c.rw.WriteString(s)
 	if err != nil {
 		return err

@@ -61,10 +61,6 @@ type Server struct {
 type Event struct {
 	Type EventType
 
-	// We don't always know what type of client we're sending about. Use ID
-	// where possible.
-	ClientID uint64
-
 	Client *Client
 
 	Message irc.Message
@@ -174,6 +170,8 @@ func (s *Server) start() error {
 func (s *Server) eventLoop() {
 	for {
 		select {
+		// Careful about using the Client we get back in events. It may have been
+		// promoted to a different client type (UserClient, ServerClient).
 		case evt := <-s.ToServerChan:
 			if evt.Type == NewClientEvent {
 				log.Printf("New client connection: %s", evt.Client)
@@ -182,14 +180,16 @@ func (s *Server) eventLoop() {
 			}
 
 			if evt.Type == DeadClientEvent {
-				client, exists := s.UnregisteredClients[evt.ClientID]
+				client, exists := s.UnregisteredClients[evt.Client.ID]
 				if exists {
 					client.quit("I/O error")
+					continue
 				}
 
-				userClient, exists := s.UserClients[evt.ClientID]
+				userClient, exists := s.UserClients[evt.Client.ID]
 				if exists {
 					userClient.quit("I/O error")
+					continue
 				}
 
 				// TODO: server client
@@ -197,14 +197,16 @@ func (s *Server) eventLoop() {
 			}
 
 			if evt.Type == MessageFromClientEvent {
-				client, exists := s.UnregisteredClients[evt.ClientID]
+				client, exists := s.UnregisteredClients[evt.Client.ID]
 				if exists {
 					client.handleMessage(evt.Message)
+					continue
 				}
 
-				userClient, exists := s.UserClients[evt.ClientID]
+				userClient, exists := s.UserClients[evt.Client.ID]
 				if exists {
 					userClient.handleMessage(evt.Message)
+					continue
 				}
 
 				// TODO: server client
@@ -278,6 +280,8 @@ func (s *Server) acceptConnections() {
 		// ToServerChan is synchronous. We want to make sure server knows about the
 		// client before it starts hearing anything from its other channels about
 		// the client.
+		// Actually it's fine either way. Message sent before starting goroutines,
+		// so order takes care of that for us. (Now that there is only one channel).
 		s.newEvent(Event{Type: NewClientEvent, Client: client})
 
 		s.WG.Add(1)
@@ -325,10 +329,17 @@ func (s *Server) alarm() {
 // registered).
 //
 // If they've been idle a long time, we kill their connection.
+//
+// We also kill any whose send queue maxed out.
 func (s *Server) checkAndPingClients() {
 	now := time.Now()
 
 	for _, client := range s.UnregisteredClients {
+		if client.SendQueueExceeded {
+			client.quit("SendQ exceeded")
+			continue
+		}
+
 		timeIdle := now.Sub(client.LastActivityTime)
 
 		if timeIdle > s.Config.DeadTime {
@@ -337,6 +348,11 @@ func (s *Server) checkAndPingClients() {
 	}
 
 	for _, client := range s.UserClients {
+		if client.SendQueueExceeded {
+			client.quit("SendQ exceeded")
+			continue
+		}
+
 		timeIdle := now.Sub(client.LastActivityTime)
 		timeSincePing := now.Sub(client.LastPingTime)
 
@@ -367,31 +383,6 @@ func (s *Server) checkAndPingClients() {
 	// TODO: Ping/kill server clients.
 }
 
-// Send an IRC message to a client. Appears to be from the server.
-// This works by writing to a client's channel.
-//
-// Note: Only the server goroutine should call this (due to channel use).
-func (c *Client) messageFromServer(command string, params []string) {
-	// For numeric messages, we need to prepend the nick.
-	// Use * for the nick in cases where the client doesn't have one yet.
-	// This is what ircd-ratbox does. Maybe not RFC...
-	if isNumericCommand(command) {
-		nick := "*"
-		if len(c.PreRegDisplayNick) > 0 {
-			nick = c.PreRegDisplayNick
-		}
-		newParams := []string{nick}
-		newParams = append(newParams, params...)
-		params = newParams
-	}
-
-	c.WriteChan <- irc.Message{
-		Prefix:  c.Server.Config.ServerName,
-		Command: command,
-		Params:  params,
-	}
-}
-
 // newEvent tells the server something happens.
 //
 // Any goroutine can call this function.
@@ -401,6 +392,9 @@ func (c *Client) messageFromServer(command string, params []string) {
 // It will not block on shutdown as we select on the shutdown channel which we
 // close when shutting down the server. This means receive on the shutdown
 // channel will proceed at that point.
+//
+// We only need to use this function in goroutines other the main server
+// goroutine.
 func (s *Server) newEvent(evt Event) {
 	select {
 	case s.ToServerChan <- evt:
