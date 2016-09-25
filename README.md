@@ -54,7 +54,6 @@ The main ideas I plan for it are (in no particular order):
 # Todo
 
   * Server to server
-    * Update LUSERS counts.
   * LINKS
   * Server to server (ircd-ratbox)
   * TLS

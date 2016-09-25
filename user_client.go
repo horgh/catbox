@@ -334,7 +334,7 @@ func (c *UserClient) getTS6ID() (string, error) {
 	// have. The first character must be [A-Z], the remaining 5 are [A-Z0-9],
 	// hence 36**5 vs. 26.
 	// This is also the maximum number of connections we can have per run.
-	// 1,572,120,576 {
+	// 1,572,120,576
 	if c.ID >= 1572120576 {
 		return "", fmt.Errorf("TS6 ID overflow")
 	}

@@ -395,7 +395,8 @@ func (c *UserClient) lusersCommand() {
 	// 251 RPL_LUSERCLIENT
 	c.messageFromServer("251", []string{
 		fmt.Sprintf("There are %d users and %d services on %d servers.",
-			len(c.Server.UserClients), 0,
+			len(c.Server.UserClients),
+			0,
 			// +1 to count ourself.
 			len(c.Server.ServerClients)+1),
 	})
