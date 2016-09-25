@@ -53,7 +53,6 @@ The main ideas I plan for it are (in no particular order):
 
 # Todo
 
-  * If unregistered for too long, kill them (idle or not).
   * Server to server
     * Update LUSERS counts.
   * LINKS

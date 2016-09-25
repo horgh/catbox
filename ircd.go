@@ -334,19 +334,24 @@ func (s *Server) alarm() {
 func (s *Server) checkAndPingClients() {
 	now := time.Now()
 
+	// Unregistered clients do not receive PINGs, nor do we care about their
+	// idle time. Kill them if they are connected too long and still unregistered.
 	for _, client := range s.UnregisteredClients {
 		if client.SendQueueExceeded {
 			client.quit("SendQ exceeded")
 			continue
 		}
 
-		timeIdle := now.Sub(client.LastActivityTime)
+		timeConnected := now.Sub(client.ConnectionStartTime)
 
-		if timeIdle > s.Config.DeadTime {
+		// If it's been connected long enough to need to ping it, cut it off.
+		if timeConnected > s.Config.PingTime {
 			client.quit("Idle too long.")
 		}
 	}
 
+	// User clients we are more lenient with. Ping them if they are idle for a
+	// while.
 	for _, client := range s.UserClients {
 		if client.SendQueueExceeded {
 			client.quit("SendQ exceeded")

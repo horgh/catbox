@@ -22,16 +22,12 @@ type Client struct {
 	// A unique id. Internal to this server only.
 	ID uint64
 
+	ConnectionStartTime time.Time
+
 	// Server references the main server the client is connected to (local
 	// client).
 	// It's helpful to have to avoid passing server all over the place.
 	Server *Server
-
-	// The last time we heard anything from the client.
-	LastActivityTime time.Time
-
-	// The last time we sent the client a PING.
-	LastPingTime time.Time
 
 	// Track if we overflow our send queue. If we do, we'll kill the client.
 	SendQueueExceeded bool
@@ -53,8 +49,6 @@ type ServerClient struct {
 
 // NewClient creates a Client
 func NewClient(s *Server, id uint64, conn net.Conn) *Client {
-	now := time.Now()
-
 	return &Client{
 		Conn: NewConn(conn, s.Config.DeadTime),
 
@@ -63,10 +57,9 @@ func NewClient(s *Server, id uint64, conn net.Conn) *Client {
 		// should only max out in case of connection issues.
 		WriteChan: make(chan irc.Message, 32768),
 
-		ID:               id,
-		Server:           s,
-		LastActivityTime: now,
-		LastPingTime:     now,
+		ID:                  id,
+		ConnectionStartTime: time.Now(),
+		Server:              s,
 	}
 }
 
@@ -142,9 +135,6 @@ func (c *Client) quit(msg string) {
 }
 
 func (c *Client) handleMessage(m irc.Message) {
-	// Record that client said something to us just now.
-	c.LastActivityTime = time.Now()
-
 	// Clients SHOULD NOT (section 2.3) send a prefix. I'm going to disallow it
 	// completely for all commands.
 	// TODO: May need to allow it for pre-registered servers.

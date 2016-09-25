@@ -25,6 +25,12 @@ type UserClient struct {
 	// Channel name (canonicalized) to Channel.
 	Channels map[string]*Channel
 
+	// The last time we heard anything from the client.
+	LastActivityTime time.Time
+
+	// The last time we sent the client a PING.
+	LastPingTime time.Time
+
 	// The last time the client sent a PRIVMSG/NOTICE. We use this to decide
 	// idle time.
 	LastMessageTime time.Time
@@ -37,15 +43,18 @@ type UserClient struct {
 
 // NewUserClient makes a UserClient from a Client.
 func NewUserClient(c *Client) *UserClient {
+	now := time.Now()
 	rc := &UserClient{
 		Client: *c,
 		// UserClient members.
-		DisplayNick:     c.PreRegDisplayNick,
-		User:            c.PreRegUser,
-		RealName:        c.PreRegRealName,
-		Channels:        make(map[string]*Channel),
-		LastMessageTime: time.Now(),
-		Modes:           make(map[byte]struct{}),
+		DisplayNick:      c.PreRegDisplayNick,
+		User:             c.PreRegUser,
+		RealName:         c.PreRegRealName,
+		Channels:         make(map[string]*Channel),
+		LastActivityTime: now,
+		LastPingTime:     now,
+		LastMessageTime:  now,
+		Modes:            make(map[byte]struct{}),
 	}
 
 	id, err := rc.getTS6ID()
