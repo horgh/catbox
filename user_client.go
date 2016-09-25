@@ -347,27 +347,23 @@ func (c *UserClient) getTS6ID() (string, error) {
 		if n >= 36 {
 			rem := n % 36
 
-			var char byte
 			// 0 to 25 are A to Z
 			// 26 to 35 are 0 to 9
 			if rem >= 26 {
-				char = byte(rem - 26 + '0')
+				ts6id[pos] = byte(rem - 26 + '0')
 			} else {
-				char = byte(rem + 'A')
+				ts6id[pos] = byte(rem + 'A')
 			}
-			ts6id[pos] = char
 
 			n /= 36
 			continue
 		}
 
-		var char byte
 		if n >= 26 {
-			char = byte(n - 26 + '0')
+			ts6id[pos] = byte(n - 26 + '0')
 		} else {
-			char = byte(n + 'A')
+			ts6id[pos] = byte(n + 'A')
 		}
-		ts6id[pos] = char
 
 		// Once we are < 36, we're done.
 		break
