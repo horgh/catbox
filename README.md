@@ -53,10 +53,6 @@ The main ideas I plan for it are (in no particular order):
 
 # Todo
 
-  * Make loop for ts6 id [5,0], and support 0-9 chars in position 1-5.
-    26*36**5
-  * Check for ts6 id overflowing at connection time
-  * Test ts6 id generation for dupes
   * If unregistered for too long, kill them (idle or not).
   * Server to server
     * Update LUSERS counts.

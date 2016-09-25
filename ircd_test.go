@@ -15,15 +15,22 @@ func TestGetTS6ID(t *testing.T) {
 		{1, "AAAAAB", true},
 		{2, "AAAAAC", true},
 		{25, "AAAAAZ", true},
-		{26, "AAAABA", true},
-		{51, "AAAABZ", true},
-		{52, "AAAACA", true},
-		{308915775, "ZZZZZZ", true},
-		{308915776, "", false},
+		{26, "AAAAA0", true},
+		{27, "AAAAA1", true},
+		{28, "AAAAA2", true},
+		{29, "AAAAA3", true},
+		{30, "AAAAA4", true},
+		{35, "AAAAA9", true},
+		{36, "AAAABA", true},
+		{72, "AAAACA", true},
+		{98, "AAAAC0", true},
+		{107, "AAAAC9", true},
+		{1572120575, "Z99999", true},
+		{1572120576, "", false},
 	}
 
 	for _, test := range tests {
-		c := Client{ID: test.input}
+		c := UserClient{Client: Client{ID: test.input}}
 
 		id, err := c.getTS6ID()
 		if err != nil {
@@ -48,3 +55,29 @@ func TestGetTS6ID(t *testing.T) {
 		fmt.Printf("%d = %s\n", test.input, id)
 	}
 }
+
+//func TestMassGetTS6IDs(t *testing.T) {
+//	ids := map[string]struct{}{}
+//
+//	c := UserClient{}
+//	for i := uint64(0); i < 1572120576; i++ {
+//		c.ID = i
+//		ts6, err := c.getTS6ID()
+//		if err != nil {
+//			t.Errorf("i %d %s", i, err)
+//			return
+//		}
+//
+//		_, exists := ids[ts6]
+//		if exists {
+//			t.Errorf("i %d dupe", i)
+//			return
+//		}
+//
+//		ids[ts6] = struct{}{}
+//
+//		if i%1000000 == 0 {
+//			fmt.Printf("%d...", i)
+//		}
+//	}
+//}

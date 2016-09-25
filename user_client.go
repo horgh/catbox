@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"time"
 
 	"summercat.com/irc"
@@ -30,6 +31,8 @@ type UserClient struct {
 
 	// User modes
 	Modes map[byte]struct{}
+
+	TS6ID string
 }
 
 // NewUserClient makes a UserClient from a Client.
@@ -44,6 +47,14 @@ func NewUserClient(c *Client) *UserClient {
 		LastMessageTime: time.Now(),
 		Modes:           make(map[byte]struct{}),
 	}
+
+	id, err := rc.getTS6ID()
+	// If we can't generate a TS6ID then there is a big problem. We've overflowed
+	// the number of unique client ids we can have. Blow up.
+	if err != nil {
+		log.Fatal(err)
+	}
+	rc.TS6ID = id
 
 	return rc
 }
@@ -308,30 +319,50 @@ func (c *UserClient) quit(msg string) {
 // time.
 // I already assign clients a unique integer ID per server. Use this to generate
 // a TS6 ID.
-// Take integer ID and convert it to base 26. (A-Z)
+// Take integer ID and convert it to base 36. (A-Z and 0-9)
 func (c *UserClient) getTS6ID() (string, error) {
-	// Check the integer ID is < 26**6. If it's not then we've overflowed.
-	// This means we can have at most 26**6 (308,915,776) connections.
-	if c.ID >= 308915776 {
+	// Check the integer ID is < 26*36**5. That is as many valid TS6 IDs we can
+	// have. The first character must be [A-Z], the remaining 5 are [A-Z0-9],
+	// hence 36**5 vs. 26.
+	// This is also the maximum number of connections we can have per run.
+	// 1,572,120,576 {
+	if c.ID >= 1572120576 {
 		return "", fmt.Errorf("TS6 ID overflow")
 	}
 
-	id := c.ID
+	n := c.ID
 
 	ts6id := []byte("AAAAAA")
-	pos := 5
 
-	for id >= 26 {
-		rem := id % 26
-		char := byte(rem) + 'A'
+	for pos := 5; pos >= 0; pos-- {
+		if n >= 36 {
+			rem := n % 36
 
+			var char byte
+			// 0 to 25 are A to Z
+			// 26 to 35 are 0 to 9
+			if rem >= 26 {
+				char = byte(rem - 26 + '0')
+			} else {
+				char = byte(rem + 'A')
+			}
+			ts6id[pos] = char
+
+			n /= 36
+			continue
+		}
+
+		var char byte
+		if n >= 26 {
+			char = byte(n - 26 + '0')
+		} else {
+			char = byte(n + 'A')
+		}
 		ts6id[pos] = char
-		pos--
 
-		id = id / 26
+		// Once we are < 36, we're done.
+		break
 	}
-	char := byte(id + 'A')
-	ts6id[pos] = char
 
 	return string(ts6id), nil
 }
