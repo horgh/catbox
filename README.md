@@ -38,10 +38,11 @@ The main ideas I plan for it are (in no particular order):
   * WHOIS command: No server target, and only single nicks.
   * WHOIS command: Currently not going to show any channels.
   * User modes: Only +o
-  * Channel modes: Only +n
+  * Channel modes: Only +ns
   * WHO: Support only 'WHO #channel'. And shows all nicks on that channel.
   * CONNECT: Single parameter only.
   * LINKS: No parameters supported.
+  * LUSERS: Include +s channels in channel count.
 
 
 # Docs/references
@@ -66,7 +67,6 @@ The main ideas I plan for it are (in no particular order):
     * Post-burst: INVITE, JOIN, KILL, NICK, NOTICE, PART, PRIVMSG, QUIT, SID,
       SJOIN, TOPIC, UID
     * Nick collisions
-  * When create new channel, send servermode +nt?
   * TLS
   * Upgrade in place (is this possible with TLS connections?)
   * Log to file.

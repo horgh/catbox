@@ -465,6 +465,11 @@ func (c *UserClient) joinCommand(m irc.Message) {
 	// JOIN comes from the client, to the client.
 	c.messageClient(c, "JOIN", []string{channel.Name})
 
+	// If this is a new channel, send them the modes we set by default.
+	if !exists {
+		c.messageFromServer("MODE", []string{channel.Name, "+ns"})
+	}
+
 	// It appears RPL_TOPIC is optional, at least ircd-ratbox does not send it.
 	// Presumably if there is no topic.
 	if len(channel.Topic) > 0 {
@@ -472,17 +477,19 @@ func (c *UserClient) joinCommand(m irc.Message) {
 		c.messageFromServer("332", []string{channel.Name, channel.Topic})
 	}
 
+	// Channel flag: = (public), * (private), @ (secret)
+	// TODO: When we have more chan modes (-s / +p) this needs to vary
+	channelFlag := "@"
+
 	// RPL_NAMREPLY: This tells the client about who is in the channel
 	// (including itself).
 	// It ends with RPL_ENDOFNAMES.
 	for _, member := range channel.Members {
 		// 353 RPL_NAMREPLY
 		c.messageFromServer("353", []string{
-			// = means public channel. TODO: When we have chan modes +s / +p this
-			// needs to vary
 			// TODO: We need to include @ / + for each nick opped/voiced.
-			// Note we can have multiple nicks per RPL_NAMREPLY. TODO: Do that.
-			"=", channel.Name, fmt.Sprintf(":%s", member.DisplayNick),
+			// TODO: Multiple nicks per RPL_NAMREPLY.
+			channelFlag, channel.Name, fmt.Sprintf(":%s", member.DisplayNick),
 		})
 	}
 
@@ -655,6 +662,7 @@ func (c *UserClient) lusersCommand() {
 	}
 
 	// 254 RPL_LUSERCHANNELS
+	// RFC 2811 says to not include +s channels in this count. But I do.
 	if len(c.Server.Channels) > 0 {
 		c.messageFromServer("254", []string{
 			fmt.Sprintf("%d", len(c.Server.Channels)),
@@ -940,10 +948,10 @@ func (c *UserClient) channelModeCommand(channel *Channel, modes string) {
 	}
 
 	// No modes? Send back the channel's modes.
-	// Always send back +n. That's only I support right now.
+	// Always send back +ns. That's only I support right now.
 	if len(modes) == 0 {
 		// 324 RPL_CHANNELMODEIS
-		c.messageFromServer("324", []string{channel.Name, "+n"})
+		c.messageFromServer("324", []string{channel.Name, "+ns"})
 		return
 	}
 
