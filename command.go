@@ -2,6 +2,10 @@ package main
 
 import (
 	"fmt"
+	"log"
+	"net"
+	"strconv"
+	"strings"
 	"time"
 
 	"summercat.com/irc"
@@ -171,6 +175,321 @@ func (c *Client) userCommand(m irc.Message) {
 func (c *UserClient) userCommand(m irc.Message) {
 	// 462 ERR_ALREADYREGISTRED
 	c.messageFromServer("462", []string{"Unauthorized command (already registered)"})
+}
+
+func (c *Client) passCommand(m irc.Message) {
+	// For server registration:
+	// PASS <password>, TS, <ts version>, <SID>
+	if len(m.Params) < 4 {
+		// For now I only recognise this form of PASS.
+		// 461 ERR_NEEDMOREPARAMS
+		c.messageFromServer("461", []string{"PASS", "Not enough parameters"})
+		return
+	}
+
+	if c.GotPASS {
+		c.quit("Double PASS")
+		return
+	}
+
+	// We can't validate password yet.
+
+	if m.Params[1] != "TS" {
+		c.quit("Unexpected PASS format: TS")
+		return
+	}
+
+	tsVersion, err := strconv.ParseInt(m.Params[2], 10, 64)
+	if err != nil {
+		c.quit("Unexpected PASS format: Version: " + err.Error())
+		return
+	}
+
+	// Support only TS 6.
+	if tsVersion != 6 {
+		c.quit("Unsupported TS version")
+		return
+	}
+
+	// Beyond format, we can't validate SID yet.
+	if !isValidSID(m.Params[3]) {
+		c.quit("Malformed SID")
+		return
+	}
+
+	// Everything looks OK. Store them.
+
+	c.PreRegPass = m.Params[0]
+	c.PreRegTS6SID = m.Params[3]
+
+	c.GotPASS = true
+
+	// Don't reply yet.
+}
+
+func (c *Client) capabCommand(m irc.Message) {
+	// CAPAB <space separated list>
+	if len(m.Params) == 0 {
+		// 461 ERR_NEEDMOREPARAMS
+		c.messageFromServer("461", []string{"CAPAB", "Not enough parameters"})
+		return
+	}
+
+	if !c.GotPASS {
+		c.quit("PASS first")
+		return
+	}
+
+	if c.GotCAPAB {
+		c.quit("Double CAPAB")
+		return
+	}
+
+	capabs := strings.Split(m.Params[0], " ")
+
+	// No real validation to do on these right now. Just record them.
+
+	for _, cap := range capabs {
+		cap = strings.TrimSpace(cap)
+		if len(cap) == 0 {
+			continue
+		}
+
+		cap = strings.ToUpper(cap)
+
+		c.PreRegCapabs[cap] = struct{}{}
+	}
+
+	// For TS6 we must have QS and ENCAP.
+
+	_, exists := c.PreRegCapabs["QS"]
+	if !exists {
+		c.quit("Missing QS")
+		return
+	}
+
+	_, exists = c.PreRegCapabs["ENCAP"]
+	if !exists {
+		c.quit("Missing ENCAP")
+		return
+	}
+
+	c.GotCAPAB = true
+}
+
+func (c *Client) serverCommand(m irc.Message) {
+	// SERVER <name> <hopcount> <description>
+	if len(m.Params) != 3 {
+		// 461 ERR_NEEDMOREPARAMS
+		c.messageFromServer("461", []string{"SERVER", "Not enough parameters"})
+		return
+	}
+
+	if !c.GotCAPAB {
+		c.quit("CAPAB first.")
+		return
+	}
+
+	if c.GotSERVER {
+		c.quit("Double SERVER.")
+		return
+	}
+
+	// We could validate the hostname format. But we have a list of hosts we will
+	// link to, so check against that directly.
+	linkInfo, exists := c.Server.Config.Servers[m.Params[0]]
+	if !exists {
+		c.quit("I don't know you")
+		return
+	}
+
+	// At this point we should have a password from the PASS command. Check it.
+	if linkInfo.Pass != c.PreRegPass {
+		c.quit("Bad password")
+		return
+	}
+
+	// Hopcount should be 1.
+	if m.Params[1] != "1" {
+		c.quit("Bad hopcount")
+		return
+	}
+
+	// Is this server already linked?
+	_, exists = c.Server.Servers[m.Params[0]]
+	if exists {
+		c.quit("Already linked")
+		return
+	}
+
+	c.PreRegServerName = m.Params[0]
+	c.PreRegServerDesc = m.Params[2]
+
+	c.GotSERVER = true
+
+	// Reply. Our reply differs depending on whether we initiated the link.
+
+	// If they initiated the link, then we reply with PASS/CAPAB/SERVER.
+	// If we did, then we already sent PASS/CAPAB/SERVER. Reply with SVINFO
+	// instead.
+
+	if !c.SentSERVER {
+		c.sendPASS(linkInfo.Pass)
+		c.sendCAPAB()
+		c.sendSERVER()
+		return
+	}
+
+	c.sendSVINFO()
+}
+
+func (c *Client) svinfoCommand(m irc.Message) {
+	// SVINFO <TS version> <min TS version> 0 <current time>
+	if len(m.Params) < 4 {
+		// 461 ERR_NEEDMOREPARAMS
+		c.messageFromServer("461", []string{"SVINFO", "Not enough parameters"})
+		return
+	}
+
+	if !c.GotSERVER || !c.SentSERVER {
+		c.quit("SERVER first")
+		return
+	}
+
+	if c.GotSVINFO {
+		c.quit("Double SVINFO")
+		return
+	}
+
+	if m.Params[0] != "6" || m.Params[1] != "6" {
+		c.quit("Unsupported TS version")
+		return
+	}
+
+	if m.Params[2] != "0" {
+		c.quit("Malformed third parameter")
+		return
+	}
+
+	theirEpoch, err := strconv.ParseInt(m.Params[3], 10, 64)
+	if err != nil {
+		c.quit("Malformed time")
+		return
+	}
+
+	epoch := time.Now().Unix()
+
+	delta := epoch - theirEpoch
+	if delta < 0 {
+		delta *= -1
+	}
+
+	if delta > 60 {
+		c.quit("Time insanity")
+		return
+	}
+
+	// We reply with our SVINFO, burst, and PING indicating end of burst.
+
+	c.GotSVINFO = true
+
+	// If we initiated the connection, then we already sent SVINFO (in reply
+	// to them sending SERVER). This is their reply to our SVINFO.
+	if !c.SentSVINFO {
+		c.sendSVINFO()
+	}
+
+	// TODO: Burst
+
+	c.sendPING()
+}
+
+func (c *Client) pingCommand(m irc.Message) {
+	// We expect a PING from server as part of burst end.
+	// PING <Remote SID>
+	if len(m.Params) < 1 {
+		// 461 ERR_NEEDMOREPARAMS
+		c.messageFromServer("461", []string{"SVINFO", "Not enough parameters"})
+		return
+	}
+
+	if !c.GotSVINFO {
+		c.quit("Unexpected PING")
+		return
+	}
+
+	// Allow multiple pings.
+
+	if m.Params[0] != c.PreRegTS6SID {
+		c.quit("Unexpected SID")
+		return
+	}
+
+	c.GotPING = true
+
+	// Reply.
+
+	c.maybeQueueMessage(irc.Message{
+		Prefix:  c.Server.Config.TS6SID,
+		Command: "PONG",
+		Params: []string{
+			c.Server.Config.ServerName,
+			c.PreRegTS6SID,
+		},
+	})
+
+	c.SentPONG = true
+
+	if c.GotPONG {
+		c.registerServer()
+	}
+}
+
+func (c *Client) pongCommand(m irc.Message) {
+	// We expect this at end of server link burst.
+	// :<Remote SID> PONG <Remote server name> <My SID>
+	if len(m.Params) < 2 {
+		// 461 ERR_NEEDMOREPARAMS
+		c.messageFromServer("461", []string{"SVINFO", "Not enough parameters"})
+		return
+	}
+
+	if !c.GotSVINFO || !c.SentPING {
+		c.quit("Unexpected PING")
+		return
+	}
+
+	if c.GotPONG {
+		c.quit("Double PONG")
+		return
+	}
+
+	if m.Prefix != c.PreRegTS6SID {
+		c.quit("Unknown prefix")
+		return
+	}
+
+	if m.Params[0] != c.PreRegServerName {
+		c.quit("Unknown server name")
+		return
+	}
+
+	if m.Params[1] != c.Server.Config.TS6SID {
+		c.quit("Unknown SID")
+		return
+	}
+
+	// No reply.
+
+	c.GotPONG = true
+
+	if c.SentPONG {
+		c.registerServer()
+	}
+}
+
+func (c *Client) errorCommand(m irc.Message) {
+	c.quit("Bye")
 }
 
 func (c *UserClient) joinCommand(m irc.Message) {
@@ -590,6 +909,8 @@ func (c *UserClient) operCommand(m irc.Message) {
 	// Give them oper status.
 	c.Modes['o'] = struct{}{}
 
+	c.Server.Opers[c.ID] = c
+
 	c.messageClient(c, "MODE", []string{c.DisplayNick, "+o"})
 
 	// 381 RPL_YOUREOPER
@@ -832,4 +1153,74 @@ func (c *UserClient) topicCommand(m irc.Message) {
 		// 332 RPL_TOPIC
 		c.messageClient(member, "TOPIC", []string{channel.Name, channel.Topic})
 	}
+}
+
+// Initiate a connection to a server.
+//
+// I implement CONNECT differently than RFC 2812. Only a single parameter.
+func (c *UserClient) connectCommand(m irc.Message) {
+	if !c.isOperator() {
+		// 481 ERR_NOPRIVILEGES
+		c.messageFromServer("481", []string{"Permission Denied- You're not an IRC operator"})
+		return
+	}
+
+	// CONNECT <server name>
+	if len(m.Params) < 1 {
+		// 461 ERR_NEEDMOREPARAMS
+		c.messageFromServer("461", []string{m.Command, "Not enough parameters"})
+		return
+	}
+
+	serverName := m.Params[0]
+
+	// Is it a server we know about?
+	linkInfo, exists := c.Server.Config.Servers[serverName]
+	if !exists {
+		// 402 ERR_NOSUCHSERVER
+		c.messageFromServer("402", []string{serverName, "No such server"})
+		return
+	}
+
+	// Are we already linked to it?
+	_, exists = c.Server.Servers[serverName]
+	if exists {
+		// No great error code.
+		c.notice(fmt.Sprintf("I am already linked to %s.", serverName))
+		return
+	}
+
+	// We could check if we're trying to link to it. But the result should be the
+	// same.
+
+	// Initiate a connection.
+	// Put it in a goroutine to avoid blocking server goroutine.
+	c.Server.WG.Add(1)
+	go func() {
+		defer c.Server.WG.Done()
+
+		c.notice(fmt.Sprintf("Connecting to %s...", linkInfo.Name))
+
+		conn, err := net.DialTimeout("tcp",
+			fmt.Sprintf("%s:%d", linkInfo.Hostname, linkInfo.Port),
+			c.Server.Config.DeadTime)
+		if err != nil {
+			log.Printf("Unable to connect to server [%s]: %s", linkInfo.Name, err)
+			return
+		}
+
+		id := c.Server.getClientID()
+
+		client := NewClient(c.Server, id, conn)
+		client.Server.newEvent(Event{Type: NewClientEvent, Client: client})
+
+		client.sendPASS(linkInfo.Pass)
+		client.sendCAPAB()
+		client.sendSERVER()
+
+		client.Server.WG.Add(1)
+		go client.readLoop()
+		c.Server.WG.Add(1)
+		go client.writeLoop()
+	}()
 }

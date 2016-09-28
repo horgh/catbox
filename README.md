@@ -40,6 +40,7 @@ The main ideas I plan for it are (in no particular order):
   * User modes: Only +o
   * Channel modes: Only +n
   * WHO: Support only 'WHO #channel'. And shows all nicks on that channel.
+  * CONNECT: Single parameter only.
 
 
 # Docs/references
@@ -56,6 +57,8 @@ The main ideas I plan for it are (in no particular order):
   * Server to server
   * LINKS
   * Server to server (ircd-ratbox)
+  * Lusers notice is incorrect upon registration. Still shows you as unknown.
+  * When create new channel, send servermode +nt?
   * TLS
   * Upgrade in place (is this possible with TLS connections?)
   * Log to file.

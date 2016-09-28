@@ -1,6 +1,9 @@
 package main
 
-import "strings"
+import (
+	"regexp"
+	"strings"
+)
 
 // 50 from RFC
 const maxChannelLength = 50
@@ -116,4 +119,12 @@ func isNumericCommand(command string) bool {
 		}
 	}
 	return true
+}
+
+func isValidSID(s string) bool {
+	matched, err := regexp.MatchString("^[0-9][0-9A-Z]{2}$", s)
+	if err != nil {
+		return false
+	}
+	return matched
 }

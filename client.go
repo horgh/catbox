@@ -34,17 +34,45 @@ type Client struct {
 
 	// Info client may send us before we complete its registration and promote it
 	// to UserClient or ServerClient.
+
+	// User info
+
+	// NICK
 	PreRegDisplayNick string
-	PreRegUser        string
-	PreRegRealName    string
-}
 
-// ServerClient means the client registered as a server. This holds its info.
-type ServerClient struct {
-	Client
+	// USER
+	PreRegUser     string
+	PreRegRealName string
 
-	// Its TS6 SID
-	TS6SID string
+	// Server info
+
+	// PASS
+	PreRegPass   string
+	PreRegTS6SID string
+
+	// CAPAB
+	PreRegCapabs map[string]struct{}
+
+	// SERVER
+	PreRegServerName string
+	PreRegServerDesc string
+
+	// Boolean flags involved in the several step server link process.
+	// Use them to keep track of where we are in the process.
+
+	GotPASS   bool
+	GotCAPAB  bool
+	GotSERVER bool
+	GotSVINFO bool
+	GotPING   bool
+	GotPONG   bool
+
+	SentPASS   bool
+	SentCAPAB  bool
+	SentSERVER bool
+	SentSVINFO bool
+	SentPING   bool
+	SentPONG   bool
 }
 
 // NewClient creates a Client
@@ -60,6 +88,8 @@ func NewClient(s *Server, id uint64, conn net.Conn) *Client {
 		ID:                  id,
 		ConnectionStartTime: time.Now(),
 		Server:              s,
+
+		PreRegCapabs: make(map[string]struct{}),
 	}
 }
 
@@ -135,19 +165,24 @@ func (c *Client) quit(msg string) {
 }
 
 func (c *Client) handleMessage(m irc.Message) {
-	// Clients SHOULD NOT (section 2.3) send a prefix. I'm going to disallow it
-	// completely for all commands.
-	// TODO: May need to allow it for pre-registered servers.
-	if m.Prefix != "" {
-		c.messageFromServer("ERROR", []string{"Do not send a prefix"})
-		return
-	}
+	// Clients SHOULD NOT (section 2.3) send a prefix.
+	// However, during server link handshake, we get one at least at PONG.
+	// So I'll allow it. We could selectively disallow it though.
 
 	// Non-RFC command that appears to be widely supported. Just ignore it for
 	// now.
 	if m.Command == "CAP" {
 		return
 	}
+
+	// We may receive NOTICE when initiating connection to a server. Ignore it.
+	if m.Command == "NOTICE" {
+		return
+	}
+
+	// To register as a user client:
+	// NICK
+	// USER
 
 	if m.Command == "NICK" {
 		c.nickCommand(m)
@@ -159,8 +194,82 @@ func (c *Client) handleMessage(m irc.Message) {
 		return
 	}
 
+	// To register as a server (using TS6):
+
+	// If incoming client is initiator, they send this:
+
+	// > PASS
+	// > CAPAB
+	// > SERVER
+
+	// We check this info. If valid, reply:
+
+	// < PASS
+	// < CAPAB
+	// < SERVER
+
+	// They check our info. If valid, reply:
+
+	// > SVINFO
+
+	// We reply again:
+
+	// < SVINFO
+	// < Burst
+	// < PING
+
+	// They finish:
+
+	// > Burst
+	// > PING
+
+	// Everyone ACKs the PINGs:
+
+	// < PONG
+
+	// > PONG
+
+	// PINGs are used to know end of burst. Then we're linked.
+
+	// If we initiate the link, then we send PASS/CAPAB/SERVER and expect it
+	// in return. Beyond that, the process is the same.
+
+	if m.Command == "PASS" {
+		c.passCommand(m)
+		return
+	}
+
+	if m.Command == "CAPAB" {
+		c.capabCommand(m)
+		return
+	}
+
+	if m.Command == "SERVER" {
+		c.serverCommand(m)
+		return
+	}
+
+	if m.Command == "SVINFO" {
+		c.svinfoCommand(m)
+		return
+	}
+
+	if m.Command == "PING" {
+		c.pingCommand(m)
+		return
+	}
+
+	if m.Command == "PONG" {
+		c.pongCommand(m)
+		return
+	}
+
+	if m.Command == "ERROR" {
+		c.errorCommand(m)
+		return
+	}
+
 	// Let's say *all* other commands require you to be registered.
-	// This is likely stricter than RFC.
 	// 451 ERR_NOTREGISTERED
 	c.messageFromServer("451", []string{fmt.Sprintf("You have not registered.")})
 }
@@ -250,4 +359,88 @@ func (c *Client) maybeQueueMessage(m irc.Message) {
 	default:
 		c.SendQueueExceeded = true
 	}
+}
+
+func (c *Client) sendPASS(pass string) {
+	// PASS <password>, TS, <ts version>, <SID>
+	c.maybeQueueMessage(irc.Message{
+		Command: "PASS",
+		Params:  []string{pass, "TS", "6", c.Server.Config.TS6SID},
+	})
+
+	c.SentPASS = true
+}
+
+func (c *Client) sendCAPAB() {
+	// CAPAB <space separated list>
+	c.maybeQueueMessage(irc.Message{
+		Command: "CAPAB",
+		Params:  []string{"QS ENCAP"},
+	})
+
+	c.SentCAPAB = true
+}
+
+func (c *Client) sendSERVER() {
+	// SERVER <name> <hopcount> <description>
+	c.maybeQueueMessage(irc.Message{
+		Command: "SERVER",
+		Params: []string{
+			c.Server.Config.ServerName,
+			"1",
+			c.Server.Config.ServerInfo,
+		},
+	})
+
+	c.SentSERVER = true
+}
+
+func (c *Client) sendSVINFO() {
+	// SVINFO <TS version> <min TS version> 0 <current time>
+	epoch := time.Now().Unix()
+	c.maybeQueueMessage(irc.Message{
+		Command: "SVINFO",
+		Params: []string{
+			"6", "6", "0", fmt.Sprintf("%d", epoch),
+		},
+	})
+
+	c.SentSVINFO = true
+}
+
+func (c *Client) sendPING() {
+	// PING <My SID>
+	c.maybeQueueMessage(irc.Message{
+		Command: "PING",
+		Params: []string{
+			c.Server.Config.TS6SID,
+		},
+	})
+
+	c.SentPING = true
+}
+
+func (c *Client) registerServer() {
+	// Possible it took a NICK... Doesn't make sense for it to do so, but since
+	// it's been unregistered until now, a malicious server could have taken a
+	// nick.
+	if len(c.PreRegDisplayNick) > 0 {
+		delete(c.Server.Nicks, canonicalizeNick(c.PreRegDisplayNick))
+	}
+
+	s := NewServerClient(c)
+
+	delete(c.Server.UnregisteredClients, s.ID)
+	c.Server.ServerClients[s.ID] = s
+	c.Server.Servers[s.Name] = s.ID
+
+	log.Printf("Linked to server [%s]", s.Name)
+
+	for _, c := range c.Server.Opers {
+		c.notice(fmt.Sprintf("Established link to %s.", s.Name))
+	}
+}
+
+func (c *Client) isSendQueueExceeded() bool {
+	return c.SendQueueExceeded
 }

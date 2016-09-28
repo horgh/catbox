@@ -76,6 +76,18 @@ func (c *UserClient) nickUhost() string {
 	return fmt.Sprintf("%s!~%s@%s", c.DisplayNick, c.User, c.Conn.IP)
 }
 
+func (c *UserClient) getLastActivityTime() time.Time {
+	return c.LastActivityTime
+}
+
+func (c *UserClient) getLastPingTime() time.Time {
+	return c.LastPingTime
+}
+
+func (c *UserClient) setLastPingTime(t time.Time) {
+	c.LastPingTime = t
+}
+
 func (c *UserClient) onChannel(channel *Channel) bool {
 	_, exists := c.Channels[channel.Name]
 	return exists
@@ -84,6 +96,13 @@ func (c *UserClient) onChannel(channel *Channel) bool {
 func (c *UserClient) isOperator() bool {
 	_, exists := c.Modes['o']
 	return exists
+}
+
+func (c *UserClient) notice(s string) {
+	c.messageFromServer("NOTICE", []string{
+		c.DisplayNick,
+		fmt.Sprintf("*** Notice --- %s", s),
+	})
 }
 
 // Send an IRC message to a client. Appears to be from the server.
@@ -222,6 +241,11 @@ func (c *UserClient) handleMessage(m irc.Message) {
 		return
 	}
 
+	if m.Command == "CONNECT" {
+		c.connectCommand(m)
+		return
+	}
+
 	// Unknown command. We don't handle it yet anyway.
 
 	// 421 ERR_UNKNOWNCOMMAND
@@ -321,6 +345,10 @@ func (c *UserClient) quit(msg string) {
 
 	delete(c.Server.Nicks, canonicalizeNick(c.DisplayNick))
 	delete(c.Server.UserClients, c.ID)
+
+	if c.isOperator() {
+		delete(c.Server.Opers, c.ID)
+	}
 }
 
 // TS6 ID. 6 characters long, [A-Z]{6}. Must be unique on this server.

@@ -27,6 +27,10 @@ type Channel struct {
 type Server struct {
 	Config Config
 
+	// Next client id to issue.
+	NextClientID     uint64
+	NextClientIDLock sync.Mutex
+
 	// Client id to Client.
 	UnregisteredClients map[uint64]*Client
 
@@ -39,6 +43,12 @@ type Server struct {
 	// Canonicalized nickname to client id.
 	// Client may be registered or not.
 	Nicks map[string]uint64
+
+	// Client id to user client. Opers.
+	Opers map[uint64]*UserClient
+
+	// Server names to client id.
+	Servers map[string]uint64
 
 	// Channel name (canonicalized) to Channel.
 	Channels map[string]*Channel
@@ -115,6 +125,8 @@ func newServer(configFile string) (*Server, error) {
 		UserClients:         make(map[uint64]*UserClient),
 		ServerClients:       make(map[uint64]*ServerClient),
 		Nicks:               make(map[string]uint64),
+		Opers:               make(map[uint64]*UserClient),
+		Servers:             make(map[string]uint64),
 		Channels:            make(map[string]*Channel),
 
 		// shutdown() closes this channel.
@@ -192,7 +204,11 @@ func (s *Server) eventLoop() {
 					continue
 				}
 
-				// TODO: server client
+				serverClient, exists := s.ServerClients[evt.Client.ID]
+				if exists {
+					serverClient.quit("I/O error")
+					continue
+				}
 				continue
 			}
 
@@ -209,7 +225,11 @@ func (s *Server) eventLoop() {
 					continue
 				}
 
-				// TODO: server client
+				serverClient, exists := s.ServerClients[evt.Client.ID]
+				if exists {
+					serverClient.handleMessage(evt.Message)
+					continue
+				}
 				continue
 			}
 
@@ -246,8 +266,23 @@ func (s *Server) shutdown() {
 	for _, client := range s.UserClients {
 		client.quit("Server shutting down")
 	}
+	for _, client := range s.ServerClients {
+		client.quit("Server shutting down")
+	}
+}
 
-	// TODO: server clients
+func (s *Server) getClientID() uint64 {
+	s.NextClientIDLock.Lock()
+
+	id := s.NextClientID
+
+	if s.NextClientID+1 == 0 {
+		log.Fatalf("Client id overflow")
+	}
+	s.NextClientID++
+
+	s.NextClientIDLock.Unlock()
+	return id
 }
 
 // acceptConnections accepts TCP connections and tells the main server loop
@@ -255,8 +290,6 @@ func (s *Server) shutdown() {
 // and from the client.
 func (s *Server) acceptConnections() {
 	defer s.WG.Done()
-
-	id := uint64(0)
 
 	for {
 		if s.isShuttingDown() {
@@ -269,19 +302,9 @@ func (s *Server) acceptConnections() {
 			continue
 		}
 
+		id := s.getClientID()
 		client := NewClient(s, id, conn)
 
-		// Handle rollover of uint64. Unlikely to happen (outside abuse) but.
-		if id+1 == 0 {
-			log.Fatalf("Unique ids rolled over!")
-		}
-		id++
-
-		// ToServerChan is synchronous. We want to make sure server knows about the
-		// client before it starts hearing anything from its other channels about
-		// the client.
-		// Actually it's fine either way. Message sent before starting goroutines,
-		// so order takes care of that for us. (Now that there is only one channel).
 		s.newEvent(Event{Type: NewClientEvent, Client: client})
 
 		s.WG.Add(1)
@@ -350,16 +373,35 @@ func (s *Server) checkAndPingClients() {
 		}
 	}
 
-	// User clients we are more lenient with. Ping them if they are idle for a
-	// while.
-	for _, client := range s.UserClients {
-		if client.SendQueueExceeded {
+	// I want to iterate and use same logic on both user and server clients. Do it
+	// by creating an interface that they both satisfy.
+	type UserServerClient interface {
+		isSendQueueExceeded() bool
+		getLastActivityTime() time.Time
+		getLastPingTime() time.Time
+		quit(s string)
+		messageFromServer(s string, p []string)
+		setLastPingTime(t time.Time)
+	}
+
+	clients := []UserServerClient{}
+	for _, v := range s.UserClients {
+		clients = append(clients, v)
+	}
+	for _, v := range s.ServerClients {
+		clients = append(clients, v)
+	}
+
+	// User and server clients we are more lenient with. Ping them if they are
+	// idle for a while.
+	for _, client := range clients {
+		if client.isSendQueueExceeded() {
 			client.quit("SendQ exceeded")
 			continue
 		}
 
-		timeIdle := now.Sub(client.LastActivityTime)
-		timeSincePing := now.Sub(client.LastPingTime)
+		timeIdle := now.Sub(client.getLastActivityTime())
+		timeSincePing := now.Sub(client.getLastPingTime())
 
 		// Was it active recently enough that we don't need to do anything?
 		if timeIdle < s.Config.PingTime {
@@ -381,11 +423,9 @@ func (s *Server) checkAndPingClients() {
 		}
 
 		client.messageFromServer("PING", []string{s.Config.ServerName})
-		client.LastPingTime = now
+		client.setLastPingTime(now)
 		continue
 	}
-
-	// TODO: Ping/kill server clients.
 }
 
 // newEvent tells the server something happens.

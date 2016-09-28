@@ -2,8 +2,8 @@ package main
 
 import (
 	"fmt"
-	"regexp"
 	"strconv"
+	"strings"
 	"time"
 
 	"summercat.com/config"
@@ -33,8 +33,19 @@ type Config struct {
 	// Oper name to password.
 	Opers map[string]string
 
+	// Server name to its link information.
+	Servers map[string]ServerDefinition
+
 	// TS6 SID. Must be unique in the network. Format: [0-9][A-Z0-9]{2}
 	TS6SID string
+}
+
+// ServerDefinition defines how to link to a server.
+type ServerDefinition struct {
+	Name     string
+	Hostname string
+	Port     int
+	Pass     string
 }
 
 // checkAndParseConfig checks configuration keys are present and in an
@@ -62,6 +73,7 @@ func (s *Server) checkAndParseConfig(file string) error {
 		"ping-time",
 		"dead-time",
 		"opers-config",
+		"servers-config",
 		"ts6-sid",
 	}
 
@@ -112,17 +124,59 @@ func (s *Server) checkAndParseConfig(file string) error {
 	if err != nil {
 		return fmt.Errorf("Unable to load opers config: %s", err)
 	}
-
 	s.Config.Opers = opers
 
-	matched, err := regexp.MatchString("^[0-9][0-9A-Z]{2}$", configMap["ts6-sid"])
+	s.Config.Servers = make(map[string]ServerDefinition)
+	servers, err := config.ReadStringMap(configMap["servers-config"])
 	if err != nil {
-		return fmt.Errorf("Unable to validate ts6-sid: %s", err)
+		return fmt.Errorf("Unable to load servers config: %s", err)
 	}
-	if !matched {
-		return fmt.Errorf("ts6-sid is in invalid format")
+
+	for name, v := range servers {
+		link, err := parseLink(name, v)
+		if err != nil {
+			return fmt.Errorf("Malformed server link information: %s: %s", name, err)
+		}
+		s.Config.Servers[name] = link
+	}
+
+	if !isValidSID(configMap["ts6-sid"]) {
+		return fmt.Errorf("Invalid TS6 SID")
 	}
 	s.Config.TS6SID = configMap["ts6-sid"]
 
 	return nil
+}
+
+// Parse the value side of a server definition from the servers config.
+// Format:
+// <hostname>,<port>,<password>
+func parseLink(name, s string) (ServerDefinition, error) {
+	pieces := strings.Split(s, ",")
+	if len(pieces) != 3 {
+		return ServerDefinition{}, fmt.Errorf("Unexpected number of fields")
+	}
+
+	hostname := strings.TrimSpace(pieces[0])
+	if len(hostname) == 0 {
+		return ServerDefinition{}, fmt.Errorf("You must specify a hostname")
+	}
+	// TODO: Format check hostname
+
+	port, err := strconv.ParseInt(strings.TrimSpace(pieces[1]), 10, 32)
+	if err != nil {
+		return ServerDefinition{}, fmt.Errorf("Invalid port: %s: %s", pieces[1], err)
+	}
+
+	pass := strings.TrimSpace(pieces[2])
+	if len(pass) == 0 {
+		return ServerDefinition{}, fmt.Errorf("You must specify a password")
+	}
+
+	return ServerDefinition{
+		Name:     name,
+		Hostname: hostname,
+		Port:     int(port),
+		Pass:     pass,
+	}, nil
 }
