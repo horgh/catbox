@@ -446,3 +446,12 @@ func (s *Server) newEvent(evt Event) {
 	case <-s.ShutdownChan:
 	}
 }
+
+// Send a message to all local operator users.
+func (s *Server) noticeOpers(msg string) {
+	log.Print(msg)
+
+	for _, c := range s.Opers {
+		c.notice(msg)
+	}
+}

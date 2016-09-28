@@ -63,16 +63,11 @@ type Client struct {
 	GotPASS   bool
 	GotCAPAB  bool
 	GotSERVER bool
-	GotSVINFO bool
-	GotPING   bool
-	GotPONG   bool
 
 	SentPASS   bool
 	SentCAPAB  bool
 	SentSERVER bool
 	SentSVINFO bool
-	SentPING   bool
-	SentPONG   bool
 }
 
 // NewClient creates a Client
@@ -187,8 +182,10 @@ func (c *Client) quit(msg string) {
 
 func (c *Client) handleMessage(m irc.Message) {
 	// Clients SHOULD NOT (section 2.3) send a prefix.
-	// However, during server link handshake, we get one at least at PONG.
-	// So I'll allow it. We could selectively disallow it though.
+	if m.Prefix != "" {
+		c.quit("No prefix permitted")
+		return
+	}
 
 	// Non-RFC command that appears to be widely supported. Just ignore it for
 	// now.
@@ -272,16 +269,6 @@ func (c *Client) handleMessage(m irc.Message) {
 
 	if m.Command == "SVINFO" {
 		c.svinfoCommand(m)
-		return
-	}
-
-	if m.Command == "PING" {
-		c.pingCommand(m)
-		return
-	}
-
-	if m.Command == "PONG" {
-		c.pongCommand(m)
 		return
 	}
 
@@ -427,18 +414,6 @@ func (c *Client) sendSVINFO() {
 	c.SentSVINFO = true
 }
 
-func (c *Client) sendPING() {
-	// PING <My SID>
-	c.maybeQueueMessage(irc.Message{
-		Command: "PING",
-		Params: []string{
-			c.Server.Config.TS6SID,
-		},
-	})
-
-	c.SentPING = true
-}
-
 func (c *Client) registerServer() {
 	// Possible it took a NICK... Doesn't make sense for it to do so, but since
 	// it's been unregistered until now, a malicious server could have taken a
@@ -453,11 +428,10 @@ func (c *Client) registerServer() {
 	c.Server.ServerClients[s.ID] = s
 	c.Server.Servers[s.Name] = s.ID
 
-	log.Printf("Linked to server [%s]", s.Name)
+	s.Server.noticeOpers(fmt.Sprintf("Established link to %s.", s.Name))
 
-	for _, c := range c.Server.Opers {
-		c.notice(fmt.Sprintf("Established link to %s.", s.Name))
-	}
+	s.sendBurst()
+	s.sendPING()
 }
 
 func (c *Client) isSendQueueExceeded() bool {

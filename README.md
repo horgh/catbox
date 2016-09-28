@@ -53,12 +53,19 @@ The main ideas I plan for it are (in no particular order):
   * http://ircdocs.horse/
 
 
+# TS notes
+
+  * Nick TS changes when: Client connects or when it changes its nick.
+  * Channel TS changes when: Channel created
+
+
 # Todo
 
-  * Can simplify the event processing by making Client member an interface type
-    and have all clients satisfy it. Then don't have to try 3 times for each
-    type.
   * Server to server (ircd-ratbox)
+    * Burst: SERVER, SID, BAN, UID, ENCAP, AWAY, SJOIN, BMASK
+    * Post-burst: INVITE, JOIN, KILL, NICK, NOTICE, PART, PRIVMSG, QUIT, SID,
+      SJOIN, TOPIC, UID
+    * Nick collisions
   * When create new channel, send servermode +nt?
   * TLS
   * Upgrade in place (is this possible with TLS connections?)

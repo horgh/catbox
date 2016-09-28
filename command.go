@@ -356,10 +356,8 @@ func (c *Client) svinfoCommand(m irc.Message) {
 		return
 	}
 
-	if c.GotSVINFO {
-		c.quit("Double SVINFO")
-		return
-	}
+	// Once we have SVINFO, we'll upgrade to ServerClient, so we will never see
+	// double SVINFO.
 
 	if m.Params[0] != "6" || m.Params[1] != "6" {
 		c.quit("Unsupported TS version")
@@ -389,103 +387,14 @@ func (c *Client) svinfoCommand(m irc.Message) {
 		return
 	}
 
-	// We reply with our SVINFO, burst, and PING indicating end of burst.
-
-	c.GotSVINFO = true
-
 	// If we initiated the connection, then we already sent SVINFO (in reply
 	// to them sending SERVER). This is their reply to our SVINFO.
 	if !c.SentSVINFO {
 		c.sendSVINFO()
 	}
 
-	// TODO: Burst
-
-	c.sendPING()
-}
-
-func (c *Client) pingCommand(m irc.Message) {
-	// We expect a PING from server as part of burst end.
-	// PING <Remote SID>
-	if len(m.Params) < 1 {
-		// 461 ERR_NEEDMOREPARAMS
-		c.messageFromServer("461", []string{"SVINFO", "Not enough parameters"})
-		return
-	}
-
-	if !c.GotSVINFO {
-		c.quit("Unexpected PING")
-		return
-	}
-
-	// Allow multiple pings.
-
-	if m.Params[0] != c.PreRegTS6SID {
-		c.quit("Unexpected SID")
-		return
-	}
-
-	c.GotPING = true
-
-	// Reply.
-
-	c.maybeQueueMessage(irc.Message{
-		Prefix:  c.Server.Config.TS6SID,
-		Command: "PONG",
-		Params: []string{
-			c.Server.Config.ServerName,
-			c.PreRegTS6SID,
-		},
-	})
-
-	c.SentPONG = true
-
-	if c.GotPONG {
-		c.registerServer()
-	}
-}
-
-func (c *Client) pongCommand(m irc.Message) {
-	// We expect this at end of server link burst.
-	// :<Remote SID> PONG <Remote server name> <My SID>
-	if len(m.Params) < 2 {
-		// 461 ERR_NEEDMOREPARAMS
-		c.messageFromServer("461", []string{"SVINFO", "Not enough parameters"})
-		return
-	}
-
-	if !c.GotSVINFO || !c.SentPING {
-		c.quit("Unexpected PING")
-		return
-	}
-
-	if c.GotPONG {
-		c.quit("Double PONG")
-		return
-	}
-
-	if m.Prefix != c.PreRegTS6SID {
-		c.quit("Unknown prefix")
-		return
-	}
-
-	if m.Params[0] != c.PreRegServerName {
-		c.quit("Unknown server name")
-		return
-	}
-
-	if m.Params[1] != c.Server.Config.TS6SID {
-		c.quit("Unknown SID")
-		return
-	}
-
-	// No reply.
-
-	c.GotPONG = true
-
-	if c.SentPONG {
-		c.registerServer()
-	}
+	// Let's choose here to decide we're linked. The burst is still to come.
+	c.registerServer()
 }
 
 func (c *Client) errorCommand(m irc.Message) {
