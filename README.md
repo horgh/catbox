@@ -55,6 +55,12 @@ The main ideas I plan for it are (in no particular order):
 
 # Todo
 
+  * Possible goroutine link if newevent does not inform the server when we
+    create a new client/server connection. Nothing will ever close the
+    client's writechan.
+  * Can simplify the event processing by making Client member an interface type
+    and have all clients satisfy it. Then don't have to try 3 times for each
+    type.
   * Server to server (ircd-ratbox)
   * When create new channel, send servermode +nt?
   * TLS

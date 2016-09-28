@@ -1212,15 +1212,19 @@ func (c *UserClient) connectCommand(m irc.Message) {
 		id := c.Server.getClientID()
 
 		client := NewClient(c.Server, id, conn)
-		client.Server.newEvent(Event{Type: NewClientEvent, Client: client})
 
+		// Make sure we send to the client's write channel before telling the server
+		// about the client. It is possible otherwise that the server (if shutting
+		// down) could have closed the write channel on us.
 		client.sendPASS(linkInfo.Pass)
 		client.sendCAPAB()
 		client.sendSERVER()
 
+		client.Server.newEvent(Event{Type: NewClientEvent, Client: client})
+
 		client.Server.WG.Add(1)
 		go client.readLoop()
-		c.Server.WG.Add(1)
+		client.Server.WG.Add(1)
 		go client.writeLoop()
 	}()
 }
