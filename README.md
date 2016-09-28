@@ -41,6 +41,7 @@ The main ideas I plan for it are (in no particular order):
   * Channel modes: Only +n
   * WHO: Support only 'WHO #channel'. And shows all nicks on that channel.
   * CONNECT: Single parameter only.
+  * LINKS: No parameters supported.
 
 
 # Docs/references
@@ -54,8 +55,6 @@ The main ideas I plan for it are (in no particular order):
 
 # Todo
 
-  * Server to server
-  * LINKS
   * Server to server (ircd-ratbox)
   * When create new channel, send servermode +nt?
   * TLS

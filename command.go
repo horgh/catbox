@@ -1224,3 +1224,23 @@ func (c *UserClient) connectCommand(m irc.Message) {
 		go client.writeLoop()
 	}()
 }
+
+func (c *UserClient) linksCommand(m irc.Message) {
+	// Difference from RFC: No parameters respected.
+
+	for _, s := range c.Server.ServerClients {
+		// 364 RPL_LINKS
+		// <mask> <server> :<hopcount> <server info>
+		c.messageFromServer("364", []string{
+			s.Name,
+			s.Name,
+			// TODO: When we have servers that are not directly connected, hop count
+			//   must change.
+			fmt.Sprintf("1 %s", s.Description),
+		})
+	}
+
+	// 365 RPL_ENDOFLINKS
+	// <mask> :End of LINKS list
+	c.messageFromServer("365", []string{"*", "End of LINKS list"})
+}

@@ -246,6 +246,11 @@ func (c *UserClient) handleMessage(m irc.Message) {
 		return
 	}
 
+	if m.Command == "LINKS" {
+		c.linksCommand(m)
+		return
+	}
+
 	// Unknown command. We don't handle it yet anyway.
 
 	// 421 ERR_UNKNOWNCOMMAND
