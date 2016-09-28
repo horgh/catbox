@@ -277,43 +277,41 @@ func (c *Client) handleMessage(m irc.Message) {
 func (c *Client) completeRegistration() {
 	// RFC 2813 specifies messages to send upon registration.
 
-	userClient := NewUserClient(c)
+	uc := NewUserClient(c)
+
+	delete(c.Server.UnregisteredClients, uc.ID)
+	c.Server.UserClients[c.ID] = uc
 
 	// 001 RPL_WELCOME
-	c.messageFromServer("001", []string{
+	uc.messageFromServer("001", []string{
 		fmt.Sprintf("Welcome to the Internet Relay Network %s",
-			userClient.nickUhost()),
+			uc.nickUhost()),
 	})
 
 	// 002 RPL_YOURHOST
-	c.messageFromServer("002", []string{
+	uc.messageFromServer("002", []string{
 		fmt.Sprintf("Your host is %s, running version %s",
-			c.Server.Config.ServerName,
-			c.Server.Config.Version),
+			uc.Server.Config.ServerName,
+			uc.Server.Config.Version),
 	})
 
 	// 003 RPL_CREATED
-	c.messageFromServer("003", []string{
-		fmt.Sprintf("This server was created %s", c.Server.Config.CreatedDate),
+	uc.messageFromServer("003", []string{
+		fmt.Sprintf("This server was created %s", uc.Server.Config.CreatedDate),
 	})
 
 	// 004 RPL_MYINFO
 	// <servername> <version> <available user modes> <available channel modes>
-	c.messageFromServer("004", []string{
+	uc.messageFromServer("004", []string{
 		// It seems ambiguous if these are to be separate parameters.
-		c.Server.Config.ServerName,
-		c.Server.Config.Version,
+		uc.Server.Config.ServerName,
+		uc.Server.Config.Version,
 		"o",
 		"n",
 	})
 
-	userClient.lusersCommand()
-
-	userClient.motdCommand()
-
-	delete(c.Server.UnregisteredClients, c.ID)
-
-	c.Server.UserClients[c.ID] = userClient
+	uc.lusersCommand()
+	uc.motdCommand()
 }
 
 // Send an IRC message to a client. Appears to be from the server.

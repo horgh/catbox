@@ -57,7 +57,6 @@ The main ideas I plan for it are (in no particular order):
   * Server to server
   * LINKS
   * Server to server (ircd-ratbox)
-  * Lusers notice is incorrect upon registration. Still shows you as unknown.
   * When create new channel, send servermode +nt?
   * TLS
   * Upgrade in place (is this possible with TLS connections?)
