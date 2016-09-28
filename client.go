@@ -148,7 +148,11 @@ func (c *Client) writeLoop() {
 Loop:
 	for {
 		select {
-		case message := <-c.WriteChan:
+		case message, ok := <-c.WriteChan:
+			if !ok {
+				break Loop
+			}
+
 			err := c.Conn.WriteMessage(message)
 			if err != nil {
 				log.Printf("Client %s: %s", c, err)
