@@ -135,12 +135,33 @@ func (c *Client) readLoop() {
 func (c *Client) writeLoop() {
 	defer c.Server.WG.Done()
 
-	for message := range c.WriteChan {
-		err := c.Conn.WriteMessage(message)
-		if err != nil {
-			log.Printf("Client %s: %s", c, err)
-			c.Server.newEvent(Event{Type: DeadClientEvent, Client: c})
-			break
+	// Receive on the client's write channel.
+	//
+	// Ensure we also stop if the server is shutting down (indicated by the
+	// ShutdownChan being closed). If we don't, then there is potential for us to
+	// leak this goroutine. Consider the case where we have a new client, and
+	// tell the server about it, but the server is shutting down, and so does not
+	// see the new client event. In this case the server does not know that it
+	// must close the write channel so that the client will end (if we were for
+	// example using 'for message := range c.WriteChan', as it would block
+	// forever).
+	//
+	// A problem with this is we are not guaranteed to process any remaining
+	// messages on the write channel (and so inform the client about shutdown)
+	// when we are shutting down. But it is an improvement on leaking the
+	// goroutine.
+Loop:
+	for {
+		select {
+		case message := <-c.WriteChan:
+			err := c.Conn.WriteMessage(message)
+			if err != nil {
+				log.Printf("Client %s: %s", c, err)
+				c.Server.newEvent(Event{Type: DeadClientEvent, Client: c})
+				break Loop
+			}
+		case <-c.Server.ShutdownChan:
+			break Loop
 		}
 	}
 
