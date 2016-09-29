@@ -153,7 +153,7 @@ func (u *LocalUser) part(channelName, message string) {
 // Note: Only the server goroutine should call this (due to closing channel).
 func (u *LocalUser) quit(msg string) {
 	// May already be cleaning up.
-	_, exists := u.Catbox.LocalUsers[u.User.UID]
+	_, exists := u.Catbox.LocalUsers[u.ID]
 	if !exists {
 		return
 	}
@@ -197,7 +197,7 @@ func (u *LocalUser) quit(msg string) {
 
 	delete(u.Catbox.Nicks, canonicalizeNick(u.User.DisplayNick))
 
-	delete(u.Catbox.LocalUsers, u.User.UID)
+	delete(u.Catbox.LocalUsers, u.ID)
 
 	if u.User.isOperator() {
 		delete(u.Catbox.Opers, u.User.UID)
@@ -827,7 +827,7 @@ func (u *LocalUser) operCommand(m irc.Message) {
 	// Give them oper status.
 	u.User.Modes['o'] = struct{}{}
 
-	u.Catbox.Opers[u.User.UID] = u
+	u.Catbox.Opers[u.User.UID] = u.User
 
 	// From themselves to themselves.
 	u.User.messageUser(u.User, "MODE", []string{u.User.DisplayNick, "+o"})

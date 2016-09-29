@@ -25,11 +25,11 @@ type Catbox struct {
 	// Client id to LocalClient.
 	LocalClients map[uint64]*LocalClient
 	// LocalUsers are clients registered as users.
-	LocalUsers map[TS6UID]*LocalUser
+	LocalUsers map[uint64]*LocalUser
 	// LocalServers are clients registered as servers.
-	LocalServers map[TS6SID]*LocalServer
+	LocalServers map[uint64]*LocalServer
 
-	Opers map[TS6UID]*LocalUser
+	Opers map[TS6UID]*User
 
 	// Canonicalized nickname to TS6 UID.
 	Nicks map[string]TS6UID
@@ -66,24 +66,11 @@ type TS6SID string
 // TS6UID is SID+UID. Uniquely identify a client. Globally.
 type TS6UID string
 
-// EventClient interface defines methods a {local,user,server}client must
-// implement for event processing.
-type EventClient interface {
-	handleMessage(m irc.Message)
-	String() string
-	quit(msg string)
-}
-
 // Event holds a message containing something to tell the server.
 type Event struct {
 	Type EventType
 
-	// For new connection events we need access to LocalClient and ID.
-	// TODO: Figure out better way.
-	ID          uint64
-	LocalClient *LocalClient
-
-	Client EventClient
+	Client *LocalClient
 
 	Message irc.Message
 }
@@ -134,9 +121,9 @@ func main() {
 func newCatbox(configFile string) (*Catbox, error) {
 	cb := Catbox{
 		LocalClients: make(map[uint64]*LocalClient),
-		LocalUsers:   make(map[TS6UID]*LocalUser),
-		LocalServers: make(map[TS6SID]*LocalServer),
-		Opers:        make(map[TS6UID]*LocalUser),
+		LocalUsers:   make(map[uint64]*LocalUser),
+		LocalServers: make(map[uint64]*LocalServer),
+		Opers:        make(map[TS6UID]*User),
 		Users:        make(map[TS6UID]*User),
 		Nicks:        make(map[string]TS6UID),
 		Servers:      make(map[TS6SID]*Server),
@@ -199,18 +186,46 @@ func (cb *Catbox) eventLoop() {
 		// promoted to a different client type (UserClient, ServerClient).
 		case evt := <-cb.ToServerChan:
 			if evt.Type == NewClientEvent {
-				log.Printf("New client connection: %s", evt.LocalClient)
-				cb.LocalClients[evt.ID] = evt.LocalClient
+				log.Printf("New client connection: %s", evt.Client)
+				cb.LocalClients[evt.Client.ID] = evt.Client
 				continue
 			}
 
 			if evt.Type == DeadClientEvent {
-				evt.Client.quit("I/O error")
+				lc, exists := cb.LocalClients[evt.Client.ID]
+				if exists {
+					lc.quit("I/O error")
+					continue
+				}
+				lu, exists := cb.LocalUsers[evt.Client.ID]
+				if exists {
+					lu.quit("I/O error")
+					continue
+				}
+				ls, exists := cb.LocalServers[evt.Client.ID]
+				if exists {
+					ls.quit("I/O error")
+					continue
+				}
 				continue
 			}
 
 			if evt.Type == MessageFromClientEvent {
-				evt.Client.handleMessage(evt.Message)
+				lc, exists := cb.LocalClients[evt.Client.ID]
+				if exists {
+					lc.handleMessage(evt.Message)
+					continue
+				}
+				lu, exists := cb.LocalUsers[evt.Client.ID]
+				if exists {
+					lu.handleMessage(evt.Message)
+					continue
+				}
+				ls, exists := cb.LocalServers[evt.Client.ID]
+				if exists {
+					ls.handleMessage(evt.Message)
+					continue
+				}
 				continue
 			}
 
@@ -293,7 +308,7 @@ func (cb *Catbox) acceptConnections() {
 
 		client := NewLocalClient(cb, id, conn)
 
-		cb.newEvent(Event{Type: NewClientEvent, ID: id, LocalClient: client})
+		cb.newEvent(Event{Type: NewClientEvent, Client: client})
 
 		cb.WG.Add(1)
 		go client.readLoop()
@@ -440,6 +455,10 @@ func (cb *Catbox) noticeOpers(msg string) {
 	log.Print(msg)
 
 	for _, c := range cb.Opers {
-		c.notice(msg)
+		if c.LocalUser != nil {
+			c.LocalUser.notice(msg)
+		}
+
+		// TODO: Remote opers?
 	}
 }

@@ -221,7 +221,7 @@ func (c *LocalClient) registerUser() {
 	u.UID = uid
 
 	delete(c.Catbox.LocalClients, c.ID)
-	c.Catbox.LocalUsers[u.UID] = lu
+	c.Catbox.LocalUsers[lu.ID] = lu
 	c.Catbox.Users[u.UID] = u
 
 	// TODO: Tell linked servers about this new client.
@@ -362,7 +362,7 @@ func (c *LocalClient) registerServer() {
 	ls.Server = s
 
 	delete(c.Catbox.LocalClients, c.ID)
-	c.Catbox.LocalServers[s.SID] = ls
+	c.Catbox.LocalServers[ls.ID] = ls
 	c.Catbox.Servers[s.SID] = s
 
 	ls.Catbox.noticeOpers(fmt.Sprintf("Established link to %s.",

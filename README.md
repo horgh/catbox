@@ -63,16 +63,16 @@ The main ideas I plan for it are (in no particular order):
 # Todo
 
   * Fix unit tests
-  * Figure out where messageClient/messageServer should go
   * Send +i to use on connect, and track that (e.g. when creating User)
+  * If burst goes on too long, boot server
   * Server to server (ircd-ratbox)
     * Burst: SID, UID, SJOIN
     * Post-burst: INVITE, JOIN, KILL, NICK, NOTICE, PART, PRIVMSG, QUIT, SID,
       SJOIN, TOPIC, UID
     * Nick collisions
   * TLS
-  * Upgrade in place (is this possible with TLS connections?)
   * Log to file.
+  * Daemonize
   * Server console.
 
 
@@ -93,3 +93,4 @@ The main ideas I plan for it are (in no particular order):
   * AWAY
   * Multi line motd
   * Reload configuration without restart
+  * Upgrade in place (is this possible with TLS connections?)

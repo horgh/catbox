@@ -62,7 +62,7 @@ func (s *LocalServer) setLastPingTime(t time.Time) {
 
 func (s *LocalServer) quit(msg string) {
 	// May already be cleaning up.
-	_, exists := s.Catbox.LocalServers[s.Server.SID]
+	_, exists := s.Catbox.LocalServers[s.ID]
 	if !exists {
 		return
 	}
@@ -71,7 +71,7 @@ func (s *LocalServer) quit(msg string) {
 
 	close(s.WriteChan)
 
-	delete(s.Catbox.LocalServers, s.Server.SID)
+	delete(s.Catbox.LocalServers, s.ID)
 
 	// TODO: Make all clients quit that are on the other side.
 }
