@@ -57,6 +57,24 @@ func (u *LocalUser) setLastPingTime(t time.Time) {
 	u.LastPingTime = t
 }
 
+// Message from this local user to another user, remote or local.
+func (u *LocalUser) messageUser(to *User, command string, params []string) {
+	if to.isLocal() {
+		to.LocalUser.maybeQueueMessage(irc.Message{
+			Prefix:  u.User.nickUhost(),
+			Command: command,
+			Params:  params,
+		})
+		return
+	}
+
+	to.Link.maybeQueueMessage(irc.Message{
+		Prefix:  string(u.User.UID),
+		Command: command,
+		Params:  params,
+	})
+}
+
 func (u *LocalUser) notice(s string) {
 	u.messageFromServer("NOTICE", []string{
 		u.User.DisplayNick,
@@ -137,7 +155,7 @@ func (u *LocalUser) part(channelName, message string) {
 		member := u.Catbox.Users[memberUID]
 
 		// From the client to each member.
-		u.User.messageUser(member, "PART", params)
+		u.messageUser(member, "PART", params)
 	}
 
 	// Remove the client from the channel.
@@ -174,7 +192,7 @@ func (u *LocalUser) quit(msg string) {
 
 			member := u.Catbox.Users[memberUID]
 
-			u.User.messageUser(member, "QUIT", []string{msg})
+			u.messageUser(member, "QUIT", []string{msg})
 
 			toldClients[memberUID] = struct{}{}
 		}
@@ -188,7 +206,7 @@ func (u *LocalUser) quit(msg string) {
 	// Ensure we tell the client (e.g., if in no channels).
 	_, exists = toldClients[u.User.UID]
 	if !exists {
-		u.User.messageUser(u.User, "QUIT", []string{msg})
+		u.messageUser(u.User, "QUIT", []string{msg})
 	}
 
 	u.messageFromServer("ERROR", []string{msg})
@@ -369,7 +387,7 @@ func (u *LocalUser) nickCommand(m irc.Message) {
 			member := u.Catbox.Users[memberUID]
 
 			// Message needs to come from the OLD nick.
-			u.User.messageUser(member, "NICK", []string{nick})
+			u.messageUser(member, "NICK", []string{nick})
 			informedClients[member.UID] = struct{}{}
 		}
 	}
@@ -378,7 +396,7 @@ func (u *LocalUser) nickCommand(m irc.Message) {
 	// channels then we did not.
 	_, exists = informedClients[u.User.UID]
 	if !exists {
-		u.User.messageUser(u.User, "NICK", []string{nick})
+		u.messageUser(u.User, "NICK", []string{nick})
 	}
 
 	// Finally, make the update. Do this last as we need to ensure we act
@@ -454,7 +472,7 @@ func (u *LocalUser) joinCommand(m irc.Message) {
 	// Send JOIN, RPL_TOPIC, and RPL_NAMREPLY.
 
 	// JOIN comes from the client, to the client.
-	u.User.messageUser(u.User, "JOIN", []string{channel.Name})
+	u.messageUser(u.User, "JOIN", []string{channel.Name})
 
 	// If this is a new channel, send them the modes we set by default.
 	if !exists {
@@ -498,7 +516,7 @@ func (u *LocalUser) joinCommand(m irc.Message) {
 		member := u.Catbox.Users[memberUID]
 
 		// From the client to each member.
-		u.User.messageUser(member, "JOIN", []string{channel.Name})
+		u.messageUser(member, "JOIN", []string{channel.Name})
 	}
 }
 
@@ -598,7 +616,7 @@ func (u *LocalUser) privmsgCommand(m irc.Message) {
 			member := u.Catbox.Users[memberUID]
 
 			// From the client to each member.
-			u.User.messageUser(member, m.Command, []string{channel.Name, msg})
+			u.messageUser(member, m.Command, []string{channel.Name, msg})
 		}
 
 		return
@@ -623,10 +641,10 @@ func (u *LocalUser) privmsgCommand(m irc.Message) {
 
 	u.LastMessageTime = time.Now()
 
-	if targetUser.LocalUser != nil {
-		u.User.messageUser(targetUser, m.Command, []string{nickName, msg})
+	if targetUser.isLocal() {
+		u.messageUser(targetUser, m.Command, []string{nickName, msg})
 	} else {
-		u.User.messageUser(targetUser, m.Command, []string{string(targetUser.UID),
+		u.messageUser(targetUser, m.Command, []string{string(targetUser.UID),
 			msg})
 	}
 }
@@ -840,7 +858,7 @@ func (u *LocalUser) operCommand(m irc.Message) {
 	u.Catbox.Opers[u.User.UID] = u.User
 
 	// From themselves to themselves.
-	u.User.messageUser(u.User, "MODE", []string{u.User.DisplayNick, "+o"})
+	u.messageUser(u.User, "MODE", []string{u.User.DisplayNick, "+o"})
 
 	// 381 RPL_YOUREOPER
 	u.messageFromServer("381", []string{"You are now an IRC operator"})
@@ -948,7 +966,7 @@ func (u *LocalUser) userModeCommand(targetUser *User, modes string) {
 
 		delete(u.User.Modes, 'o')
 		delete(u.Catbox.Opers, u.User.UID)
-		u.User.messageUser(u.User, "MODE", []string{"-o", u.User.DisplayNick})
+		u.messageUser(u.User, "MODE", []string{"-o", u.User.DisplayNick})
 	}
 }
 
@@ -1083,7 +1101,7 @@ func (u *LocalUser) topicCommand(m irc.Message) {
 	for memberUID := range channel.Members {
 		member := u.Catbox.Users[memberUID]
 		// 332 RPL_TOPIC
-		u.User.messageUser(member, "TOPIC", []string{channel.Name, channel.Topic})
+		u.messageUser(member, "TOPIC", []string{channel.Name, channel.Topic})
 	}
 }
 

@@ -73,9 +73,9 @@ The main ideas I plan for it are (in no particular order):
       SJOIN, TOPIC, UID
     * Nick collisions
   * TLS
+  * Auto server connection.
   * Log to file.
   * Daemonize
-  * Server console.
 
 
 ## Maybe
@@ -96,3 +96,4 @@ The main ideas I plan for it are (in no particular order):
   * Multi line motd
   * Reload configuration without restart
   * Upgrade in place (is this possible with TLS connections?)
+  * Server console.

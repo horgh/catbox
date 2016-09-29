@@ -24,11 +24,11 @@ type User struct {
 	// LocalUser set if this is a local user.
 	LocalUser *LocalUser
 
-	// Server set if this is a remote user.
+	// Link set if this is a remote user.
 	// This is the server we heard about the user from. It is not necessarily the
 	// server they are on. It could be on a server linked to the one we are
 	// linked to.
-	Server *Server
+	Link *LocalServer
 }
 
 func (u *User) String() string {
@@ -56,8 +56,16 @@ func (u *User) modesString() string {
 	return s
 }
 
+func (u *User) isLocal() bool {
+	return u.LocalUser != nil
+}
+
+func (u *User) isRemote() bool {
+	return !u.isLocal()
+}
+
 func (u *User) messageUser(to *User, command string, params []string) {
-	if to.LocalUser != nil {
+	if u.isLocal() {
 		to.LocalUser.maybeQueueMessage(irc.Message{
 			Prefix:  u.nickUhost(),
 			Command: command,
@@ -66,7 +74,7 @@ func (u *User) messageUser(to *User, command string, params []string) {
 		return
 	}
 
-	to.Server.LocalServer.maybeQueueMessage(irc.Message{
+	to.Link.maybeQueueMessage(irc.Message{
 		Prefix:  string(u.UID),
 		Command: command,
 		Params:  params,

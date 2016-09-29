@@ -92,6 +92,8 @@ func (s *LocalServer) quit(msg string) {
 	delete(s.Catbox.LocalServers, s.ID)
 
 	// TODO: Make all clients quit that are on the other side.
+
+	// TODO: Inform any other servers that are connected.
 }
 
 func (s *LocalServer) sendBurst() {
@@ -99,8 +101,7 @@ func (s *LocalServer) sendBurst() {
 	// Parameters: <nick> <hopcount> <nick TS> <umodes> <username> <hostname> <IP> <UID> :<real name>
 	// :8ZZ UID will 1 1475024621 +i will blashyrkh. 0 8ZZAAAAAB :will
 	for _, user := range s.Catbox.Users {
-		// Don't tell them about their own users.
-		if user.Server != nil && user.Server.LocalServer == s {
+		if user.isRemote() && user.Link == s {
 			continue
 		}
 
@@ -109,7 +110,8 @@ func (s *LocalServer) sendBurst() {
 			Command: "UID",
 			Params: []string{
 				user.DisplayNick,
-				"1",
+				// Hop count increases for them.
+				fmt.Sprintf("%d", user.HopCount+1),
 				fmt.Sprintf("%d", user.NickTS),
 				user.modesString(),
 				user.Username,
@@ -335,7 +337,7 @@ func (s *LocalServer) uidCommand(m irc.Message) {
 		IP:          ip,
 		UID:         uid,
 		RealName:    realName,
-		Server:      s.Server,
+		Link:        s,
 	}
 
 	if u.isOperator() {
@@ -395,7 +397,7 @@ func (s *LocalServer) privmsgCommand(m irc.Message) {
 				})
 			} else {
 				// Propagate to the server we know the target user through.
-				targetUser.Server.LocalServer.maybeQueueMessage(m)
+				targetUser.Link.maybeQueueMessage(m)
 			}
 
 			return
