@@ -58,12 +58,17 @@ The main ideas I plan for it are (in no particular order):
 
   * Nick TS changes when: Client connects or when it changes its nick.
   * Channel TS changes when: Channel created
+  * Server to server (ircd-ratbox)
+    * Burst: SID, UID, SJOIN
+    * Post-burst: INVITE, JOIN, KILL, NICK, NOTICE, PART, PRIVMSG, QUIT, SID,
+      SJOIN, TOPIC, UID
 
 
 # Todo
 
+  * PRIVMSG length once propagated
   * Server to server (ircd-ratbox)
-    * Burst: SID, UID, SJOIN
+    * Burst: SID, SJOIN
     * Post-burst: INVITE, JOIN, KILL, NICK, NOTICE, PART, PRIVMSG, QUIT, SID,
       SJOIN, TOPIC, UID
     * Nick collisions

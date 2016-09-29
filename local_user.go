@@ -616,7 +616,12 @@ func (u *LocalUser) privmsgCommand(m irc.Message) {
 
 	u.LastMessageTime = time.Now()
 
-	u.User.messageUser(targetUser, m.Command, []string{nickName, msg})
+	if targetUser.LocalUser != nil {
+		u.User.messageUser(targetUser, m.Command, []string{nickName, msg})
+	} else {
+		u.User.messageUser(targetUser, m.Command, []string{string(targetUser.UID),
+			msg})
+	}
 }
 
 func (u *LocalUser) lusersCommand() {
@@ -1164,7 +1169,7 @@ func (u *LocalUser) linksCommand(m irc.Message) {
 		u.messageFromServer("364", []string{
 			s.Name,
 			s.Name,
-			fmt.Sprintf("%d %s", s.Hopcount, s.Description),
+			fmt.Sprintf("%d %s", s.HopCount, s.Description),
 		})
 	}
 

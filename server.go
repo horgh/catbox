@@ -7,7 +7,7 @@ type Server struct {
 	SID         TS6SID
 	Name        string
 	Description string
-	Hopcount    int
+	HopCount    int
 	LocalServer *LocalServer
 }
 

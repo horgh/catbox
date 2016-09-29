@@ -80,6 +80,11 @@ func isValidUser(maxLen int, u string) bool {
 	return true
 }
 
+func isValidRealName(s string) bool {
+	// Arbitrary. Length only for now.
+	return len(s) <= 64
+}
+
 // isValidChannel checks a channel name for validity.
 //
 // You should canonicalize it before using this function.
@@ -122,6 +127,26 @@ func isNumericCommand(command string) bool {
 	return true
 }
 
+func isValidUID(s string) bool {
+	// SID + ID = UID
+	if len(s) != 9 {
+		return false
+	}
+
+	if !isValidSID(s[0:3]) {
+		return false
+	}
+	return isValidID(s[3:])
+}
+
+func isValidID(s string) bool {
+	matched, err := regexp.MatchString("^[A-Z][A-Z0-9]{5}$", s)
+	if err != nil {
+		return false
+	}
+	return matched
+}
+
 func isValidSID(s string) bool {
 	matched, err := regexp.MatchString("^[0-9][0-9A-Z]{2}$", s)
 	if err != nil {
@@ -130,9 +155,8 @@ func isValidSID(s string) bool {
 	return matched
 }
 
-// Make TS6 ID. 6 characters long, [A-Z]{6}. Must be unique on this server.
-// Digits are legal too (after position 0), but I'm not using them at this
-// time.
+// Make TS6 ID. 6 characters long, [A-Z][A-Z0-9]{5}. Must be unique on this
+// server.
 // I already assign clients a unique integer ID per server. Use this to generate
 // a TS6 ID.
 // Take integer ID and convert it to base 36. (A-Z and 0-9)

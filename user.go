@@ -9,20 +9,26 @@ import (
 // User holds information about a user. It may be remote or local.
 type User struct {
 	DisplayNick string
-
-	// I don't track hopcount.
-
-	NickTS   int64
-	Modes    map[byte]struct{}
-	Username string
-	Hostname string
-	IP       string
-	UID      TS6UID
-	RealName string
+	HopCount    int
+	NickTS      int64
+	Modes       map[byte]struct{}
+	Username    string
+	Hostname    string
+	IP          string
+	UID         TS6UID
+	RealName    string
 
 	// Channel name (canonicalized) to Channel.
-	Channels  map[string]*Channel
+	Channels map[string]*Channel
+
+	// LocalUser set if this is a local user.
 	LocalUser *LocalUser
+
+	// Server set if this is a remote user.
+	// This is the server we heard about the user from. It is not necessarily the
+	// server they are on. It could be on a server linked to the one we are
+	// linked to.
+	Server *Server
 }
 
 func (u *User) String() string {
@@ -42,8 +48,15 @@ func (u *User) onChannel(channel *Channel) bool {
 	return exists
 }
 
-func (u *User) messageUser(to *User, command string,
-	params []string) {
+func (u *User) modesString() string {
+	s := "+"
+	for m := range u.Modes {
+		s += string(m)
+	}
+	return s
+}
+
+func (u *User) messageUser(to *User, command string, params []string) {
 	if to.LocalUser != nil {
 		to.LocalUser.maybeQueueMessage(irc.Message{
 			Prefix:  u.nickUhost(),
@@ -53,5 +66,9 @@ func (u *User) messageUser(to *User, command string,
 		return
 	}
 
-	// TODO: Remote users
+	to.Server.LocalServer.maybeQueueMessage(irc.Message{
+		Prefix:  string(u.UID),
+		Command: command,
+		Params:  params,
+	})
 }

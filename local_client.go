@@ -202,6 +202,7 @@ func (c *LocalClient) registerUser() {
 
 	u := &User{
 		DisplayNick: c.PreRegDisplayNick,
+		HopCount:    0,
 		NickTS:      time.Now().Unix(),
 		Modes:       make(map[byte]struct{}),
 		Username:    c.PreRegUser,
@@ -250,7 +251,7 @@ func (c *LocalClient) registerUser() {
 		// It seems ambiguous if these are to be separate parameters.
 		lu.Catbox.Config.ServerName,
 		lu.Catbox.Config.Version,
-		"i",
+		"io",
 		"ns",
 	})
 
@@ -360,6 +361,7 @@ func (c *LocalClient) registerServer() {
 		SID:         TS6SID(c.PreRegTS6SID),
 		Name:        c.PreRegServerName,
 		Description: c.PreRegServerDesc,
+		HopCount:    1,
 		LocalServer: ls,
 	}
 
@@ -555,9 +557,7 @@ func (c *LocalClient) userCommand(m irc.Message) {
 
 	// We could do something with user mode here.
 
-	// Validate realname.
-	// Arbitrary. Length only.
-	if len(m.Params[3]) > 64 {
+	if !isValidRealName(m.Params[3]) {
 		c.messageFromServer("ERROR", []string{"Invalid realname"})
 		return
 	}
