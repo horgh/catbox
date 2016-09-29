@@ -62,7 +62,6 @@ The main ideas I plan for it are (in no particular order):
 
 # Todo
 
-  * Fix unit tests
   * Send +i to use on connect, and track that (e.g. when creating User)
   * If burst goes on too long, boot server
   * Server to server (ircd-ratbox)

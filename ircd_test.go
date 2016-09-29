@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-func TestGetTS6ID(t *testing.T) {
+func TestMakeTS6ID(t *testing.T) {
 	tests := []struct {
 		input   uint64
 		output  string
@@ -30,12 +30,10 @@ func TestGetTS6ID(t *testing.T) {
 	}
 
 	for _, test := range tests {
-		c := UserClient{Client: Client{ID: test.input}}
-
-		id, err := c.getTS6ID()
+		id, err := makeTS6ID(test.input)
 		if err != nil {
 			if test.success {
-				t.Errorf("getTS6ID(%d) = error %s, wanted %s", test.input, err,
+				t.Errorf("makeTS6ID(%d) = error %s, wanted %s", test.input, err,
 					test.output)
 				continue
 			}
@@ -43,12 +41,12 @@ func TestGetTS6ID(t *testing.T) {
 		}
 
 		if !test.success {
-			t.Errorf("getTS6ID(%d) = %s, wanted error", test.input, test.output)
+			t.Errorf("makeTS6ID(%d) = %s, wanted error", test.input, test.output)
 			continue
 		}
 
-		if id != test.output {
-			t.Errorf("getTS6ID(%d) = %s, wanted %s", test.input, id, test.output)
+		if id != TS6ID(test.output) {
+			t.Errorf("makeTS6ID(%d) = %s, wanted %s", test.input, id, test.output)
 			continue
 		}
 
