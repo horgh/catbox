@@ -196,9 +196,7 @@ func (u *LocalUser) quit(msg string) {
 	close(u.WriteChan)
 
 	delete(u.Catbox.Nicks, canonicalizeNick(u.User.DisplayNick))
-
 	delete(u.Catbox.LocalUsers, u.ID)
-
 	if u.User.isOperator() {
 		delete(u.Catbox.Opers, u.User.UID)
 	}

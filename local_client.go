@@ -205,8 +205,8 @@ func (c *LocalClient) registerUser() {
 		NickTS:      time.Now().Unix(),
 		Modes:       make(map[byte]struct{}),
 		Username:    c.PreRegUser,
-		Hostname:    fmt.Sprintf("%s", c.Conn.RemoteAddr()),
-		IP:          fmt.Sprintf("%s", c.Conn.RemoteAddr()),
+		Hostname:    fmt.Sprintf("%s", c.Conn.IP),
+		IP:          fmt.Sprintf("%s", c.Conn.IP),
 		RealName:    c.PreRegRealName,
 		Channels:    make(map[string]*Channel),
 		LocalUser:   lu,
@@ -222,6 +222,7 @@ func (c *LocalClient) registerUser() {
 
 	delete(c.Catbox.LocalClients, c.ID)
 	c.Catbox.LocalUsers[lu.ID] = lu
+	c.Catbox.Nicks[canonicalizeNick(u.DisplayNick)] = u.UID
 	c.Catbox.Users[u.UID] = u
 
 	// TODO: Tell linked servers about this new client.
@@ -255,6 +256,9 @@ func (c *LocalClient) registerUser() {
 
 	lu.lusersCommand()
 	lu.motdCommand()
+
+	u.messageUser(u, "MODE", []string{u.DisplayNick, "+i"})
+	u.Modes['i'] = struct{}{}
 }
 
 // Send an IRC message to a client. Appears to be from the server.
