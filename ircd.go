@@ -57,11 +57,14 @@ type Catbox struct {
 	WG sync.WaitGroup
 }
 
-// TS6UID is SID+UID. Uniquely identify a client.
-type TS6UID string
+// TS6ID is a client's unique identifier. Unique to this server only.
+type TS6ID string
 
-// TS6SID uniquely identifies a server.
+// TS6SID uniquely identifies a server. Globally.
 type TS6SID string
+
+// TS6UID is SID+UID. Uniquely identify a client. Globally.
+type TS6UID string
 
 // EventClient interface defines methods a {local,user,server}client must
 // implement for event processing.
@@ -249,6 +252,11 @@ func (cb *Catbox) shutdown() {
 	}
 }
 
+// getClientID generates a new client ID. Each client that connects to us (or
+// we connect to in the case of initiating a connection to a server) we assign
+// a unique id using this function.
+//
+// We take a lock to allow it to be called safely from any goroutine.
 func (cb *Catbox) getClientID() uint64 {
 	cb.NextClientIDLock.Lock()
 
@@ -434,63 +442,4 @@ func (cb *Catbox) noticeOpers(msg string) {
 	for _, c := range cb.Opers {
 		c.notice(msg)
 	}
-}
-
-// Make TS6 ID. 6 characters long, [A-Z]{6}. Must be unique on this server.
-// Digits are legal too (after position 0), but I'm not using them at this
-// time.
-// I already assign clients a unique integer ID per server. Use this to generate
-// a TS6 ID.
-// Take integer ID and convert it to base 36. (A-Z and 0-9)
-func (cb *Catbox) getTS6ID(id uint64) (string, error) {
-	// Check the integer ID is < 26*36**5. That is as many valid TS6 IDs we can
-	// have. The first character must be [A-Z], the remaining 5 are [A-Z0-9],
-	// hence 36**5 vs. 26.
-	// This is also the maximum number of connections we can have per run.
-	// 1,572,120,576
-	if id >= 1572120576 {
-		return "", fmt.Errorf("TS6 ID overflow")
-	}
-
-	n := id
-
-	ts6id := []byte("AAAAAA")
-
-	for pos := 5; pos >= 0; pos-- {
-		if n >= 36 {
-			rem := n % 36
-
-			// 0 to 25 are A to Z
-			// 26 to 35 are 0 to 9
-			if rem >= 26 {
-				ts6id[pos] = byte(rem - 26 + '0')
-			} else {
-				ts6id[pos] = byte(rem + 'A')
-			}
-
-			n /= 36
-			continue
-		}
-
-		if n >= 26 {
-			ts6id[pos] = byte(n - 26 + '0')
-		} else {
-			ts6id[pos] = byte(n + 'A')
-		}
-
-		// Once we are < 36, we're done.
-		break
-	}
-
-	return string(ts6id), nil
-}
-
-// Make TS6 UID. UID = SID concatenated with ID
-func (cb *Catbox) getTS6UID(id uint64) (TS6UID, error) {
-	ts6id, err := cb.getTS6ID(id)
-	if err != nil {
-		return TS6UID(""), err
-	}
-
-	return TS6UID(cb.Config.TS6SID + ts6id), nil
 }

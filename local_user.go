@@ -13,11 +13,8 @@ import (
 // client.
 type LocalUser struct {
 	*LocalClient
-	*User
 
-	// Technically a server client does not need this. But we have one assigned
-	// as every client gets a unique number.
-	UID TS6UID
+	User *User
 
 	// The last time we heard anything from the client.
 	LastActivityTime time.Time
@@ -34,12 +31,14 @@ type LocalUser struct {
 func NewLocalUser(c *LocalClient) *LocalUser {
 	now := time.Now()
 
-	return &LocalUser{
+	u := &LocalUser{
 		LocalClient:      c,
 		LastActivityTime: now,
 		LastPingTime:     now,
 		LastMessageTime:  now,
 	}
+
+	return u
 }
 
 func (u *LocalUser) String() string {
@@ -59,15 +58,25 @@ func (u *LocalUser) setLastPingTime(t time.Time) {
 }
 
 func (u *LocalUser) onChannel(channel *Channel) bool {
-	_, exists := u.Channels[channel.Name]
+	_, exists := u.User.Channels[channel.Name]
 	return exists
 }
 
 func (u *LocalUser) notice(s string) {
 	u.messageFromServer("NOTICE", []string{
-		u.DisplayNick,
+		u.User.DisplayNick,
 		fmt.Sprintf("*** Notice --- %s", s),
 	})
+}
+
+// Make TS6 UID. UID = SID concatenated with ID
+func (u *LocalUser) makeTS6UID(id uint64) (TS6UID, error) {
+	ts6id, err := makeTS6ID(u.ID)
+	if err != nil {
+		return TS6UID(""), err
+	}
+
+	return TS6UID(u.Catbox.Config.TS6SID + string(ts6id)), nil
 }
 
 // Send an IRC message to a client. Appears to be from the server.
@@ -76,10 +85,8 @@ func (u *LocalUser) notice(s string) {
 // Note: Only the server goroutine should call this (due to channel use).
 func (u *LocalUser) messageFromServer(command string, params []string) {
 	// For numeric messages, we need to prepend the nick.
-	// Use * for the nick in cases where the client doesn't have one yet.
-	// This is what ircd-ratbox does. Maybe not RFC...
 	if isNumericCommand(command) {
-		newParams := []string{u.DisplayNick}
+		newParams := []string{u.User.DisplayNick}
 		newParams = append(newParams, params...)
 		params = newParams
 	}
@@ -101,7 +108,7 @@ func (u *LocalUser) messageFromServer(command string, params []string) {
 func (u *LocalUser) messageClient(to *LocalUser, command string,
 	params []string) {
 	to.maybeQueueMessage(irc.Message{
-		Prefix:  u.nickUhost(),
+		Prefix:  u.User.nickUhost(),
 		Command: command,
 		Params:  params,
 	})
@@ -111,11 +118,14 @@ func (u *LocalUser) messageUser(to *User, command string,
 	params []string) {
 	if to.LocalUser != nil {
 		to.LocalUser.maybeQueueMessage(irc.Message{
-			Prefix:  u.nickUhost(),
+			Prefix:  u.User.nickUhost(),
 			Command: command,
 			Params:  params,
 		})
+		return
 	}
+
+	// TODO: Remote users
 }
 
 // part tries to remove the client from the channel.
@@ -166,8 +176,8 @@ func (u *LocalUser) part(channelName, message string) {
 	}
 
 	// Remove the client from the channel.
-	delete(channel.Members, u.UID)
-	delete(u.Channels, channel.Name)
+	delete(channel.Members, u.User.UID)
+	delete(u.User.Channels, channel.Name)
 
 	// If they are the last member, then drop the channel completely.
 	if len(channel.Members) == 0 {
@@ -178,7 +188,7 @@ func (u *LocalUser) part(channelName, message string) {
 // Note: Only the server goroutine should call this (due to closing channel).
 func (u *LocalUser) quit(msg string) {
 	// May already be cleaning up.
-	_, exists := u.Catbox.LocalUsers[u.UID]
+	_, exists := u.Catbox.LocalUsers[u.User.UID]
 	if !exists {
 		return
 	}
@@ -190,7 +200,7 @@ func (u *LocalUser) quit(msg string) {
 
 	toldClients := map[TS6UID]struct{}{}
 
-	for _, channel := range u.Channels {
+	for _, channel := range u.User.Channels {
 		for memberUID := range channel.Members {
 			_, exists := toldClients[memberUID]
 			if exists {
@@ -204,14 +214,14 @@ func (u *LocalUser) quit(msg string) {
 			toldClients[memberUID] = struct{}{}
 		}
 
-		delete(channel.Members, u.UID)
+		delete(channel.Members, u.User.UID)
 		if len(channel.Members) == 0 {
 			delete(u.Catbox.Channels, channel.Name)
 		}
 	}
 
 	// Ensure we tell the client (e.g., if in no channels).
-	_, exists = toldClients[u.UID]
+	_, exists = toldClients[u.User.UID]
 	if !exists {
 		u.messageUser(u.User, "QUIT", []string{msg})
 	}
@@ -220,12 +230,12 @@ func (u *LocalUser) quit(msg string) {
 
 	close(u.WriteChan)
 
-	delete(u.Catbox.Nicks, canonicalizeNick(u.DisplayNick))
+	delete(u.Catbox.Nicks, canonicalizeNick(u.User.DisplayNick))
 
-	delete(u.Catbox.LocalUsers, u.UID)
+	delete(u.Catbox.LocalUsers, u.User.UID)
 
-	if u.isOperator() {
-		delete(u.Catbox.Opers, u.UID)
+	if u.User.isOperator() {
+		delete(u.Catbox.Opers, u.User.UID)
 	}
 }
 
@@ -376,8 +386,8 @@ func (u *LocalUser) nickCommand(m irc.Message) {
 	}
 
 	// Flag the nick as taken by this client.
-	u.Catbox.Nicks[nickCanon] = u.UID
-	oldDisplayNick := u.DisplayNick
+	u.Catbox.Nicks[nickCanon] = u.User.UID
+	oldDisplayNick := u.User.DisplayNick
 
 	// Free the old nick.
 	delete(u.Catbox.Nicks, canonicalizeNick(oldDisplayNick))
@@ -385,7 +395,7 @@ func (u *LocalUser) nickCommand(m irc.Message) {
 	// We need to inform other clients about the nick change.
 	// Any that are in the same channel as this client.
 	informedClients := map[TS6UID]struct{}{}
-	for _, channel := range u.Channels {
+	for _, channel := range u.User.Channels {
 		for memberUID := range channel.Members {
 			// Tell each client only once.
 			_, exists := informedClients[memberUID]
@@ -403,14 +413,14 @@ func (u *LocalUser) nickCommand(m irc.Message) {
 
 	// Reply to the client. We should have above, but if they were not on any
 	// channels then we did not.
-	_, exists = informedClients[u.UID]
+	_, exists = informedClients[u.User.UID]
 	if !exists {
 		u.messageClient(u, "NICK", []string{nick})
 	}
 
 	// Finally, make the update. Do this last as we need to ensure we act
 	// as the old nick when crafting messages.
-	u.DisplayNick = nick
+	u.User.DisplayNick = nick
 }
 
 // The USER command only occurs during connection registration.
@@ -430,7 +440,7 @@ func (u *LocalUser) joinCommand(m irc.Message) {
 
 	// JOIN 0 is a special case. Client leaves all channels.
 	if len(m.Params) == 1 && m.Params[0] == "0" {
-		for _, channel := range u.Channels {
+		for _, channel := range u.User.Channels {
 			u.part(channel.Name, "")
 		}
 		return
@@ -458,7 +468,7 @@ func (u *LocalUser) joinCommand(m irc.Message) {
 		// 443 ERR_USERONCHANNEL
 		// This error code is supposed to be for inviting a user on a channel
 		// already, but it works.
-		u.messageFromServer("443", []string{u.DisplayNick, channelName,
+		u.messageFromServer("443", []string{u.User.DisplayNick, channelName,
 			"is already on channel"})
 		return
 	}
@@ -474,8 +484,8 @@ func (u *LocalUser) joinCommand(m irc.Message) {
 	}
 
 	// Add the client to the channel.
-	channel.Members[u.UID] = struct{}{}
-	u.Channels[channelName] = channel
+	channel.Members[u.User.UID] = struct{}{}
+	u.User.Channels[channelName] = channel
 
 	// Tell the client about the join. This is what RFC says to send:
 	// Send JOIN, RPL_TOPIC, and RPL_NAMREPLY.
@@ -518,7 +528,7 @@ func (u *LocalUser) joinCommand(m irc.Message) {
 	// Tell each member in the channel about the client.
 	for memberUID := range channel.Members {
 		// Don't tell the client. We already did (above).
-		if memberUID == u.UID {
+		if memberUID == u.User.UID {
 			continue
 		}
 
@@ -574,7 +584,7 @@ func (u *LocalUser) privmsgCommand(m irc.Message) {
 	// The message may be too long once we add the prefix/encode the message.
 	// Strip any trailing characters until it's short enough.
 	// TODO: Other messages can have this problem too (PART, QUIT, etc...)
-	msgLen := len(":") + len(u.nickUhost()) + len(" ") + len(m.Command) +
+	msgLen := len(":") + len(u.User.nickUhost()) + len(" ") + len(m.Command) +
 		len(" ") + len(target) + len(" ") + len(":") + len(msg) + len("\r\n")
 	if msgLen > irc.MaxLineLength {
 		trimCount := msgLen - irc.MaxLineLength
@@ -611,7 +621,7 @@ func (u *LocalUser) privmsgCommand(m irc.Message) {
 
 		// Send to all members of the channel. Except the client itself it seems.
 		for memberUID := range channel.Members {
-			if memberUID == u.UID {
+			if memberUID == u.User.UID {
 				continue
 			}
 
@@ -653,16 +663,16 @@ func (u *LocalUser) lusersCommand() {
 	// 251 RPL_LUSERCLIENT
 	u.messageFromServer("251", []string{
 		fmt.Sprintf("There are %d users and %d services on %d servers.",
-			len(u.Catbox.LocalUsers),
+			len(u.Catbox.Users),
 			0,
 			// +1 to count ourself.
-			len(u.Catbox.LocalServers)+1),
+			len(u.Catbox.Users)+1),
 	})
 
 	// 252 RPL_LUSEROP
 	operCount := 0
-	for _, client := range u.Catbox.LocalUsers {
-		if client.isOperator() {
+	for _, user := range u.Catbox.Users {
+		if user.isOperator() {
 			operCount++
 		}
 	}
@@ -744,7 +754,7 @@ func (u *LocalUser) pingCommand(m irc.Message) {
 }
 
 func (u *LocalUser) dieCommand(m irc.Message) {
-	if !u.isOperator() {
+	if !u.User.isOperator() {
 		// 481 ERR_NOPRIVILEGES
 		u.messageFromServer("481", []string{"Permission Denied- You're not an IRC operator"})
 		return
@@ -833,7 +843,7 @@ func (u *LocalUser) operCommand(m irc.Message) {
 		return
 	}
 
-	if u.isOperator() {
+	if u.User.isOperator() {
 		// 381 RPL_YOUREOPER
 		u.messageFromServer("381", []string{"You are already an IRC operator"})
 		return
@@ -850,11 +860,11 @@ func (u *LocalUser) operCommand(m irc.Message) {
 	}
 
 	// Give them oper status.
-	u.Modes['o'] = struct{}{}
+	u.User.Modes['o'] = struct{}{}
 
-	u.Catbox.Opers[u.UID] = u
+	u.Catbox.Opers[u.User.UID] = u
 
-	u.messageClient(u, "MODE", []string{u.DisplayNick, "+o"})
+	u.messageClient(u, "MODE", []string{u.User.DisplayNick, "+o"})
 
 	// 381 RPL_YOUREOPER
 	u.messageFromServer("381", []string{"You are now an IRC operator"})
@@ -914,7 +924,7 @@ func (u *LocalUser) userModeCommand(targetUser *User, modes string) {
 	// No modes given means we should send back their current mode.
 	if len(modes) == 0 {
 		modeReturn := "+"
-		for k := range u.Modes {
+		for k := range u.User.Modes {
 			modeReturn += string(k)
 		}
 
@@ -956,13 +966,13 @@ func (u *LocalUser) userModeCommand(targetUser *User, modes string) {
 		}
 
 		// This is -o. They have to be operator for there to be any effect.
-		if !u.isOperator() {
+		if !u.User.isOperator() {
 			continue
 		}
 
-		delete(u.Modes, 'o')
-		delete(u.Catbox.Opers, u.UID)
-		u.messageClient(u, "MODE", []string{"-o", u.DisplayNick})
+		delete(u.User.Modes, 'o')
+		delete(u.Catbox.Opers, u.User.UID)
+		u.messageClient(u, "MODE", []string{"-o", u.User.DisplayNick})
 	}
 }
 
@@ -1105,7 +1115,7 @@ func (u *LocalUser) topicCommand(m irc.Message) {
 //
 // I implement CONNECT differently than RFC 2812. Only a single parameter.
 func (u *LocalUser) connectCommand(m irc.Message) {
-	if !u.isOperator() {
+	if !u.User.isOperator() {
 		// 481 ERR_NOPRIVILEGES
 		u.messageFromServer("481", []string{"Permission Denied- You're not an IRC operator"})
 		return

@@ -18,6 +18,7 @@ type LocalClient struct {
 	// Conn is the TCP connection to the client.
 	Conn Conn
 
+	// Locally unique identifier.
 	ID uint64
 
 	// WriteChan is the channel to send to to write to the client.
@@ -86,7 +87,7 @@ func NewLocalClient(cb *Catbox, id uint64, conn net.Conn) *LocalClient {
 }
 
 func (c *LocalClient) String() string {
-	return fmt.Sprintf("%s", c.Conn.RemoteAddr())
+	return fmt.Sprintf("%d %s", c.ID, c.Conn.RemoteAddr())
 }
 
 // readLoop endlessly reads from the client's TCP connection. It parses each
@@ -184,11 +185,11 @@ func (c *LocalClient) quit(msg string) {
 	delete(c.Catbox.LocalClients, c.ID)
 }
 
-func (c *LocalClient) completeRegistration() {
+func (c *LocalClient) registerUser() {
 	// RFC 2813 specifies messages to send upon registration.
 
-	// Double check NICK is still available. I'm no longer reserving it in the
-	// Nicks map until registration completes, so check now.
+	// Check NICK is still available. I'm no longer reserving it in the Nicks map
+	// until registration completes, so check now.
 	_, exists := c.Catbox.Nicks[canonicalizeNick(c.PreRegDisplayNick)]
 	if exists {
 		// 433 ERR_NICKNAMEINUSE
@@ -197,59 +198,63 @@ func (c *LocalClient) completeRegistration() {
 		return
 	}
 
-	u := NewLocalUser(c)
+	lu := NewLocalUser(c)
 
-	delete(c.Catbox.LocalClients, c.ID)
-
-	c.Catbox.LocalUsers[u.UID] = u
-
-	c.Catbox.Users[u.UID] = &User{
+	u := &User{
 		DisplayNick: c.PreRegDisplayNick,
 		NickTS:      time.Now().Unix(),
 		Modes:       make(map[byte]struct{}),
 		Username:    c.PreRegUser,
 		Hostname:    fmt.Sprintf("%s", c.Conn.RemoteAddr()),
 		IP:          fmt.Sprintf("%s", c.Conn.RemoteAddr()),
-		UID:         u.UID,
 		RealName:    c.PreRegRealName,
 		Channels:    make(map[string]*Channel),
-		LocalUser:   u,
+		LocalUser:   lu,
 	}
 
-	u.User = c.Catbox.Users[u.UID]
+	lu.User = u
 
-	// TODO: Tell linked servers.
+	uid, err := lu.makeTS6UID(lu.ID)
+	if err != nil {
+		log.Fatal(err)
+	}
+	u.UID = uid
+
+	delete(c.Catbox.LocalClients, c.ID)
+	c.Catbox.LocalUsers[u.UID] = lu
+	c.Catbox.Users[u.UID] = u
+
+	// TODO: Tell linked servers about this new client.
 
 	// 001 RPL_WELCOME
-	u.messageFromServer("001", []string{
-		fmt.Sprintf("Welcome to the Internet Relay Network %s",
-			u.nickUhost()),
+	lu.messageFromServer("001", []string{
+		fmt.Sprintf("Welcome to the Internet Relay Network %s", u.nickUhost()),
 	})
 
 	// 002 RPL_YOURHOST
-	u.messageFromServer("002", []string{
+	lu.messageFromServer("002", []string{
 		fmt.Sprintf("Your host is %s, running version %s",
-			u.Catbox.Config.ServerName,
-			u.Catbox.Config.Version),
+			lu.Catbox.Config.ServerName,
+			lu.Catbox.Config.Version),
 	})
 
 	// 003 RPL_CREATED
-	u.messageFromServer("003", []string{
-		fmt.Sprintf("This server was created %s", u.Catbox.Config.CreatedDate),
+	lu.messageFromServer("003", []string{
+		fmt.Sprintf("This server was created %s", lu.Catbox.Config.CreatedDate),
 	})
 
 	// 004 RPL_MYINFO
 	// <servername> <version> <available user modes> <available channel modes>
-	u.messageFromServer("004", []string{
+	lu.messageFromServer("004", []string{
 		// It seems ambiguous if these are to be separate parameters.
-		u.Catbox.Config.ServerName,
-		u.Catbox.Config.Version,
+		lu.Catbox.Config.ServerName,
+		lu.Catbox.Config.Version,
 		"i",
 		"ns",
 	})
 
-	u.lusersCommand()
-	u.motdCommand()
+	lu.lusersCommand()
+	lu.motdCommand()
 }
 
 // Send an IRC message to a client. Appears to be from the server.
@@ -345,26 +350,26 @@ func (c *LocalClient) sendSVINFO() {
 }
 
 func (c *LocalClient) registerServer() {
-	s := NewLocalServer(c)
+	ls := NewLocalServer(c)
 
-	delete(c.Catbox.LocalClients, c.ID)
-
-	c.Catbox.LocalServers[s.SID] = s
-
-	c.Catbox.Servers[s.SID] = &Server{
-		SID:         s.SID,
+	s := &Server{
+		SID:         TS6SID(c.PreRegTS6SID),
 		Name:        c.PreRegServerName,
 		Description: c.PreRegServerDesc,
-		LocalServer: s,
+		LocalServer: ls,
 	}
 
-	s.Server = c.Catbox.Servers[s.SID]
+	ls.Server = s
 
-	s.Catbox.noticeOpers(fmt.Sprintf("Established link to %s.",
+	delete(c.Catbox.LocalClients, c.ID)
+	c.Catbox.LocalServers[s.SID] = ls
+	c.Catbox.Servers[s.SID] = s
+
+	ls.Catbox.noticeOpers(fmt.Sprintf("Established link to %s.",
 		c.PreRegServerName))
 
-	s.sendBurst()
-	s.sendPING()
+	ls.sendBurst()
+	ls.sendPING()
 }
 
 func (c *LocalClient) isSendQueueExceeded() bool {
@@ -514,7 +519,7 @@ func (c *LocalClient) nickCommand(m irc.Message) {
 
 	// If we have USER done already, then we're done registration.
 	if len(c.PreRegUser) > 0 {
-		c.completeRegistration()
+		c.registerUser()
 	}
 }
 
@@ -556,7 +561,7 @@ func (c *LocalClient) userCommand(m irc.Message) {
 
 	// If we have a nick, then we're done registration.
 	if len(c.PreRegDisplayNick) > 0 {
-		c.completeRegistration()
+		c.registerUser()
 	}
 }
 
