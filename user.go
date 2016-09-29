@@ -1,6 +1,10 @@
 package main
 
-import "fmt"
+import (
+	"fmt"
+
+	"summercat.com/irc"
+)
 
 // User holds information about a user. It may be remote or local.
 type User struct {
@@ -31,4 +35,23 @@ func (u *User) nickUhost() string {
 func (u *User) isOperator() bool {
 	_, exists := u.Modes['o']
 	return exists
+}
+
+func (u *User) onChannel(channel *Channel) bool {
+	_, exists := u.Channels[channel.Name]
+	return exists
+}
+
+func (u *User) messageUser(to *User, command string,
+	params []string) {
+	if to.LocalUser != nil {
+		to.LocalUser.maybeQueueMessage(irc.Message{
+			Prefix:  u.nickUhost(),
+			Command: command,
+			Params:  params,
+		})
+		return
+	}
+
+	// TODO: Remote users
 }

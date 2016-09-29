@@ -57,11 +57,6 @@ func (u *LocalUser) setLastPingTime(t time.Time) {
 	u.LastPingTime = t
 }
 
-func (u *LocalUser) onChannel(channel *Channel) bool {
-	_, exists := u.User.Channels[channel.Name]
-	return exists
-}
-
 func (u *LocalUser) notice(s string) {
 	u.messageFromServer("NOTICE", []string{
 		u.User.DisplayNick,
@@ -98,36 +93,6 @@ func (u *LocalUser) messageFromServer(command string, params []string) {
 	})
 }
 
-// Send an IRC message to a client from another client.
-// The server is the one sending it, but it appears from the client through use
-// of the prefix.
-//
-// This works by writing to a client's channel.
-//
-// Note: Only the server goroutine should call this (due to channel use).
-func (u *LocalUser) messageClient(to *LocalUser, command string,
-	params []string) {
-	to.maybeQueueMessage(irc.Message{
-		Prefix:  u.User.nickUhost(),
-		Command: command,
-		Params:  params,
-	})
-}
-
-func (u *LocalUser) messageUser(to *User, command string,
-	params []string) {
-	if to.LocalUser != nil {
-		to.LocalUser.maybeQueueMessage(irc.Message{
-			Prefix:  u.User.nickUhost(),
-			Command: command,
-			Params:  params,
-		})
-		return
-	}
-
-	// TODO: Remote users
-}
-
 // part tries to remove the client from the channel.
 //
 // We send a reply to the client. We also inform any other clients that need to
@@ -154,7 +119,7 @@ func (u *LocalUser) part(channelName, message string) {
 	}
 
 	// Are they on the channel?
-	if !u.onChannel(channel) {
+	if !u.User.onChannel(channel) {
 		// 403 ERR_NOSUCHCHANNEL. Used to indicate channel name is invalid.
 		u.messageFromServer("403", []string{channelName, "You are not on that channel"})
 		return
@@ -172,7 +137,7 @@ func (u *LocalUser) part(channelName, message string) {
 		member := u.Catbox.Users[memberUID]
 
 		// From the client to each member.
-		u.messageUser(member, "PART", params)
+		u.User.messageUser(member, "PART", params)
 	}
 
 	// Remove the client from the channel.
@@ -209,7 +174,7 @@ func (u *LocalUser) quit(msg string) {
 
 			member := u.Catbox.Users[memberUID]
 
-			u.messageUser(member, "QUIT", []string{msg})
+			u.User.messageUser(member, "QUIT", []string{msg})
 
 			toldClients[memberUID] = struct{}{}
 		}
@@ -223,7 +188,7 @@ func (u *LocalUser) quit(msg string) {
 	// Ensure we tell the client (e.g., if in no channels).
 	_, exists = toldClients[u.User.UID]
 	if !exists {
-		u.messageUser(u.User, "QUIT", []string{msg})
+		u.User.messageUser(u.User, "QUIT", []string{msg})
 	}
 
 	u.messageFromServer("ERROR", []string{msg})
@@ -406,7 +371,7 @@ func (u *LocalUser) nickCommand(m irc.Message) {
 			member := u.Catbox.Users[memberUID]
 
 			// Message needs to come from the OLD nick.
-			u.messageUser(member, "NICK", []string{nick})
+			u.User.messageUser(member, "NICK", []string{nick})
 			informedClients[member.UID] = struct{}{}
 		}
 	}
@@ -415,7 +380,7 @@ func (u *LocalUser) nickCommand(m irc.Message) {
 	// channels then we did not.
 	_, exists = informedClients[u.User.UID]
 	if !exists {
-		u.messageClient(u, "NICK", []string{nick})
+		u.User.messageUser(u.User, "NICK", []string{nick})
 	}
 
 	// Finally, make the update. Do this last as we need to ensure we act
@@ -464,7 +429,7 @@ func (u *LocalUser) joinCommand(m irc.Message) {
 	// Try to join the client to the channel.
 
 	// Is the client in the channel already?
-	if u.onChannel(&Channel{Name: channelName}) {
+	if u.User.onChannel(&Channel{Name: channelName}) {
 		// 443 ERR_USERONCHANNEL
 		// This error code is supposed to be for inviting a user on a channel
 		// already, but it works.
@@ -491,7 +456,7 @@ func (u *LocalUser) joinCommand(m irc.Message) {
 	// Send JOIN, RPL_TOPIC, and RPL_NAMREPLY.
 
 	// JOIN comes from the client, to the client.
-	u.messageClient(u, "JOIN", []string{channel.Name})
+	u.User.messageUser(u.User, "JOIN", []string{channel.Name})
 
 	// If this is a new channel, send them the modes we set by default.
 	if !exists {
@@ -535,7 +500,7 @@ func (u *LocalUser) joinCommand(m irc.Message) {
 		member := u.Catbox.Users[memberUID]
 
 		// From the client to each member.
-		u.messageUser(member, "JOIN", []string{channel.Name})
+		u.User.messageUser(member, "JOIN", []string{channel.Name})
 	}
 }
 
@@ -611,7 +576,7 @@ func (u *LocalUser) privmsgCommand(m irc.Message) {
 		// Are they on it?
 		// TODO: Technically we should allow messaging if they aren't on it
 		//   depending on the mode.
-		if !u.onChannel(channel) {
+		if !u.User.onChannel(channel) {
 			// 404 ERR_CANNOTSENDTOCHAN
 			u.messageFromServer("404", []string{channelName, "Cannot send to channel"})
 			return
@@ -628,7 +593,7 @@ func (u *LocalUser) privmsgCommand(m irc.Message) {
 			member := u.Catbox.Users[memberUID]
 
 			// From the client to each member.
-			u.messageUser(member, m.Command, []string{channel.Name, msg})
+			u.User.messageUser(member, m.Command, []string{channel.Name, msg})
 		}
 
 		return
@@ -653,7 +618,7 @@ func (u *LocalUser) privmsgCommand(m irc.Message) {
 
 	u.LastMessageTime = time.Now()
 
-	u.messageUser(targetUser, m.Command, []string{nickName, msg})
+	u.User.messageUser(targetUser, m.Command, []string{nickName, msg})
 }
 
 func (u *LocalUser) lusersCommand() {
@@ -864,7 +829,8 @@ func (u *LocalUser) operCommand(m irc.Message) {
 
 	u.Catbox.Opers[u.User.UID] = u
 
-	u.messageClient(u, "MODE", []string{u.User.DisplayNick, "+o"})
+	// From themselves to themselves.
+	u.User.messageUser(u.User, "MODE", []string{u.User.DisplayNick, "+o"})
 
 	// 381 RPL_YOUREOPER
 	u.messageFromServer("381", []string{"You are now an IRC operator"})
@@ -972,12 +938,12 @@ func (u *LocalUser) userModeCommand(targetUser *User, modes string) {
 
 		delete(u.User.Modes, 'o')
 		delete(u.Catbox.Opers, u.User.UID)
-		u.messageClient(u, "MODE", []string{"-o", u.User.DisplayNick})
+		u.User.messageUser(u.User, "MODE", []string{"-o", u.User.DisplayNick})
 	}
 }
 
 func (u *LocalUser) channelModeCommand(channel *Channel, modes string) {
-	if !u.onChannel(channel) {
+	if !u.User.onChannel(channel) {
 		// 442 ERR_NOTONCHANNEL
 		u.messageFromServer("442", []string{channel.Name, "You're not on that channel"})
 		return
@@ -1021,7 +987,7 @@ func (u *LocalUser) whoCommand(m irc.Message) {
 	}
 
 	// Only works if they are on the channel.
-	if !u.onChannel(channel) {
+	if !u.User.onChannel(channel) {
 		// 442 ERR_NOTONCHANNEL
 		u.messageFromServer("442", []string{channel.Name, "You're not on that channel"})
 		return
@@ -1070,7 +1036,7 @@ func (u *LocalUser) topicCommand(m irc.Message) {
 		return
 	}
 
-	if !u.onChannel(channel) {
+	if !u.User.onChannel(channel) {
 		// 442 ERR_NOTONCHANNEL
 		u.messageFromServer("442", []string{channel.Name, "You're not on that channel"})
 		return
@@ -1107,7 +1073,7 @@ func (u *LocalUser) topicCommand(m irc.Message) {
 	for memberUID := range channel.Members {
 		member := u.Catbox.Users[memberUID]
 		// 332 RPL_TOPIC
-		u.messageUser(member, "TOPIC", []string{channel.Name, channel.Topic})
+		u.User.messageUser(member, "TOPIC", []string{channel.Name, channel.Topic})
 	}
 }
 
