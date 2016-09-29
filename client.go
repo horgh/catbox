@@ -179,10 +179,6 @@ func (c *LocalClient) quit(msg string) {
 
 	close(c.WriteChan)
 
-	if len(c.PreRegDisplayNick) > 0 {
-		delete(c.Catbox.Nicks, canonicalizeNick(c.PreRegDisplayNick))
-	}
-
 	delete(c.Catbox.LocalClients, c.ID)
 }
 
@@ -292,7 +288,7 @@ func (c *LocalClient) completeRegistration() {
 	// RFC 2813 specifies messages to send upon registration.
 
 	// Double check NICK is still available. I'm no longer reserving it in the
-	// Nicks map until registration completes.
+	// Nicks map until registration completes, so check now.
 	_, exists := c.Catbox.Nicks[canonicalizeNick(c.PreRegDisplayNick)]
 	if exists {
 		// 433 ERR_NICKNAMEINUSE

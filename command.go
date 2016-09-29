@@ -105,11 +105,11 @@ func (u *LocalUser) nickCommand(m irc.Message) {
 				continue
 			}
 
-			lu := u.Catbox.LocalUsers[memberUID]
+			member := u.Catbox.Users[memberUID]
 
 			// Message needs to come from the OLD nick.
-			u.messageClient(lu, "NICK", []string{nick})
-			informedClients[lu.UID] = struct{}{}
+			u.messageUser(member, "NICK", []string{nick})
+			informedClients[member.UID] = struct{}{}
 		}
 	}
 
