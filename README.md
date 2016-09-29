@@ -62,7 +62,6 @@ The main ideas I plan for it are (in no particular order):
 
 # Todo
 
-  * If burst goes on too long, boot server
   * Server to server (ircd-ratbox)
     * Burst: SID, UID, SJOIN
     * Post-burst: INVITE, JOIN, KILL, NICK, NOTICE, PART, PRIVMSG, QUIT, SID,

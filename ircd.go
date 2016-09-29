@@ -376,35 +376,16 @@ func (cb *Catbox) checkAndPingClients() {
 		}
 	}
 
-	// I want to iterate and use same logic on both user and server clients. Do it
-	// by creating an interface that they both satisfy.
-	type UserServer interface {
-		isSendQueueExceeded() bool
-		getLastActivityTime() time.Time
-		getLastPingTime() time.Time
-		quit(s string)
-		messageFromServer(s string, p []string)
-		setLastPingTime(t time.Time)
-	}
-
-	clients := []UserServer{}
-	for _, v := range cb.LocalUsers {
-		clients = append(clients, v)
-	}
-	for _, v := range cb.LocalServers {
-		clients = append(clients, v)
-	}
-
 	// User and server clients we are more lenient with. Ping them if they are
 	// idle for a while.
-	for _, client := range clients {
+
+	for _, client := range cb.LocalUsers {
 		if client.isSendQueueExceeded() {
 			client.quit("SendQ exceeded")
 			continue
 		}
 
 		timeIdle := now.Sub(client.getLastActivityTime())
-		timeSincePing := now.Sub(client.getLastPingTime())
 
 		// Was it active recently enough that we don't need to do anything?
 		if timeIdle < cb.Config.PingTime {
@@ -420,6 +401,8 @@ func (cb *Catbox) checkAndPingClients() {
 			continue
 		}
 
+		timeSincePing := now.Sub(client.getLastPingTime())
+
 		// Should we ping it? We might have pinged it recently.
 		if timeSincePing < cb.Config.PingTime {
 			continue
@@ -427,6 +410,55 @@ func (cb *Catbox) checkAndPingClients() {
 
 		client.messageFromServer("PING", []string{cb.Config.ServerName})
 		client.setLastPingTime(now)
+		continue
+	}
+
+	for _, server := range cb.LocalServers {
+		if server.isSendQueueExceeded() {
+			server.quit("SendQ exceeded")
+			continue
+		}
+
+		// If it is bursting then we want to check it doesn't go on too long. Drop
+		// it if it does.
+		if server.Bursting {
+			timeConnected := now.Sub(server.ConnectionStartTime)
+
+			if timeConnected > cb.Config.PingTime {
+				server.quit("Bursting too long")
+			}
+			continue
+		}
+
+		// Its burst completed. Now we monitor the last time we heard from it
+		// and possibly ping it.
+
+		timeIdle := now.Sub(server.getLastActivityTime())
+
+		// Was it active recently enough that we don't need to do anything?
+		if timeIdle < cb.Config.PingTime {
+			continue
+		}
+
+		// It's been idle a while.
+
+		// Has it been idle long enough that we consider it dead?
+		if timeIdle > cb.Config.DeadTime {
+			server.quit(fmt.Sprintf("Ping timeout: %d seconds",
+				int(timeIdle.Seconds())))
+			continue
+		}
+
+		timeSincePing := now.Sub(server.getLastPingTime())
+
+		// Should we ping it? We might have pinged it recently.
+		if timeSincePing < cb.Config.PingTime {
+			continue
+		}
+
+		// PING origin is our SID for servers.
+		server.messageFromServer("PING", []string{cb.Config.TS6SID})
+		server.setLastPingTime(now)
 		continue
 	}
 }
