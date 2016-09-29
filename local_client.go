@@ -381,6 +381,22 @@ func (c *LocalClient) registerServer() {
 
 	ls.sendBurst()
 	ls.sendPING()
+
+	// Tell connected servers about the new server.
+	// :<my SID> SID <server name> <hop count> <SID> <description>
+	// e.g.: :8ZZ SID irc3.example.com 2 9ZQ :My Desc
+	for _, server := range c.Catbox.LocalServers {
+		// We don't have to tell the server about itself.
+		if server == ls {
+			continue
+		}
+		server.maybeQueueMessage(irc.Message{
+			Prefix:  c.Catbox.Config.TS6SID,
+			Command: "SID",
+			Params: []string{s.Name, fmt.Sprintf("%d", s.HopCount+1), string(s.SID),
+				s.Description},
+		})
+	}
 }
 
 func (c *LocalClient) isSendQueueExceeded() bool {

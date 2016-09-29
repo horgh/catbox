@@ -8,7 +8,14 @@ type Server struct {
 	Name        string
 	Description string
 	HopCount    int
+
+	// If this server is directly connected to us (local), then LocalServer is
+	// set.
 	LocalServer *LocalServer
+
+	// If the server is not directly connected to us (remote), then we know how
+	// it is connected to us. Through this LocalServer.
+	Link *LocalServer
 }
 
 func (s *Server) String() string {

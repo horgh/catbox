@@ -90,6 +90,7 @@ func (s *LocalServer) quit(msg string) {
 	close(s.WriteChan)
 
 	delete(s.Catbox.LocalServers, s.ID)
+	delete(s.Catbox.Servers, s.Server.SID)
 
 	// TODO: Make all clients quit that are on the other side.
 
@@ -163,6 +164,16 @@ func (s *LocalServer) handleMessage(m irc.Message) {
 		return
 	}
 
+	// For now I ignore ENCAP.
+	if m.Command == "ENCAP" {
+		return
+	}
+
+	if m.Command == "SID" {
+		s.sidCommand(m)
+		return
+	}
+
 	// 421 ERR_UNKNOWNCOMMAND
 	s.messageFromServer("421", []string{m.Command, "Unknown command"})
 }
@@ -178,25 +189,45 @@ func (s *LocalServer) pingCommand(m irc.Message) {
 
 	// Allow multiple pings.
 
-	if TS6SID(m.Params[0]) != s.Server.SID {
-		s.quit("Unexpected SID")
+	if len(m.Prefix) == 0 {
+		m.Prefix = string(s.Server.SID)
+	}
+
+	// :9ZQ PING irc3.example.com :000
+	// Where irc3.example.com == 9ZQ and it is remote
+
+	// We want to send back
+	// :000 PONG irc.example.com :9ZQ
+
+	sid := TS6SID(m.Prefix)
+
+	// Do we know the server pinging us?
+	_, exists := s.Catbox.Servers[sid]
+	if !exists {
+		// 402 ERR_NOSUCHSERVER
+		s.maybeQueueMessage(irc.Message{
+			Prefix:  s.Catbox.Config.TS6SID,
+			Command: "402",
+			Params:  []string{string(sid), "No such server"},
+		})
 		return
 	}
 
+	// Reply.
 	s.maybeQueueMessage(irc.Message{
 		Prefix:  s.Catbox.Config.TS6SID,
 		Command: "PONG",
-		Params: []string{
-			s.Catbox.Config.ServerName,
-			string(s.Server.SID),
-		},
+		Params:  []string{s.Catbox.Config.ServerName, string(sid)},
 	})
 
-	s.GotPING = true
+	// If we're bursting, is it over?
+	if s.Bursting && sid == s.Server.SID {
+		s.GotPING = true
 
-	if s.Bursting && s.GotPONG {
-		s.Catbox.noticeOpers(fmt.Sprintf("Burst with %s over.", s.Server.Name))
-		s.Bursting = false
+		if s.GotPONG {
+			s.Catbox.noticeOpers(fmt.Sprintf("Burst with %s over.", s.Server.Name))
+			s.Bursting = false
+		}
 	}
 }
 
@@ -386,9 +417,9 @@ func (s *LocalServer) privmsgCommand(m irc.Message) {
 		if exists {
 			// We either deliver it to a local user, and done, or we need to propagate
 			// it to another server.
-			if targetUser.LocalUser != nil {
-				// Source and target were UIDs. Translate to uhost and nick respectively
-				// if we're sending to a client now.
+			if targetUser.isLocal() {
+				// Source and target were UIDs. Translate to uhost and nick
+				// respectively.
 				m.Params[0] = targetUser.DisplayNick
 				targetUser.LocalUser.maybeQueueMessage(irc.Message{
 					Prefix:  sourceUser.nickUhost(),
@@ -407,4 +438,65 @@ func (s *LocalServer) privmsgCommand(m irc.Message) {
 	}
 
 	// TODO: Is target a channel?
+}
+
+// SID tells us about a new server.
+func (s *LocalServer) sidCommand(m irc.Message) {
+	// Parameters: <server name> <hop count> <SID> <description>
+	// e.g.: :8ZZ SID irc3.example.com 2 9ZQ :My Desc
+
+	if !isValidSID(m.Prefix) {
+		s.quit("Invalid origin")
+		return
+	}
+	originSID := TS6SID(m.Prefix)
+
+	// Do I know this origin?
+	_, exists := s.Catbox.Servers[originSID]
+	if !exists {
+		s.quit("Unknown origin")
+		return
+	}
+
+	if len(m.Params) < 4 {
+		// 461 ERR_NEEDMOREPARAMS
+		s.messageFromServer("461", []string{"SID", "Not enough parameters"})
+		return
+	}
+
+	name := m.Params[0]
+
+	hopCount, err := strconv.ParseInt(m.Params[1], 10, 8)
+	if err != nil {
+		s.quit(fmt.Sprintf("Invalid hop count: %s", err))
+		return
+	}
+
+	if !isValidSID(m.Params[2]) {
+		s.quit("Invalid SID")
+		return
+	}
+	sid := TS6SID(m.Params[2])
+
+	desc := m.Params[3]
+
+	newServer := &Server{
+		SID:         sid,
+		Name:        name,
+		Description: desc,
+		HopCount:    int(hopCount),
+		Link:        s,
+	}
+
+	s.Catbox.Servers[sid] = newServer
+
+	// Propagate to our connected servers.
+	for _, server := range s.Catbox.LocalServers {
+		// Don't tell the server we just heard it from.
+		if server == s {
+			continue
+		}
+
+		server.maybeQueueMessage(m)
+	}
 }
