@@ -9,31 +9,27 @@ import (
 	"summercat.com/irc"
 )
 
-// Client holds state about a single client connection.
-// All clients are in this state until they register as either a user client
+// LocalClient holds state about a local connection.
+// All connections are in this state until they register as either a user client
 // or as a server.
-type Client struct {
-	// Conn holds the TCP connection to the client.
+type LocalClient struct {
+	// Conn is the TCP connection to the client.
 	Conn Conn
+
+	ID uint64
 
 	// WriteChan is the channel to send to to write to the client.
 	WriteChan chan irc.Message
 
-	// A unique id. Internal to this server only.
-	ID uint64
-
 	ConnectionStartTime time.Time
 
-	// Server references the main server the client is connected to (local
-	// client).
-	// It's helpful to have to avoid passing server all over the place.
-	Server *Server
+	Catbox *Catbox
 
 	// Track if we overflow our send queue. If we do, we'll kill the client.
 	SendQueueExceeded bool
 
 	// Info client may send us before we complete its registration and promote it
-	// to UserClient or ServerClient.
+	// to a user or server.
 
 	// User info
 
@@ -57,8 +53,8 @@ type Client struct {
 	PreRegServerName string
 	PreRegServerDesc string
 
-	// Boolean flags involved in the several step server link process.
-	// Use them to keep track of where we are in the process.
+	// Boolean flags involved in the server link process. Use them to keep track
+	// of where we are in the process.
 
 	GotPASS   bool
 	GotCAPAB  bool
@@ -70,36 +66,35 @@ type Client struct {
 	SentSVINFO bool
 }
 
-// NewClient creates a Client
-func NewClient(s *Server, id uint64, conn net.Conn) *Client {
-	return &Client{
-		Conn: NewConn(conn, s.Config.DeadTime),
+// NewLocalClient creates a LocalClient
+func NewLocalClient(cb *Catbox, id uint64, conn net.Conn) *LocalClient {
+	return &LocalClient{
+		Conn: NewConn(conn, cb.Config.DeadTime),
+		ID:   id,
 
 		// Buffered channel. We don't want to block sending to the client from the
 		// server. The client may be stuck. Make the buffer large enough that it
 		// should only max out in case of connection issues.
 		WriteChan: make(chan irc.Message, 32768),
 
-		ID:                  id,
 		ConnectionStartTime: time.Now(),
-		Server:              s,
-
-		PreRegCapabs: make(map[string]struct{}),
+		Catbox:              cb,
+		PreRegCapabs:        make(map[string]struct{}),
 	}
 }
 
-func (c *Client) String() string {
-	return fmt.Sprintf("%d %s", c.ID, c.Conn.RemoteAddr())
+func (c *LocalClient) String() string {
+	return fmt.Sprintf("%s", c.Conn.RemoteAddr())
 }
 
 // readLoop endlessly reads from the client's TCP connection. It parses each
 // IRC protocol message and passes it to the server through the server's
 // channel.
-func (c *Client) readLoop() {
-	defer c.Server.WG.Done()
+func (c *LocalClient) readLoop() {
+	defer c.Catbox.WG.Done()
 
 	for {
-		if c.Server.isShuttingDown() {
+		if c.Catbox.isShuttingDown() {
 			break
 		}
 
@@ -107,11 +102,11 @@ func (c *Client) readLoop() {
 		message, err := c.Conn.ReadMessage()
 		if err != nil {
 			log.Printf("Client %s: %s", c, err)
-			c.Server.newEvent(Event{Type: DeadClientEvent, Client: c})
+			c.Catbox.newEvent(Event{Type: DeadClientEvent, Client: c})
 			break
 		}
 
-		c.Server.newEvent(Event{
+		c.Catbox.newEvent(Event{
 			Type:    MessageFromClientEvent,
 			Client:  c,
 			Message: message,
@@ -127,8 +122,8 @@ func (c *Client) readLoop() {
 // When the channel is closed, or if we have a write error, close the TCP
 // connection. I have this here so that we try to deliver messages to the
 // client before closing its socket and giving up.
-func (c *Client) writeLoop() {
-	defer c.Server.WG.Done()
+func (c *LocalClient) writeLoop() {
+	defer c.Catbox.WG.Done()
 
 	// Receive on the client's write channel.
 	//
@@ -156,10 +151,10 @@ Loop:
 			err := c.Conn.WriteMessage(message)
 			if err != nil {
 				log.Printf("Client %s: %s", c, err)
-				c.Server.newEvent(Event{Type: DeadClientEvent, Client: c})
+				c.Catbox.newEvent(Event{Type: DeadClientEvent, Client: c})
 				break Loop
 			}
-		case <-c.Server.ShutdownChan:
+		case <-c.Catbox.ShutdownChan:
 			break Loop
 		}
 	}
@@ -173,18 +168,25 @@ Loop:
 }
 
 // quit means the client is quitting. Tell it why and clean up.
-func (c *Client) quit(msg string) {
+func (c *LocalClient) quit(msg string) {
+	// May already be cleaning up.
+	_, exists := c.Catbox.LocalClients[c.ID]
+	if !exists {
+		return
+	}
+
 	c.messageFromServer("ERROR", []string{msg})
+
 	close(c.WriteChan)
 
 	if len(c.PreRegDisplayNick) > 0 {
-		delete(c.Server.Nicks, canonicalizeNick(c.PreRegDisplayNick))
+		delete(c.Catbox.Nicks, canonicalizeNick(c.PreRegDisplayNick))
 	}
 
-	delete(c.Server.UnregisteredClients, c.ID)
+	delete(c.Catbox.LocalClients, c.ID)
 }
 
-func (c *Client) handleMessage(m irc.Message) {
+func (c *LocalClient) handleMessage(m irc.Message) {
 	// Clients SHOULD NOT (section 2.3) send a prefix.
 	if m.Prefix != "" {
 		c.quit("No prefix permitted")
@@ -286,51 +288,79 @@ func (c *Client) handleMessage(m irc.Message) {
 	c.messageFromServer("451", []string{fmt.Sprintf("You have not registered.")})
 }
 
-func (c *Client) completeRegistration() {
+func (c *LocalClient) completeRegistration() {
 	// RFC 2813 specifies messages to send upon registration.
 
-	uc := NewUserClient(c)
+	// Double check NICK is still available. I'm no longer reserving it in the
+	// Nicks map until registration completes.
+	_, exists := c.Catbox.Nicks[canonicalizeNick(c.PreRegDisplayNick)]
+	if exists {
+		// 433 ERR_NICKNAMEINUSE
+		c.messageFromServer("433", []string{c.PreRegDisplayNick,
+			"Nickname is already in use"})
+		return
+	}
 
-	delete(c.Server.UnregisteredClients, uc.ID)
-	c.Server.UserClients[c.ID] = uc
+	u := NewLocalUser(c)
+
+	delete(c.Catbox.LocalClients, c.ID)
+
+	c.Catbox.LocalUsers[u.UID] = u
+
+	c.Catbox.Users[u.UID] = &User{
+		DisplayNick: c.PreRegDisplayNick,
+		NickTS:      time.Now().Unix(),
+		Modes:       make(map[byte]struct{}),
+		Username:    c.PreRegUser,
+		Hostname:    fmt.Sprintf("%s", c.Conn.RemoteAddr()),
+		IP:          fmt.Sprintf("%s", c.Conn.RemoteAddr()),
+		UID:         u.UID,
+		RealName:    c.PreRegRealName,
+		Channels:    make(map[string]*Channel),
+		LocalUser:   u,
+	}
+
+	u.User = c.Catbox.Users[u.UID]
+
+	// TODO: Tell linked servers.
 
 	// 001 RPL_WELCOME
-	uc.messageFromServer("001", []string{
+	u.messageFromServer("001", []string{
 		fmt.Sprintf("Welcome to the Internet Relay Network %s",
-			uc.nickUhost()),
+			u.nickUhost()),
 	})
 
 	// 002 RPL_YOURHOST
-	uc.messageFromServer("002", []string{
+	u.messageFromServer("002", []string{
 		fmt.Sprintf("Your host is %s, running version %s",
-			uc.Server.Config.ServerName,
-			uc.Server.Config.Version),
+			u.Catbox.Config.ServerName,
+			u.Catbox.Config.Version),
 	})
 
 	// 003 RPL_CREATED
-	uc.messageFromServer("003", []string{
-		fmt.Sprintf("This server was created %s", uc.Server.Config.CreatedDate),
+	u.messageFromServer("003", []string{
+		fmt.Sprintf("This server was created %s", u.Catbox.Config.CreatedDate),
 	})
 
 	// 004 RPL_MYINFO
 	// <servername> <version> <available user modes> <available channel modes>
-	uc.messageFromServer("004", []string{
+	u.messageFromServer("004", []string{
 		// It seems ambiguous if these are to be separate parameters.
-		uc.Server.Config.ServerName,
-		uc.Server.Config.Version,
-		"o",
-		"n",
+		u.Catbox.Config.ServerName,
+		u.Catbox.Config.Version,
+		"i",
+		"ns",
 	})
 
-	uc.lusersCommand()
-	uc.motdCommand()
+	u.lusersCommand()
+	u.motdCommand()
 }
 
 // Send an IRC message to a client. Appears to be from the server.
 // This works by writing to a client's channel.
 //
 // Note: Only the server goroutine should call this (due to channel use).
-func (c *Client) messageFromServer(command string, params []string) {
+func (c *LocalClient) messageFromServer(command string, params []string) {
 	// For numeric messages, we need to prepend the nick.
 	// Use * for the nick in cases where the client doesn't have one yet.
 	// This is what ircd-ratbox does. Maybe not RFC...
@@ -345,7 +375,7 @@ func (c *Client) messageFromServer(command string, params []string) {
 	}
 
 	c.maybeQueueMessage(irc.Message{
-		Prefix:  c.Server.Config.ServerName,
+		Prefix:  c.Catbox.Config.ServerName,
 		Command: command,
 		Params:  params,
 	})
@@ -359,7 +389,7 @@ func (c *Client) messageFromServer(command string, params []string) {
 //
 // Not blocking is important because the server sends the client messages this
 // way, and if we block on a problem client, everything would grind to a halt.
-func (c *Client) maybeQueueMessage(m irc.Message) {
+func (c *LocalClient) maybeQueueMessage(m irc.Message) {
 	if c.SendQueueExceeded {
 		return
 	}
@@ -371,17 +401,17 @@ func (c *Client) maybeQueueMessage(m irc.Message) {
 	}
 }
 
-func (c *Client) sendPASS(pass string) {
+func (c *LocalClient) sendPASS(pass string) {
 	// PASS <password>, TS, <ts version>, <SID>
 	c.maybeQueueMessage(irc.Message{
 		Command: "PASS",
-		Params:  []string{pass, "TS", "6", c.Server.Config.TS6SID},
+		Params:  []string{pass, "TS", "6", c.Catbox.Config.TS6SID},
 	})
 
 	c.SentPASS = true
 }
 
-func (c *Client) sendCAPAB() {
+func (c *LocalClient) sendCAPAB() {
 	// CAPAB <space separated list>
 	c.maybeQueueMessage(irc.Message{
 		Command: "CAPAB",
@@ -391,21 +421,21 @@ func (c *Client) sendCAPAB() {
 	c.SentCAPAB = true
 }
 
-func (c *Client) sendSERVER() {
+func (c *LocalClient) sendSERVER() {
 	// SERVER <name> <hopcount> <description>
 	c.maybeQueueMessage(irc.Message{
 		Command: "SERVER",
 		Params: []string{
-			c.Server.Config.ServerName,
+			c.Catbox.Config.ServerName,
 			"1",
-			c.Server.Config.ServerInfo,
+			c.Catbox.Config.ServerInfo,
 		},
 	})
 
 	c.SentSERVER = true
 }
 
-func (c *Client) sendSVINFO() {
+func (c *LocalClient) sendSVINFO() {
 	// SVINFO <TS version> <min TS version> 0 <current time>
 	epoch := time.Now().Unix()
 	c.maybeQueueMessage(irc.Message{
@@ -418,26 +448,29 @@ func (c *Client) sendSVINFO() {
 	c.SentSVINFO = true
 }
 
-func (c *Client) registerServer() {
-	// Possible it took a NICK... Doesn't make sense for it to do so, but since
-	// it's been unregistered until now, a malicious server could have taken a
-	// nick.
-	if len(c.PreRegDisplayNick) > 0 {
-		delete(c.Server.Nicks, canonicalizeNick(c.PreRegDisplayNick))
+func (c *LocalClient) registerServer() {
+	s := NewLocalServer(c)
+
+	delete(c.Catbox.LocalClients, c.ID)
+
+	c.Catbox.LocalServers[s.SID] = s
+
+	c.Catbox.Servers[s.SID] = &Server{
+		SID:         s.SID,
+		Name:        c.PreRegServerName,
+		Description: c.PreRegServerDesc,
+		LocalServer: s,
 	}
 
-	s := NewServerClient(c)
+	s.Server = c.Catbox.Servers[s.SID]
 
-	delete(c.Server.UnregisteredClients, s.ID)
-	c.Server.ServerClients[s.ID] = s
-	c.Server.Servers[s.Name] = s.ID
-
-	s.Server.noticeOpers(fmt.Sprintf("Established link to %s.", s.Name))
+	s.Catbox.noticeOpers(fmt.Sprintf("Established link to %s.",
+		c.PreRegServerName))
 
 	s.sendBurst()
 	s.sendPING()
 }
 
-func (c *Client) isSendQueueExceeded() bool {
+func (c *LocalClient) isSendQueueExceeded() bool {
 	return c.SendQueueExceeded
 }

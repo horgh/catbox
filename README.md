@@ -62,8 +62,17 @@ The main ideas I plan for it are (in no particular order):
 
 # Todo
 
+  * Deal with not taking NICK until we complete registration.
+  * Make sure quit() checks if each client type is still listed in local
+    clients/users/servers
+  * Rename files (e.g. client to local_client)
+  * Figure out better name for Server (so can call IRCServer that)
+  * Move everything out of command.go
+  * Figure out where messageClient/messageServer should go
+
+  * Send +i to use on connect, and track that (e.g. when creating User)
   * Server to server (ircd-ratbox)
-    * Burst: SERVER, SID, BAN, UID, ENCAP, AWAY, SJOIN, BMASK
+    * Burst: SID, UID, SJOIN
     * Post-burst: INVITE, JOIN, KILL, NICK, NOTICE, PART, PRIVMSG, QUIT, SID,
       SJOIN, TOPIC, UID
     * Nick collisions

@@ -10,45 +10,35 @@ import (
 	"summercat.com/irc"
 )
 
-// Channel holds everything to do with a channel.
-type Channel struct {
-	// Canonicalized.
-	Name string
-
-	// Client id to UserClient.
-	Members map[uint64]*UserClient
-
-	Topic string
-}
-
-// Server holds the state for a server.
+// Catbox holds the state for this local server.
 // I put everything global to a server in an instance of struct rather than
 // have global variables.
-type Server struct {
+type Catbox struct {
 	Config Config
 
-	// Next client id to issue.
+	// Next client ID to issue. This turns into TS6 ID which gets concatenated
+	// with our SID to make the TS6 UID.
 	NextClientID     uint64
 	NextClientIDLock sync.Mutex
 
-	// Client id to Client.
-	UnregisteredClients map[uint64]*Client
+	// LocalClients are unregistered.
+	// Client id to LocalClient.
+	LocalClients map[uint64]*LocalClient
+	// LocalUsers are clients registered as users.
+	LocalUsers map[TS6UID]*LocalUser
+	// LocalServers are clients registered as servers.
+	LocalServers map[TS6SID]*LocalServer
 
-	// Client id to UserClient.
-	UserClients map[uint64]*UserClient
+	Opers map[TS6UID]*LocalUser
 
-	// Client id to ServerClient.
-	ServerClients map[uint64]*ServerClient
+	// Canonicalized nickname to TS6 UID.
+	Nicks map[string]TS6UID
 
-	// Canonicalized nickname to client id.
-	// Client may be registered or not.
-	Nicks map[string]uint64
+	// TS6 UID to User. Local or remote.
+	Users map[TS6UID]*User
 
-	// Client id to user client. Opers.
-	Opers map[uint64]*UserClient
-
-	// Server names to client id.
-	Servers map[string]uint64
+	// TS6 SID to Server. Local or remote.
+	Servers map[TS6SID]*Server
 
 	// Channel name (canonicalized) to Channel.
 	Channels map[string]*Channel
@@ -67,11 +57,30 @@ type Server struct {
 	WG sync.WaitGroup
 }
 
+// TS6UID is SID+UID. Uniquely identify a client.
+type TS6UID string
+
+// TS6SID uniquely identifies a server.
+type TS6SID string
+
+// EventClient interface defines methods a {local,user,server}client must
+// implement for event processing.
+type EventClient interface {
+	handleMessage(m irc.Message)
+	String() string
+	quit(msg string)
+}
+
 // Event holds a message containing something to tell the server.
 type Event struct {
 	Type EventType
 
-	Client *Client
+	// For new connection events we need access to LocalClient and ID.
+	// TODO: Figure out better way.
+	ID          uint64
+	LocalClient *LocalClient
+
+	Client EventClient
 
 	Message irc.Message
 }
@@ -106,12 +115,12 @@ func main() {
 		log.Fatal(err)
 	}
 
-	server, err := newServer(args.ConfigFile)
+	cb, err := newCatbox(args.ConfigFile)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	err = server.start()
+	err = cb.start()
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -119,15 +128,16 @@ func main() {
 	log.Printf("Server shutdown cleanly.")
 }
 
-func newServer(configFile string) (*Server, error) {
-	s := Server{
-		UnregisteredClients: make(map[uint64]*Client),
-		UserClients:         make(map[uint64]*UserClient),
-		ServerClients:       make(map[uint64]*ServerClient),
-		Nicks:               make(map[string]uint64),
-		Opers:               make(map[uint64]*UserClient),
-		Servers:             make(map[string]uint64),
-		Channels:            make(map[string]*Channel),
+func newCatbox(configFile string) (*Catbox, error) {
+	cb := Catbox{
+		LocalClients: make(map[uint64]*LocalClient),
+		LocalUsers:   make(map[TS6UID]*LocalUser),
+		LocalServers: make(map[TS6SID]*LocalServer),
+		Opers:        make(map[TS6UID]*LocalUser),
+		Users:        make(map[TS6UID]*User),
+		Nicks:        make(map[string]TS6UID),
+		Servers:      make(map[TS6SID]*Server),
+		Channels:     make(map[string]*Channel),
 
 		// shutdown() closes this channel.
 		ShutdownChan: make(chan struct{}),
@@ -136,42 +146,42 @@ func newServer(configFile string) (*Server, error) {
 		ToServerChan: make(chan Event),
 	}
 
-	err := s.checkAndParseConfig(configFile)
+	err := cb.checkAndParseConfig(configFile)
 	if err != nil {
 		return nil, fmt.Errorf("Configuration problem: %s", err)
 	}
 
-	return &s, nil
+	return &cb, nil
 }
 
 // start starts up the server.
 //
 // We open the TCP port, start goroutines, and then receive messages on our
 // channels.
-func (s *Server) start() error {
+func (cb *Catbox) start() error {
 	// TODO: TLS
-	ln, err := net.Listen("tcp", fmt.Sprintf("%s:%s", s.Config.ListenHost,
-		s.Config.ListenPort))
+	ln, err := net.Listen("tcp", fmt.Sprintf("%s:%s", cb.Config.ListenHost,
+		cb.Config.ListenPort))
 	if err != nil {
 		return fmt.Errorf("Unable to listen: %s", err)
 	}
-	s.Listener = ln
+	cb.Listener = ln
 
 	// acceptConnections accepts connections on the TCP listener.
-	s.WG.Add(1)
-	go s.acceptConnections()
+	cb.WG.Add(1)
+	go cb.acceptConnections()
 
 	// Alarm is a goroutine to wake up this one periodically so we can do things
 	// like ping clients.
-	s.WG.Add(1)
-	go s.alarm()
+	cb.WG.Add(1)
+	go cb.alarm()
 
-	s.eventLoop()
+	cb.eventLoop()
 
 	// We don't need to drain any channels. None close that will have any
 	// goroutines blocked on them.
 
-	s.WG.Wait()
+	cb.WG.Wait()
 
 	return nil
 }
@@ -179,137 +189,107 @@ func (s *Server) start() error {
 // eventLoop processes events on the server's channel.
 //
 // It continues until the shutdown channel closes, indicating shutdown.
-func (s *Server) eventLoop() {
+func (cb *Catbox) eventLoop() {
 	for {
 		select {
 		// Careful about using the Client we get back in events. It may have been
 		// promoted to a different client type (UserClient, ServerClient).
-		case evt := <-s.ToServerChan:
+		case evt := <-cb.ToServerChan:
 			if evt.Type == NewClientEvent {
-				log.Printf("New client connection: %s", evt.Client)
-				s.UnregisteredClients[evt.Client.ID] = evt.Client
+				log.Printf("New client connection: %s", evt.LocalClient)
+				cb.LocalClients[evt.ID] = evt.LocalClient
 				continue
 			}
 
 			if evt.Type == DeadClientEvent {
-				client, exists := s.UnregisteredClients[evt.Client.ID]
-				if exists {
-					client.quit("I/O error")
-					continue
-				}
-
-				userClient, exists := s.UserClients[evt.Client.ID]
-				if exists {
-					userClient.quit("I/O error")
-					continue
-				}
-
-				serverClient, exists := s.ServerClients[evt.Client.ID]
-				if exists {
-					serverClient.quit("I/O error")
-					continue
-				}
+				evt.Client.quit("I/O error")
 				continue
 			}
 
 			if evt.Type == MessageFromClientEvent {
-				client, exists := s.UnregisteredClients[evt.Client.ID]
-				if exists {
-					client.handleMessage(evt.Message)
-					continue
-				}
-
-				userClient, exists := s.UserClients[evt.Client.ID]
-				if exists {
-					userClient.handleMessage(evt.Message)
-					continue
-				}
-
-				serverClient, exists := s.ServerClients[evt.Client.ID]
-				if exists {
-					serverClient.handleMessage(evt.Message)
-					continue
-				}
+				evt.Client.handleMessage(evt.Message)
 				continue
 			}
 
 			if evt.Type == WakeUpEvent {
-				s.checkAndPingClients()
+				cb.checkAndPingClients()
 				continue
 			}
 
 			log.Fatalf("Unexpected event: %d", evt.Type)
 
-		case <-s.ShutdownChan:
+		case <-cb.ShutdownChan:
 			return
 		}
 	}
 }
 
 // shutdown starts server shutdown.
-func (s *Server) shutdown() {
+func (cb *Catbox) shutdown() {
 	log.Printf("Server shutdown initiated.")
 
 	// Closing ShutdownChan indicates to other goroutines that we're shutting
 	// down.
-	close(s.ShutdownChan)
+	close(cb.ShutdownChan)
 
-	err := s.Listener.Close()
+	err := cb.Listener.Close()
 	if err != nil {
 		log.Printf("Problem closing TCP listener: %s", err)
 	}
 
 	// All clients need to be told. This also closes their write channels.
-	for _, client := range s.UnregisteredClients {
+	for _, client := range cb.LocalClients {
 		client.quit("Server shutting down")
 	}
-	for _, client := range s.UserClients {
+	for _, client := range cb.LocalUsers {
 		client.quit("Server shutting down")
 	}
-	for _, client := range s.ServerClients {
+	for _, client := range cb.LocalServers {
 		client.quit("Server shutting down")
 	}
 }
 
-func (s *Server) getClientID() uint64 {
-	s.NextClientIDLock.Lock()
+func (cb *Catbox) getClientID() uint64 {
+	cb.NextClientIDLock.Lock()
 
-	id := s.NextClientID
+	id := cb.NextClientID
 
-	if s.NextClientID+1 == 0 {
+	if cb.NextClientID+1 == 0 {
 		log.Fatalf("Client id overflow")
 	}
-	s.NextClientID++
+	cb.NextClientID++
 
-	s.NextClientIDLock.Unlock()
+	cb.NextClientIDLock.Unlock()
+
 	return id
 }
 
 // acceptConnections accepts TCP connections and tells the main server loop
 // through a channel. It sets up separate goroutines for reading/writing to
 // and from the client.
-func (s *Server) acceptConnections() {
-	defer s.WG.Done()
+func (cb *Catbox) acceptConnections() {
+	defer cb.WG.Done()
 
 	for {
-		if s.isShuttingDown() {
+		if cb.isShuttingDown() {
 			break
 		}
 
-		conn, err := s.Listener.Accept()
+		conn, err := cb.Listener.Accept()
 		if err != nil {
 			log.Printf("Failed to accept connection: %s", err)
 			continue
 		}
 
-		id := s.getClientID()
-		client := NewClient(s, id, conn)
+		id := cb.getClientID()
 
-		s.newEvent(Event{Type: NewClientEvent, Client: client})
+		client := NewLocalClient(cb, id, conn)
 
-		s.WG.Add(1)
+		cb.newEvent(Event{Type: NewClientEvent, ID: id, LocalClient: client})
+
+		cb.WG.Add(1)
 		go client.readLoop()
-		s.WG.Add(1)
+		cb.WG.Add(1)
 		go client.writeLoop()
 	}
 
@@ -317,11 +297,11 @@ func (s *Server) acceptConnections() {
 }
 
 // Return true if the server is shutting down.
-func (s *Server) isShuttingDown() bool {
+func (cb *Catbox) isShuttingDown() bool {
 	// No messages get sent to this channel, so if we receive a message on it,
 	// then we know the channel was closed.
 	select {
-	case <-s.ShutdownChan:
+	case <-cb.ShutdownChan:
 		return true
 	default:
 		return false
@@ -330,17 +310,17 @@ func (s *Server) isShuttingDown() bool {
 
 // Alarm sends a message to the server goroutine to wake it up.
 // It sleeps and then repeats.
-func (s *Server) alarm() {
-	defer s.WG.Done()
+func (cb *Catbox) alarm() {
+	defer cb.WG.Done()
 
 	for {
-		if s.isShuttingDown() {
+		if cb.isShuttingDown() {
 			break
 		}
 
-		time.Sleep(s.Config.WakeupTime)
+		time.Sleep(cb.Config.WakeupTime)
 
-		s.newEvent(Event{Type: WakeUpEvent})
+		cb.newEvent(Event{Type: WakeUpEvent})
 	}
 
 	log.Printf("Alarm shutting down.")
@@ -354,12 +334,12 @@ func (s *Server) alarm() {
 // If they've been idle a long time, we kill their connection.
 //
 // We also kill any whose send queue maxed out.
-func (s *Server) checkAndPingClients() {
+func (cb *Catbox) checkAndPingClients() {
 	now := time.Now()
 
 	// Unregistered clients do not receive PINGs, nor do we care about their
 	// idle time. Kill them if they are connected too long and still unregistered.
-	for _, client := range s.UnregisteredClients {
+	for _, client := range cb.LocalClients {
 		if client.SendQueueExceeded {
 			client.quit("SendQ exceeded")
 			continue
@@ -368,14 +348,14 @@ func (s *Server) checkAndPingClients() {
 		timeConnected := now.Sub(client.ConnectionStartTime)
 
 		// If it's been connected long enough to need to ping it, cut it off.
-		if timeConnected > s.Config.PingTime {
+		if timeConnected > cb.Config.PingTime {
 			client.quit("Idle too long.")
 		}
 	}
 
 	// I want to iterate and use same logic on both user and server clients. Do it
 	// by creating an interface that they both satisfy.
-	type UserServerClient interface {
+	type UserServer interface {
 		isSendQueueExceeded() bool
 		getLastActivityTime() time.Time
 		getLastPingTime() time.Time
@@ -384,11 +364,11 @@ func (s *Server) checkAndPingClients() {
 		setLastPingTime(t time.Time)
 	}
 
-	clients := []UserServerClient{}
-	for _, v := range s.UserClients {
+	clients := []UserServer{}
+	for _, v := range cb.LocalUsers {
 		clients = append(clients, v)
 	}
-	for _, v := range s.ServerClients {
+	for _, v := range cb.LocalServers {
 		clients = append(clients, v)
 	}
 
@@ -404,25 +384,25 @@ func (s *Server) checkAndPingClients() {
 		timeSincePing := now.Sub(client.getLastPingTime())
 
 		// Was it active recently enough that we don't need to do anything?
-		if timeIdle < s.Config.PingTime {
+		if timeIdle < cb.Config.PingTime {
 			continue
 		}
 
 		// It's been idle a while.
 
 		// Has it been idle long enough that we consider it dead?
-		if timeIdle > s.Config.DeadTime {
+		if timeIdle > cb.Config.DeadTime {
 			client.quit(fmt.Sprintf("Ping timeout: %d seconds",
 				int(timeIdle.Seconds())))
 			continue
 		}
 
 		// Should we ping it? We might have pinged it recently.
-		if timeSincePing < s.Config.PingTime {
+		if timeSincePing < cb.Config.PingTime {
 			continue
 		}
 
-		client.messageFromServer("PING", []string{s.Config.ServerName})
+		client.messageFromServer("PING", []string{cb.Config.ServerName})
 		client.setLastPingTime(now)
 		continue
 	}
@@ -440,18 +420,77 @@ func (s *Server) checkAndPingClients() {
 //
 // We only need to use this function in goroutines other the main server
 // goroutine.
-func (s *Server) newEvent(evt Event) {
+func (cb *Catbox) newEvent(evt Event) {
 	select {
-	case s.ToServerChan <- evt:
-	case <-s.ShutdownChan:
+	case cb.ToServerChan <- evt:
+	case <-cb.ShutdownChan:
 	}
 }
 
 // Send a message to all local operator users.
-func (s *Server) noticeOpers(msg string) {
+func (cb *Catbox) noticeOpers(msg string) {
 	log.Print(msg)
 
-	for _, c := range s.Opers {
+	for _, c := range cb.Opers {
 		c.notice(msg)
 	}
+}
+
+// Make TS6 ID. 6 characters long, [A-Z]{6}. Must be unique on this server.
+// Digits are legal too (after position 0), but I'm not using them at this
+// time.
+// I already assign clients a unique integer ID per server. Use this to generate
+// a TS6 ID.
+// Take integer ID and convert it to base 36. (A-Z and 0-9)
+func (cb *Catbox) getTS6ID(id uint64) (string, error) {
+	// Check the integer ID is < 26*36**5. That is as many valid TS6 IDs we can
+	// have. The first character must be [A-Z], the remaining 5 are [A-Z0-9],
+	// hence 36**5 vs. 26.
+	// This is also the maximum number of connections we can have per run.
+	// 1,572,120,576
+	if id >= 1572120576 {
+		return "", fmt.Errorf("TS6 ID overflow")
+	}
+
+	n := id
+
+	ts6id := []byte("AAAAAA")
+
+	for pos := 5; pos >= 0; pos-- {
+		if n >= 36 {
+			rem := n % 36
+
+			// 0 to 25 are A to Z
+			// 26 to 35 are 0 to 9
+			if rem >= 26 {
+				ts6id[pos] = byte(rem - 26 + '0')
+			} else {
+				ts6id[pos] = byte(rem + 'A')
+			}
+
+			n /= 36
+			continue
+		}
+
+		if n >= 26 {
+			ts6id[pos] = byte(n - 26 + '0')
+		} else {
+			ts6id[pos] = byte(n + 'A')
+		}
+
+		// Once we are < 36, we're done.
+		break
+	}
+
+	return string(ts6id), nil
+}
+
+// Make TS6 UID. UID = SID concatenated with ID
+func (cb *Catbox) getTS6UID(id uint64) (TS6UID, error) {
+	ts6id, err := cb.getTS6ID(id)
+	if err != nil {
+		return TS6UID(""), err
+	}
+
+	return TS6UID(cb.Config.TS6SID + ts6id), nil
 }

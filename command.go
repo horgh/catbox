@@ -13,7 +13,7 @@ import (
 
 // The NICK command to happen both at connection registration time and
 // after. There are different rules.
-func (c *Client) nickCommand(m irc.Message) {
+func (c *LocalClient) nickCommand(m irc.Message) {
 	// We should have one parameter: The nick they want.
 	if len(m.Params) == 0 {
 		// 431 ERR_NONICKNAMEGIVEN
@@ -22,11 +22,11 @@ func (c *Client) nickCommand(m irc.Message) {
 	}
 	nick := m.Params[0]
 
-	if len(nick) > c.Server.Config.MaxNickLength {
-		nick = nick[0:c.Server.Config.MaxNickLength]
+	if len(nick) > c.Catbox.Config.MaxNickLength {
+		nick = nick[0:c.Catbox.Config.MaxNickLength]
 	}
 
-	if !isValidNick(c.Server.Config.MaxNickLength, nick) {
+	if !isValidNick(c.Catbox.Config.MaxNickLength, nick) {
 		// 432 ERR_ERRONEUSNICKNAME
 		c.messageFromServer("432", []string{nick, "Erroneous nickname"})
 		return
@@ -35,21 +35,15 @@ func (c *Client) nickCommand(m irc.Message) {
 	nickCanon := canonicalizeNick(nick)
 
 	// Nick must be unique.
-	_, exists := c.Server.Nicks[nickCanon]
+	_, exists := c.Catbox.Nicks[nickCanon]
 	if exists {
 		// 433 ERR_NICKNAMEINUSE
 		c.messageFromServer("433", []string{nick, "Nickname is already in use"})
 		return
 	}
 
-	// Flag the nick as taken by this client.
-	c.Server.Nicks[nickCanon] = c.ID
-	oldDisplayNick := c.PreRegDisplayNick
-
-	// Free the old nick (if there is one).
-	if len(oldDisplayNick) > 0 {
-		delete(c.Server.Nicks, canonicalizeNick(oldDisplayNick))
-	}
+	// NOTE: I no longer flag the nick as taken until registration completes.
+	//   Simpler.
 
 	c.PreRegDisplayNick = nick
 
@@ -64,72 +58,74 @@ func (c *Client) nickCommand(m irc.Message) {
 
 // The NICK command to happen both at connection registration time and
 // after. There are different rules.
-func (c *UserClient) nickCommand(m irc.Message) {
+func (u *LocalUser) nickCommand(m irc.Message) {
 	// We should have one parameter: The nick they want.
 	if len(m.Params) == 0 {
 		// 431 ERR_NONICKNAMEGIVEN
-		c.messageFromServer("431", []string{"No nickname given"})
+		u.messageFromServer("431", []string{"No nickname given"})
 		return
 	}
 	nick := m.Params[0]
 
-	if len(nick) > c.Server.Config.MaxNickLength {
-		nick = nick[0:c.Server.Config.MaxNickLength]
+	if len(nick) > u.Catbox.Config.MaxNickLength {
+		nick = nick[0:u.Catbox.Config.MaxNickLength]
 	}
 
-	if !isValidNick(c.Server.Config.MaxNickLength, nick) {
+	if !isValidNick(u.Catbox.Config.MaxNickLength, nick) {
 		// 432 ERR_ERRONEUSNICKNAME
-		c.messageFromServer("432", []string{nick, "Erroneous nickname"})
+		u.messageFromServer("432", []string{nick, "Erroneous nickname"})
 		return
 	}
 
 	nickCanon := canonicalizeNick(nick)
 
 	// Nick must be unique.
-	_, exists := c.Server.Nicks[nickCanon]
+	_, exists := u.Catbox.Nicks[nickCanon]
 	if exists {
 		// 433 ERR_NICKNAMEINUSE
-		c.messageFromServer("433", []string{nick, "Nickname is already in use"})
+		u.messageFromServer("433", []string{nick, "Nickname is already in use"})
 		return
 	}
 
 	// Flag the nick as taken by this client.
-	c.Server.Nicks[nickCanon] = c.ID
-	oldDisplayNick := c.DisplayNick
+	u.Catbox.Nicks[nickCanon] = u.UID
+	oldDisplayNick := u.DisplayNick
 
 	// Free the old nick.
-	delete(c.Server.Nicks, canonicalizeNick(oldDisplayNick))
+	delete(u.Catbox.Nicks, canonicalizeNick(oldDisplayNick))
 
 	// We need to inform other clients about the nick change.
 	// Any that are in the same channel as this client.
-	informedClients := map[uint64]struct{}{}
-	for _, channel := range c.Channels {
-		for _, member := range channel.Members {
+	informedClients := map[TS6UID]struct{}{}
+	for _, channel := range u.Channels {
+		for memberUID := range channel.Members {
 			// Tell each client only once.
-			_, exists := informedClients[member.ID]
+			_, exists := informedClients[memberUID]
 			if exists {
 				continue
 			}
 
+			lu := u.Catbox.LocalUsers[memberUID]
+
 			// Message needs to come from the OLD nick.
-			c.messageClient(member, "NICK", []string{nick})
-			informedClients[member.ID] = struct{}{}
+			u.messageClient(lu, "NICK", []string{nick})
+			informedClients[lu.UID] = struct{}{}
 		}
 	}
 
 	// Reply to the client. We should have above, but if they were not on any
 	// channels then we did not.
-	_, exists = informedClients[c.ID]
+	_, exists = informedClients[u.UID]
 	if !exists {
-		c.messageClient(c, "NICK", []string{nick})
+		u.messageClient(u, "NICK", []string{nick})
 	}
 
 	// Finally, make the update. Do this last as we need to ensure we act
 	// as the old nick when crafting messages.
-	c.DisplayNick = nick
+	u.DisplayNick = nick
 }
 
-func (c *Client) userCommand(m irc.Message) {
+func (c *LocalClient) userCommand(m irc.Message) {
 	// RFC RECOMMENDs NICK before USER. But I'm going to allow either way now.
 	// One reason to do so is how to react if NICK was taken and client
 	// proceeded to USER.
@@ -143,11 +139,11 @@ func (c *Client) userCommand(m irc.Message) {
 
 	user := m.Params[0]
 
-	if len(user) > c.Server.Config.MaxNickLength {
-		user = user[0:c.Server.Config.MaxNickLength]
+	if len(user) > c.Catbox.Config.MaxNickLength {
+		user = user[0:c.Catbox.Config.MaxNickLength]
 	}
 
-	if !isValidUser(c.Server.Config.MaxNickLength, user) {
+	if !isValidUser(c.Catbox.Config.MaxNickLength, user) {
 		// There isn't an appropriate response in the RFC. ircd-ratbox sends an
 		// ERROR message. Do that.
 		c.messageFromServer("ERROR", []string{"Invalid username"})
@@ -172,12 +168,12 @@ func (c *Client) userCommand(m irc.Message) {
 }
 
 // The USER command only occurs during connection registration.
-func (c *UserClient) userCommand(m irc.Message) {
+func (u *LocalUser) userCommand(m irc.Message) {
 	// 462 ERR_ALREADYREGISTRED
-	c.messageFromServer("462", []string{"Unauthorized command (already registered)"})
+	u.messageFromServer("462", []string{"Unauthorized command (already registered)"})
 }
 
-func (c *Client) passCommand(m irc.Message) {
+func (c *LocalClient) passCommand(m irc.Message) {
 	// For server registration:
 	// PASS <password>, TS, <ts version>, <SID>
 	if len(m.Params) < 4 {
@@ -227,7 +223,7 @@ func (c *Client) passCommand(m irc.Message) {
 	// Don't reply yet.
 }
 
-func (c *Client) capabCommand(m irc.Message) {
+func (c *LocalClient) capabCommand(m irc.Message) {
 	// CAPAB <space separated list>
 	if len(m.Params) == 0 {
 		// 461 ERR_NEEDMOREPARAMS
@@ -277,7 +273,7 @@ func (c *Client) capabCommand(m irc.Message) {
 	c.GotCAPAB = true
 }
 
-func (c *Client) serverCommand(m irc.Message) {
+func (c *LocalClient) serverCommand(m irc.Message) {
 	// SERVER <name> <hopcount> <description>
 	if len(m.Params) != 3 {
 		// 461 ERR_NEEDMOREPARAMS
@@ -297,7 +293,7 @@ func (c *Client) serverCommand(m irc.Message) {
 
 	// We could validate the hostname format. But we have a list of hosts we will
 	// link to, so check against that directly.
-	linkInfo, exists := c.Server.Config.Servers[m.Params[0]]
+	linkInfo, exists := c.Catbox.Config.Servers[m.Params[0]]
 	if !exists {
 		c.quit("I don't know you")
 		return
@@ -316,7 +312,7 @@ func (c *Client) serverCommand(m irc.Message) {
 	}
 
 	// Is this server already linked?
-	_, exists = c.Server.Servers[m.Params[0]]
+	_, exists = c.Catbox.Servers[TS6SID(m.Params[0])]
 	if exists {
 		c.quit("Already linked")
 		return
@@ -343,7 +339,7 @@ func (c *Client) serverCommand(m irc.Message) {
 	c.sendSVINFO()
 }
 
-func (c *Client) svinfoCommand(m irc.Message) {
+func (c *LocalClient) svinfoCommand(m irc.Message) {
 	// SVINFO <TS version> <min TS version> 0 <current time>
 	if len(m.Params) < 4 {
 		// 461 ERR_NEEDMOREPARAMS
@@ -397,23 +393,23 @@ func (c *Client) svinfoCommand(m irc.Message) {
 	c.registerServer()
 }
 
-func (c *Client) errorCommand(m irc.Message) {
+func (c *LocalClient) errorCommand(m irc.Message) {
 	c.quit("Bye")
 }
 
-func (c *UserClient) joinCommand(m irc.Message) {
+func (u *LocalUser) joinCommand(m irc.Message) {
 	// Parameters: ( <channel> *( "," <channel> ) [ <key> *( "," <key> ) ] ) / "0"
 
 	if len(m.Params) == 0 {
 		// 461 ERR_NEEDMOREPARAMS
-		c.messageFromServer("461", []string{"JOIN", "Not enough parameters"})
+		u.messageFromServer("461", []string{"JOIN", "Not enough parameters"})
 		return
 	}
 
 	// JOIN 0 is a special case. Client leaves all channels.
 	if len(m.Params) == 1 && m.Params[0] == "0" {
-		for _, channel := range c.Channels {
-			c.part(channel.Name, "")
+		for _, channel := range u.Channels {
+			u.part(channel.Name, "")
 		}
 		return
 	}
@@ -427,7 +423,7 @@ func (c *UserClient) joinCommand(m irc.Message) {
 	channelName := canonicalizeChannel(m.Params[0])
 	if !isValidChannel(channelName) {
 		// 403 ERR_NOSUCHCHANNEL. Used to indicate channel name is invalid.
-		c.messageFromServer("403", []string{channelName, "Invalid channel name"})
+		u.messageFromServer("403", []string{channelName, "Invalid channel name"})
 		return
 	}
 
@@ -436,45 +432,45 @@ func (c *UserClient) joinCommand(m irc.Message) {
 	// Try to join the client to the channel.
 
 	// Is the client in the channel already?
-	if c.onChannel(&Channel{Name: channelName}) {
+	if u.onChannel(&Channel{Name: channelName}) {
 		// 443 ERR_USERONCHANNEL
 		// This error code is supposed to be for inviting a user on a channel
 		// already, but it works.
-		c.messageFromServer("443", []string{c.DisplayNick, channelName,
+		u.messageFromServer("443", []string{u.DisplayNick, channelName,
 			"is already on channel"})
 		return
 	}
 
 	// Look up / create the channel
-	channel, exists := c.Server.Channels[channelName]
+	channel, exists := u.Catbox.Channels[channelName]
 	if !exists {
 		channel = &Channel{
 			Name:    channelName,
-			Members: make(map[uint64]*UserClient),
+			Members: make(map[TS6UID]struct{}),
 		}
-		c.Server.Channels[channelName] = channel
+		u.Catbox.Channels[channelName] = channel
 	}
 
 	// Add the client to the channel.
-	channel.Members[c.ID] = c
-	c.Channels[channelName] = channel
+	channel.Members[u.UID] = struct{}{}
+	u.Channels[channelName] = channel
 
 	// Tell the client about the join. This is what RFC says to send:
 	// Send JOIN, RPL_TOPIC, and RPL_NAMREPLY.
 
 	// JOIN comes from the client, to the client.
-	c.messageClient(c, "JOIN", []string{channel.Name})
+	u.messageClient(u, "JOIN", []string{channel.Name})
 
 	// If this is a new channel, send them the modes we set by default.
 	if !exists {
-		c.messageFromServer("MODE", []string{channel.Name, "+ns"})
+		u.messageFromServer("MODE", []string{channel.Name, "+ns"})
 	}
 
 	// It appears RPL_TOPIC is optional, at least ircd-ratbox does not send it.
 	// Presumably if there is no topic.
 	if len(channel.Topic) > 0 {
 		// 332 RPL_TOPIC
-		c.messageFromServer("332", []string{channel.Name, channel.Topic})
+		u.messageFromServer("332", []string{channel.Name, channel.Topic})
 	}
 
 	// Channel flag: = (public), * (private), @ (secret)
@@ -484,9 +480,10 @@ func (c *UserClient) joinCommand(m irc.Message) {
 	// RPL_NAMREPLY: This tells the client about who is in the channel
 	// (including itself).
 	// It ends with RPL_ENDOFNAMES.
-	for _, member := range channel.Members {
+	for memberUID := range channel.Members {
+		member := u.Catbox.Users[memberUID]
 		// 353 RPL_NAMREPLY
-		c.messageFromServer("353", []string{
+		u.messageFromServer("353", []string{
 			// TODO: We need to include @ / + for each nick opped/voiced.
 			// TODO: Multiple nicks per RPL_NAMREPLY.
 			channelFlag, channel.Name, fmt.Sprintf(":%s", member.DisplayNick),
@@ -494,26 +491,28 @@ func (c *UserClient) joinCommand(m irc.Message) {
 	}
 
 	// 366 RPL_ENDOFNAMES
-	c.messageFromServer("366", []string{channel.Name, "End of NAMES list"})
+	u.messageFromServer("366", []string{channel.Name, "End of NAMES list"})
 
 	// Tell each member in the channel about the client.
-	for _, member := range channel.Members {
+	for memberUID := range channel.Members {
 		// Don't tell the client. We already did (above).
-		if member.ID == c.ID {
+		if memberUID == u.UID {
 			continue
 		}
 
+		member := u.Catbox.Users[memberUID]
+
 		// From the client to each member.
-		c.messageClient(member, "JOIN", []string{channel.Name})
+		u.messageUser(member, "JOIN", []string{channel.Name})
 	}
 }
 
-func (c *UserClient) partCommand(m irc.Message) {
+func (u *LocalUser) partCommand(m irc.Message) {
 	// Parameters: <channel> *( "," <channel> ) [ <Part Message> ]
 
 	if len(m.Params) == 0 {
 		// 461 ERR_NEEDMOREPARAMS
-		c.messageFromServer("461", []string{"PART", "Not enough parameters"})
+		u.messageFromServer("461", []string{"PART", "Not enough parameters"})
 		return
 	}
 
@@ -524,23 +523,23 @@ func (c *UserClient) partCommand(m irc.Message) {
 		partMessage = m.Params[1]
 	}
 
-	c.part(m.Params[0], partMessage)
+	u.part(m.Params[0], partMessage)
 }
 
 // Per RFC 2812, PRIVMSG and NOTICE are essentially the same, so both PRIVMSG
 // and NOTICE use this command function.
-func (c *UserClient) privmsgCommand(m irc.Message) {
+func (u *LocalUser) privmsgCommand(m irc.Message) {
 	// Parameters: <msgtarget> <text to be sent>
 
 	if len(m.Params) == 0 {
 		// 411 ERR_NORECIPIENT
-		c.messageFromServer("411", []string{"No recipient given (PRIVMSG)"})
+		u.messageFromServer("411", []string{"No recipient given (PRIVMSG)"})
 		return
 	}
 
 	if len(m.Params) == 1 {
 		// 412 ERR_NOTEXTTOSEND
-		c.messageFromServer("412", []string{"No text to send"})
+		u.messageFromServer("412", []string{"No text to send"})
 		return
 	}
 
@@ -553,7 +552,7 @@ func (c *UserClient) privmsgCommand(m irc.Message) {
 	// The message may be too long once we add the prefix/encode the message.
 	// Strip any trailing characters until it's short enough.
 	// TODO: Other messages can have this problem too (PART, QUIT, etc...)
-	msgLen := len(":") + len(c.nickUhost()) + len(" ") + len(m.Command) +
+	msgLen := len(":") + len(u.nickUhost()) + len(" ") + len(m.Command) +
 		len(" ") + len(target) + len(" ") + len(":") + len(msg) + len("\r\n")
 	if msgLen > irc.MaxLineLength {
 		trimCount := msgLen - irc.MaxLineLength
@@ -566,36 +565,38 @@ func (c *UserClient) privmsgCommand(m irc.Message) {
 		channelName := canonicalizeChannel(target)
 		if !isValidChannel(channelName) {
 			// 404 ERR_CANNOTSENDTOCHAN
-			c.messageFromServer("404", []string{channelName, "Cannot send to channel"})
+			u.messageFromServer("404", []string{channelName, "Cannot send to channel"})
 			return
 		}
 
-		channel, exists := c.Server.Channels[channelName]
+		channel, exists := u.Catbox.Channels[channelName]
 		if !exists {
 			// 403 ERR_NOSUCHCHANNEL
-			c.messageFromServer("403", []string{channelName, "No such channel"})
+			u.messageFromServer("403", []string{channelName, "No such channel"})
 			return
 		}
 
 		// Are they on it?
 		// TODO: Technically we should allow messaging if they aren't on it
 		//   depending on the mode.
-		if !c.onChannel(channel) {
+		if !u.onChannel(channel) {
 			// 404 ERR_CANNOTSENDTOCHAN
-			c.messageFromServer("404", []string{channelName, "Cannot send to channel"})
+			u.messageFromServer("404", []string{channelName, "Cannot send to channel"})
 			return
 		}
 
-		c.LastMessageTime = time.Now()
+		u.LastMessageTime = time.Now()
 
 		// Send to all members of the channel. Except the client itself it seems.
-		for _, member := range channel.Members {
-			if member.ID == c.ID {
+		for memberUID := range channel.Members {
+			if memberUID == u.UID {
 				continue
 			}
 
+			member := u.Catbox.Users[memberUID]
+
 			// From the client to each member.
-			c.messageClient(member, m.Command, []string{channel.Name, msg})
+			u.messageUser(member, m.Command, []string{channel.Name, msg})
 		}
 
 		return
@@ -604,48 +605,48 @@ func (c *UserClient) privmsgCommand(m irc.Message) {
 	// We're messaging a nick directly.
 
 	nickName := canonicalizeNick(target)
-	if !isValidNick(c.Server.Config.MaxNickLength, nickName) {
+	if !isValidNick(u.Catbox.Config.MaxNickLength, nickName) {
 		// 401 ERR_NOSUCHNICK
-		c.messageFromServer("401", []string{nickName, "No such nick/channel"})
+		u.messageFromServer("401", []string{nickName, "No such nick/channel"})
 		return
 	}
 
-	targetClientID, exists := c.Server.Nicks[nickName]
+	targetUID, exists := u.Catbox.Nicks[nickName]
 	if !exists {
 		// 401 ERR_NOSUCHNICK
-		c.messageFromServer("401", []string{nickName, "No such nick/channel"})
+		u.messageFromServer("401", []string{nickName, "No such nick/channel"})
 		return
 	}
-	targetClient := c.Server.UserClients[targetClientID]
+	targetUser := u.Catbox.Users[targetUID]
 
-	c.LastMessageTime = time.Now()
+	u.LastMessageTime = time.Now()
 
-	c.messageClient(targetClient, m.Command, []string{nickName, msg})
+	u.messageUser(targetUser, m.Command, []string{nickName, msg})
 }
 
-func (c *UserClient) lusersCommand() {
+func (u *LocalUser) lusersCommand() {
 	// We always send RPL_LUSERCLIENT and RPL_LUSERME.
 	// The others only need be sent if the counts are non-zero.
 
 	// 251 RPL_LUSERCLIENT
-	c.messageFromServer("251", []string{
+	u.messageFromServer("251", []string{
 		fmt.Sprintf("There are %d users and %d services on %d servers.",
-			len(c.Server.UserClients),
+			len(u.Catbox.LocalUsers),
 			0,
 			// +1 to count ourself.
-			len(c.Server.ServerClients)+1),
+			len(u.Catbox.LocalServers)+1),
 	})
 
 	// 252 RPL_LUSEROP
 	operCount := 0
-	for _, client := range c.Server.UserClients {
+	for _, client := range u.Catbox.LocalUsers {
 		if client.isOperator() {
 			operCount++
 		}
 	}
 	if operCount > 0 {
 		// 252 RPL_LUSEROP
-		c.messageFromServer("252", []string{
+		u.messageFromServer("252", []string{
 			fmt.Sprintf("%d", operCount),
 			"operator(s) online",
 		})
@@ -653,9 +654,9 @@ func (c *UserClient) lusersCommand() {
 
 	// 253 RPL_LUSERUNKNOWN
 	// Unregistered connections.
-	numUnknown := len(c.Server.UnregisteredClients)
+	numUnknown := len(u.Catbox.LocalClients)
 	if numUnknown > 0 {
-		c.messageFromServer("253", []string{
+		u.messageFromServer("253", []string{
 			fmt.Sprintf("%d", numUnknown),
 			"unknown connection(s)",
 		})
@@ -663,120 +664,120 @@ func (c *UserClient) lusersCommand() {
 
 	// 254 RPL_LUSERCHANNELS
 	// RFC 2811 says to not include +s channels in this count. But I do.
-	if len(c.Server.Channels) > 0 {
-		c.messageFromServer("254", []string{
-			fmt.Sprintf("%d", len(c.Server.Channels)),
+	if len(u.Catbox.Channels) > 0 {
+		u.messageFromServer("254", []string{
+			fmt.Sprintf("%d", len(u.Catbox.Channels)),
 			"channels formed",
 		})
 	}
 
 	// 255 RPL_LUSERME
-	c.messageFromServer("255", []string{
+	u.messageFromServer("255", []string{
 		fmt.Sprintf("I have %d clients and %d servers",
-			len(c.Server.UserClients), len(c.Server.ServerClients)),
+			len(u.Catbox.LocalUsers), len(u.Catbox.LocalServers)),
 	})
 }
 
-func (c *UserClient) motdCommand() {
+func (u *LocalUser) motdCommand() {
 	// 375 RPL_MOTDSTART
-	c.messageFromServer("375", []string{
-		fmt.Sprintf("- %s Message of the day - ", c.Server.Config.ServerName),
+	u.messageFromServer("375", []string{
+		fmt.Sprintf("- %s Message of the day - ", u.Catbox.Config.ServerName),
 	})
 
 	// 372 RPL_MOTD
-	c.messageFromServer("372", []string{
-		fmt.Sprintf("- %s", c.Server.Config.MOTD),
+	u.messageFromServer("372", []string{
+		fmt.Sprintf("- %s", u.Catbox.Config.MOTD),
 	})
 
 	// 376 RPL_ENDOFMOTD
-	c.messageFromServer("376", []string{"End of MOTD command"})
+	u.messageFromServer("376", []string{"End of MOTD command"})
 }
 
-func (c *UserClient) quitCommand(m irc.Message) {
+func (u *LocalUser) quitCommand(m irc.Message) {
 	msg := "Quit:"
 	if len(m.Params) > 0 {
 		msg += " " + m.Params[0]
 	}
 
-	c.quit(msg)
+	u.quit(msg)
 }
 
-func (c *UserClient) pingCommand(m irc.Message) {
+func (u *LocalUser) pingCommand(m irc.Message) {
 	// Parameters: <server> (I choose to not support forwarding)
 	if len(m.Params) == 0 {
 		// 409 ERR_NOORIGIN
-		c.messageFromServer("409", []string{"No origin specified"})
+		u.messageFromServer("409", []string{"No origin specified"})
 		return
 	}
 
 	server := m.Params[0]
 
-	if server != c.Server.Config.ServerName {
+	if server != u.Catbox.Config.ServerName {
 		// 402 ERR_NOSUCHSERVER
-		c.messageFromServer("402", []string{server, "No such server"})
+		u.messageFromServer("402", []string{server, "No such server"})
 		return
 	}
 
-	c.messageFromServer("PONG", []string{server})
+	u.messageFromServer("PONG", []string{server})
 }
 
-func (c *UserClient) dieCommand(m irc.Message) {
-	if !c.isOperator() {
+func (u *LocalUser) dieCommand(m irc.Message) {
+	if !u.isOperator() {
 		// 481 ERR_NOPRIVILEGES
-		c.messageFromServer("481", []string{"Permission Denied- You're not an IRC operator"})
+		u.messageFromServer("481", []string{"Permission Denied- You're not an IRC operator"})
 		return
 	}
 
 	// die is not an RFC command. I use it to shut down the server.
-	c.Server.shutdown()
+	u.Catbox.shutdown()
 }
 
-func (c *UserClient) whoisCommand(m irc.Message) {
+func (u *LocalUser) whoisCommand(m irc.Message) {
 	// Difference from RFC: I support only a single nickname (no mask), and no
 	// server target.
 	if len(m.Params) == 0 {
 		// 431 ERR_NONICKNAMEGIVEN
-		c.messageFromServer("431", []string{"No nickname given"})
+		u.messageFromServer("431", []string{"No nickname given"})
 		return
 	}
 
 	nick := m.Params[0]
 	nickCanonical := canonicalizeNick(nick)
 
-	targetClientID, exists := c.Server.Nicks[nickCanonical]
+	targetUID, exists := u.Catbox.Nicks[nickCanonical]
 	if !exists {
 		// 401 ERR_NOSUCHNICK
-		c.messageFromServer("401", []string{nick, "No such nick/channel"})
+		u.messageFromServer("401", []string{nick, "No such nick/channel"})
 		return
 	}
-	targetClient := c.Server.UserClients[targetClientID]
+	targetUser := u.Catbox.Users[targetUID]
 
 	// 311 RPL_WHOISUSER
-	c.messageFromServer("311", []string{
-		targetClient.DisplayNick,
-		targetClient.User,
-		fmt.Sprintf("%s", targetClient.Conn.IP),
+	u.messageFromServer("311", []string{
+		targetUser.DisplayNick,
+		targetUser.Username,
+		fmt.Sprintf("%s", targetUser.Hostname),
 		"*",
-		targetClient.RealName,
+		targetUser.RealName,
 	})
 
 	// 319 RPL_WHOISCHANNELS
 	// I choose to not show any.
 
 	// 312 RPL_WHOISSERVER
-	c.messageFromServer("312", []string{
-		targetClient.DisplayNick,
-		c.Server.Config.ServerName,
-		c.Server.Config.ServerInfo,
+	u.messageFromServer("312", []string{
+		targetUser.DisplayNick,
+		u.Catbox.Config.ServerName,
+		u.Catbox.Config.ServerInfo,
 	})
 
 	// 301 RPL_AWAY
 	// TODO: AWAY not implemented yet.
 
 	// 313 RPL_WHOISOPERATOR
-	if targetClient.isOperator() {
-		c.messageFromServer("313", []string{
-			targetClient.DisplayNick,
+	if targetUser.isOperator() {
+		u.messageFromServer("313", []string{
+			targetUser.DisplayNick,
 			"is an IRC operator",
 		})
 	}
@@ -784,58 +785,61 @@ func (c *UserClient) whoisCommand(m irc.Message) {
 	// TODO: TLS information
 
 	// 317 RPL_WHOISIDLE
-	idleDuration := time.Now().Sub(targetClient.LastMessageTime)
-	idleSeconds := int(idleDuration.Seconds())
-	c.messageFromServer("317", []string{
-		targetClient.DisplayNick,
-		fmt.Sprintf("%d", idleSeconds),
-		"seconds idle",
-	})
+	// Only if local.
+	if targetUser.LocalUser != nil {
+		idleDuration := time.Now().Sub(targetUser.LocalUser.LastMessageTime)
+		idleSeconds := int(idleDuration.Seconds())
+		u.messageFromServer("317", []string{
+			targetUser.DisplayNick,
+			fmt.Sprintf("%d", idleSeconds),
+			"seconds idle",
+		})
+	}
 
 	// 318 RPL_ENDOFWHOIS
-	c.messageFromServer("318", []string{
-		targetClient.DisplayNick,
+	u.messageFromServer("318", []string{
+		targetUser.DisplayNick,
 		"End of WHOIS list",
 	})
 }
 
-func (c *UserClient) operCommand(m irc.Message) {
+func (u *LocalUser) operCommand(m irc.Message) {
 	// Parameters: <name> <password>
 	if len(m.Params) < 2 {
 		// 461 ERR_NEEDMOREPARAMS
-		c.messageFromServer("461", []string{"OPER", "Not enough parameters"})
+		u.messageFromServer("461", []string{"OPER", "Not enough parameters"})
 		return
 	}
 
-	if c.isOperator() {
+	if u.isOperator() {
 		// 381 RPL_YOUREOPER
-		c.messageFromServer("381", []string{"You are already an IRC operator"})
+		u.messageFromServer("381", []string{"You are already an IRC operator"})
 		return
 	}
 
 	// TODO: Host matching
 
 	// Check if they gave acceptable permissions.
-	pass, exists := c.Server.Config.Opers[m.Params[0]]
+	pass, exists := u.Catbox.Config.Opers[m.Params[0]]
 	if !exists || pass != m.Params[1] {
 		// 464 ERR_PASSWDMISMATCH
-		c.messageFromServer("464", []string{"Password incorrect"})
+		u.messageFromServer("464", []string{"Password incorrect"})
 		return
 	}
 
 	// Give them oper status.
-	c.Modes['o'] = struct{}{}
+	u.Modes['o'] = struct{}{}
 
-	c.Server.Opers[c.ID] = c
+	u.Catbox.Opers[u.UID] = u
 
-	c.messageClient(c, "MODE", []string{c.DisplayNick, "+o"})
+	u.messageClient(u, "MODE", []string{u.DisplayNick, "+o"})
 
 	// 381 RPL_YOUREOPER
-	c.messageFromServer("381", []string{"You are now an IRC operator"})
+	u.messageFromServer("381", []string{"You are now an IRC operator"})
 }
 
 // MODE command applies either to nicknames or to channels.
-func (c *UserClient) modeCommand(m irc.Message) {
+func (u *LocalUser) modeCommand(m irc.Message) {
 	// User mode:
 	// Parameters: <nickname> *( ( "+" / "-" ) *( "i" / "w" / "o" / "O" / "r" ) )
 
@@ -844,7 +848,7 @@ func (c *UserClient) modeCommand(m irc.Message) {
 
 	if len(m.Params) < 1 {
 		// 461 ERR_NEEDMOREPARAMS
-		c.messageFromServer("461", []string{"MODE", "Not enough parameters"})
+		u.messageFromServer("461", []string{"MODE", "Not enough parameters"})
 		return
 	}
 
@@ -857,44 +861,43 @@ func (c *UserClient) modeCommand(m irc.Message) {
 	}
 
 	// Is it a nickname?
-	targetClientID, exists := c.Server.Nicks[canonicalizeNick(target)]
+	targetUID, exists := u.Catbox.Nicks[canonicalizeNick(target)]
 	if exists {
-		targetClient := c.Server.UserClients[targetClientID]
-		c.userModeCommand(targetClient, modes)
+		targetUser := u.Catbox.Users[targetUID]
+		u.userModeCommand(targetUser, modes)
 		return
 	}
 
 	// Is it a channel?
-	targetChannel, exists := c.Server.Channels[canonicalizeChannel(target)]
+	targetChannel, exists := u.Catbox.Channels[canonicalizeChannel(target)]
 	if exists {
-		c.channelModeCommand(targetChannel, modes)
+		u.channelModeCommand(targetChannel, modes)
 		return
 	}
 
 	// Well... Not found. Send a channel not found. It seems the closest matching
 	// extant error in RFC.
 	// 403 ERR_NOSUCHCHANNEL
-	c.messageFromServer("403", []string{target, "No such channel"})
+	u.messageFromServer("403", []string{target, "No such channel"})
 }
 
-func (c *UserClient) userModeCommand(targetClient *UserClient,
-	modes string) {
+func (u *LocalUser) userModeCommand(targetUser *User, modes string) {
 	// They can only change their own mode.
-	if targetClient != c {
+	if targetUser.LocalUser != u {
 		// 502 ERR_USERSDONTMATCH
-		c.messageFromServer("502", []string{"Cannot change mode for other users"})
+		u.messageFromServer("502", []string{"Cannot change mode for other users"})
 		return
 	}
 
 	// No modes given means we should send back their current mode.
 	if len(modes) == 0 {
 		modeReturn := "+"
-		for k := range c.Modes {
+		for k := range u.Modes {
 			modeReturn += string(k)
 		}
 
 		// 221 RPL_UMODEIS
-		c.messageFromServer("221", []string{modeReturn})
+		u.messageFromServer("221", []string{modeReturn})
 		return
 	}
 
@@ -908,7 +911,7 @@ func (c *UserClient) userModeCommand(targetClient *UserClient,
 		if action == ' ' {
 			// Malformed. No +/-.
 			// 472 ERR_UNKNOWNMODE
-			c.messageFromServer("472", []string{modes, "is unknown mode to me"})
+			u.messageFromServer("472", []string{modes, "is unknown mode to me"})
 			continue
 		}
 
@@ -921,7 +924,7 @@ func (c *UserClient) userModeCommand(targetClient *UserClient,
 
 		if char != 'o' {
 			// 501 ERR_UMODEUNKNOWNFLAG
-			c.messageFromServer("501", []string{"Unknown MODE flag"})
+			u.messageFromServer("501", []string{"Unknown MODE flag"})
 			continue
 		}
 
@@ -931,19 +934,20 @@ func (c *UserClient) userModeCommand(targetClient *UserClient,
 		}
 
 		// This is -o. They have to be operator for there to be any effect.
-		if !c.isOperator() {
+		if !u.isOperator() {
 			continue
 		}
 
-		delete(c.Modes, 'o')
-		c.messageClient(c, "MODE", []string{"-o", c.DisplayNick})
+		delete(u.Modes, 'o')
+		delete(u.Catbox.Opers, u.UID)
+		u.messageClient(u, "MODE", []string{"-o", u.DisplayNick})
 	}
 }
 
-func (c *UserClient) channelModeCommand(channel *Channel, modes string) {
-	if !c.onChannel(channel) {
+func (u *LocalUser) channelModeCommand(channel *Channel, modes string) {
+	if !u.onChannel(channel) {
 		// 442 ERR_NOTONCHANNEL
-		c.messageFromServer("442", []string{channel.Name, "You're not on that channel"})
+		u.messageFromServer("442", []string{channel.Name, "You're not on that channel"})
 		return
 	}
 
@@ -951,7 +955,7 @@ func (c *UserClient) channelModeCommand(channel *Channel, modes string) {
 	// Always send back +ns. That's only I support right now.
 	if len(modes) == 0 {
 		// 324 RPL_CHANNELMODEIS
-		c.messageFromServer("324", []string{channel.Name, "+ns"})
+		u.messageFromServer("324", []string{channel.Name, "+ns"})
 		return
 	}
 
@@ -959,39 +963,41 @@ func (c *UserClient) channelModeCommand(channel *Channel, modes string) {
 	// none.
 	if modes == "b" || modes == "+b" {
 		// 368 RPL_ENDOFBANLIST
-		c.messageFromServer("368", []string{channel.Name, "End of channel ban list"})
+		u.messageFromServer("368", []string{channel.Name, "End of channel ban list"})
 		return
 	}
 
 	// Since we don't have channel operators implemented, any attempt to alter
 	// mode is an error.
 	// 482 ERR_CHANOPRIVSNEEDED
-	c.messageFromServer("482", []string{channel.Name, "You're not channel operator"})
+	u.messageFromServer("482", []string{channel.Name, "You're not channel operator"})
 }
 
-func (c *UserClient) whoCommand(m irc.Message) {
+func (u *LocalUser) whoCommand(m irc.Message) {
 	// Contrary to RFC 2812, I support only 'WHO #channel'.
 	if len(m.Params) < 1 {
 		// 461 ERR_NEEDMOREPARAMS
-		c.messageFromServer("461", []string{m.Command, "Not enough parameters"})
+		u.messageFromServer("461", []string{m.Command, "Not enough parameters"})
 		return
 	}
 
-	channel, exists := c.Server.Channels[canonicalizeChannel(m.Params[0])]
+	channel, exists := u.Catbox.Channels[canonicalizeChannel(m.Params[0])]
 	if !exists {
 		// 403 ERR_NOSUCHCHANNEL. Used to indicate channel name is invalid.
-		c.messageFromServer("403", []string{m.Params[0], "Invalid channel name"})
+		u.messageFromServer("403", []string{m.Params[0], "Invalid channel name"})
 		return
 	}
 
 	// Only works if they are on the channel.
-	if !c.onChannel(channel) {
+	if !u.onChannel(channel) {
 		// 442 ERR_NOTONCHANNEL
-		c.messageFromServer("442", []string{channel.Name, "You're not on that channel"})
+		u.messageFromServer("442", []string{channel.Name, "You're not on that channel"})
 		return
 	}
 
-	for _, member := range channel.Members {
+	for memberUID := range channel.Members {
+		member := u.Catbox.Users[memberUID]
+
 		// 352 RPL_WHOREPLY
 		// "<channel> <user> <host> <server> <nick>
 		// ( "H" / "G" > ["*"] [ ( "@" / "+" ) ]
@@ -1002,11 +1008,11 @@ func (c *UserClient) whoCommand(m irc.Message) {
 		if member.isOperator() {
 			mode += "*"
 		}
-		c.messageFromServer("352", []string{
+		u.messageFromServer("352", []string{
 			channel.Name,
-			member.User,
-			fmt.Sprintf("%s", member.Conn.IP),
-			c.Server.Config.ServerName,
+			member.Username,
+			fmt.Sprintf("%s", member.Hostname),
+			u.Catbox.Config.ServerName,
 			member.DisplayNick,
 			mode,
 			"0 " + member.RealName,
@@ -1014,27 +1020,27 @@ func (c *UserClient) whoCommand(m irc.Message) {
 	}
 
 	// 315 RPL_ENDOFWHO
-	c.messageFromServer("315", []string{channel.Name, "End of WHO list"})
+	u.messageFromServer("315", []string{channel.Name, "End of WHO list"})
 }
 
-func (c *UserClient) topicCommand(m irc.Message) {
+func (u *LocalUser) topicCommand(m irc.Message) {
 	// Params: <channel> [ <topic> ]
 	if len(m.Params) == 0 {
-		c.messageFromServer("461", []string{m.Command, "Not enough parameters"})
+		u.messageFromServer("461", []string{m.Command, "Not enough parameters"})
 		return
 	}
 
 	channelName := canonicalizeChannel(m.Params[0])
-	channel, exists := c.Server.Channels[channelName]
+	channel, exists := u.Catbox.Channels[channelName]
 	if !exists {
 		// 403 ERR_NOSUCHCHANNEL. Used to indicate channel name is invalid.
-		c.messageFromServer("403", []string{m.Params[0], "Invalid channel name"})
+		u.messageFromServer("403", []string{m.Params[0], "Invalid channel name"})
 		return
 	}
 
-	if !c.onChannel(channel) {
+	if !u.onChannel(channel) {
 		// 442 ERR_NOTONCHANNEL
-		c.messageFromServer("442", []string{channel.Name, "You're not on that channel"})
+		u.messageFromServer("442", []string{channel.Name, "You're not on that channel"})
 		return
 	}
 
@@ -1042,12 +1048,12 @@ func (c *UserClient) topicCommand(m irc.Message) {
 	if len(m.Params) < 2 {
 		if len(channel.Topic) == 0 {
 			// 331 RPL_NOTOPIC
-			c.messageFromServer("331", []string{channel.Name, "No topic is set"})
+			u.messageFromServer("331", []string{channel.Name, "No topic is set"})
 			return
 		}
 
 		// 332 RPL_TOPIC
-		c.messageFromServer("332", []string{channel.Name, channel.Topic})
+		u.messageFromServer("332", []string{channel.Name, channel.Topic})
 		return
 	}
 
@@ -1066,44 +1072,51 @@ func (c *UserClient) topicCommand(m irc.Message) {
 	channel.Topic = topic
 
 	// Tell all members of the channel, including the client.
-	for _, member := range channel.Members {
+	for memberUID := range channel.Members {
+		member := u.Catbox.Users[memberUID]
 		// 332 RPL_TOPIC
-		c.messageClient(member, "TOPIC", []string{channel.Name, channel.Topic})
+		u.messageUser(member, "TOPIC", []string{channel.Name, channel.Topic})
 	}
 }
 
 // Initiate a connection to a server.
 //
 // I implement CONNECT differently than RFC 2812. Only a single parameter.
-func (c *UserClient) connectCommand(m irc.Message) {
-	if !c.isOperator() {
+func (u *LocalUser) connectCommand(m irc.Message) {
+	if !u.isOperator() {
 		// 481 ERR_NOPRIVILEGES
-		c.messageFromServer("481", []string{"Permission Denied- You're not an IRC operator"})
+		u.messageFromServer("481", []string{"Permission Denied- You're not an IRC operator"})
 		return
 	}
 
 	// CONNECT <server name>
 	if len(m.Params) < 1 {
 		// 461 ERR_NEEDMOREPARAMS
-		c.messageFromServer("461", []string{m.Command, "Not enough parameters"})
+		u.messageFromServer("461", []string{m.Command, "Not enough parameters"})
 		return
 	}
 
 	serverName := m.Params[0]
 
 	// Is it a server we know about?
-	linkInfo, exists := c.Server.Config.Servers[serverName]
+	linkInfo, exists := u.Catbox.Config.Servers[serverName]
 	if !exists {
 		// 402 ERR_NOSUCHSERVER
-		c.messageFromServer("402", []string{serverName, "No such server"})
+		u.messageFromServer("402", []string{serverName, "No such server"})
 		return
 	}
 
 	// Are we already linked to it?
-	_, exists = c.Server.Servers[serverName]
-	if exists {
+	linkedAlready := false
+	for _, server := range u.Catbox.Servers {
+		if server.Name == serverName {
+			linkedAlready = true
+			break
+		}
+	}
+	if linkedAlready {
 		// No great error code.
-		c.notice(fmt.Sprintf("I am already linked to %s.", serverName))
+		u.notice(fmt.Sprintf("I am already linked to %s.", serverName))
 		return
 	}
 
@@ -1112,23 +1125,23 @@ func (c *UserClient) connectCommand(m irc.Message) {
 
 	// Initiate a connection.
 	// Put it in a goroutine to avoid blocking server goroutine.
-	c.Server.WG.Add(1)
+	u.Catbox.WG.Add(1)
 	go func() {
-		defer c.Server.WG.Done()
+		defer u.Catbox.WG.Done()
 
-		c.notice(fmt.Sprintf("Connecting to %s...", linkInfo.Name))
+		u.notice(fmt.Sprintf("Connecting to %s...", linkInfo.Name))
 
 		conn, err := net.DialTimeout("tcp",
 			fmt.Sprintf("%s:%d", linkInfo.Hostname, linkInfo.Port),
-			c.Server.Config.DeadTime)
+			u.Catbox.Config.DeadTime)
 		if err != nil {
 			log.Printf("Unable to connect to server [%s]: %s", linkInfo.Name, err)
 			return
 		}
 
-		id := c.Server.getClientID()
+		id := u.Catbox.getClientID()
 
-		client := NewClient(c.Server, id, conn)
+		client := NewLocalClient(u.Catbox, id, conn)
 
 		// Make sure we send to the client's write channel before telling the server
 		// about the client. It is possible otherwise that the server (if shutting
@@ -1137,31 +1150,29 @@ func (c *UserClient) connectCommand(m irc.Message) {
 		client.sendCAPAB()
 		client.sendSERVER()
 
-		client.Server.newEvent(Event{Type: NewClientEvent, Client: client})
+		client.Catbox.newEvent(Event{Type: NewClientEvent, Client: client})
 
-		client.Server.WG.Add(1)
+		client.Catbox.WG.Add(1)
 		go client.readLoop()
-		client.Server.WG.Add(1)
+		client.Catbox.WG.Add(1)
 		go client.writeLoop()
 	}()
 }
 
-func (c *UserClient) linksCommand(m irc.Message) {
+func (u *LocalUser) linksCommand(m irc.Message) {
 	// Difference from RFC: No parameters respected.
 
-	for _, s := range c.Server.ServerClients {
+	for _, s := range u.Catbox.Servers {
 		// 364 RPL_LINKS
 		// <mask> <server> :<hopcount> <server info>
-		c.messageFromServer("364", []string{
+		u.messageFromServer("364", []string{
 			s.Name,
 			s.Name,
-			// TODO: When we have servers that are not directly connected, hop count
-			//   must change.
-			fmt.Sprintf("1 %s", s.Description),
+			fmt.Sprintf("%d %s", s.Hopcount, s.Description),
 		})
 	}
 
 	// 365 RPL_ENDOFLINKS
 	// <mask> :End of LINKS list
-	c.messageFromServer("365", []string{"*", "End of LINKS list"})
+	u.messageFromServer("365", []string{"*", "End of LINKS list"})
 }

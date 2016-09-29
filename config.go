@@ -54,7 +54,7 @@ type ServerDefinition struct {
 // We parse some values into alternate representations.
 //
 // This function populates both the server.Config and server.Opers fields.
-func (s *Server) checkAndParseConfig(file string) error {
+func (cb *Catbox) checkAndParseConfig(file string) error {
 	configMap, err := config.ReadStringMap(file)
 	if err != nil {
 		return err
@@ -91,31 +91,31 @@ func (s *Server) checkAndParseConfig(file string) error {
 
 	// Populate our struct.
 
-	s.Config.ListenHost = configMap["listen-host"]
-	s.Config.ListenPort = configMap["listen-port"]
-	s.Config.ServerName = configMap["server-name"]
-	s.Config.ServerInfo = configMap["server-info"]
-	s.Config.Version = configMap["version"]
-	s.Config.CreatedDate = configMap["created-date"]
-	s.Config.MOTD = configMap["motd"]
+	cb.Config.ListenHost = configMap["listen-host"]
+	cb.Config.ListenPort = configMap["listen-port"]
+	cb.Config.ServerName = configMap["server-name"]
+	cb.Config.ServerInfo = configMap["server-info"]
+	cb.Config.Version = configMap["version"]
+	cb.Config.CreatedDate = configMap["created-date"]
+	cb.Config.MOTD = configMap["motd"]
 
 	nickLen64, err := strconv.ParseInt(configMap["max-nick-length"], 10, 8)
 	if err != nil {
 		return fmt.Errorf("Max nick length is not valid: %s", err)
 	}
-	s.Config.MaxNickLength = int(nickLen64)
+	cb.Config.MaxNickLength = int(nickLen64)
 
-	s.Config.WakeupTime, err = time.ParseDuration(configMap["wakeup-time"])
+	cb.Config.WakeupTime, err = time.ParseDuration(configMap["wakeup-time"])
 	if err != nil {
 		return fmt.Errorf("Wakeup time is in invalid format: %s", err)
 	}
 
-	s.Config.PingTime, err = time.ParseDuration(configMap["ping-time"])
+	cb.Config.PingTime, err = time.ParseDuration(configMap["ping-time"])
 	if err != nil {
 		return fmt.Errorf("Ping time is in invalid format: %s", err)
 	}
 
-	s.Config.DeadTime, err = time.ParseDuration(configMap["dead-time"])
+	cb.Config.DeadTime, err = time.ParseDuration(configMap["dead-time"])
 	if err != nil {
 		return fmt.Errorf("Dead time is in invalid format: %s", err)
 	}
@@ -124,9 +124,9 @@ func (s *Server) checkAndParseConfig(file string) error {
 	if err != nil {
 		return fmt.Errorf("Unable to load opers config: %s", err)
 	}
-	s.Config.Opers = opers
+	cb.Config.Opers = opers
 
-	s.Config.Servers = make(map[string]ServerDefinition)
+	cb.Config.Servers = make(map[string]ServerDefinition)
 	servers, err := config.ReadStringMap(configMap["servers-config"])
 	if err != nil {
 		return fmt.Errorf("Unable to load servers config: %s", err)
@@ -137,13 +137,13 @@ func (s *Server) checkAndParseConfig(file string) error {
 		if err != nil {
 			return fmt.Errorf("Malformed server link information: %s: %s", name, err)
 		}
-		s.Config.Servers[name] = link
+		cb.Config.Servers[name] = link
 	}
 
 	if !isValidSID(configMap["ts6-sid"]) {
 		return fmt.Errorf("Invalid TS6 SID")
 	}
-	s.Config.TS6SID = configMap["ts6-sid"]
+	cb.Config.TS6SID = configMap["ts6-sid"]
 
 	return nil
 }

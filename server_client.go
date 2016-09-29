@@ -7,16 +7,12 @@ import (
 	"summercat.com/irc"
 )
 
-// ServerClient means the client registered as a server. This holds its info.
-type ServerClient struct {
-	Client
+// LocalServer means the client registered as a server. This holds its info.
+type LocalServer struct {
+	*LocalClient
+	*Server
 
-	// Its TS6 SID
-	TS6SID string
-
-	Name string
-
-	Description string
+	SID TS6SID
 
 	Capabs map[string]struct{}
 
@@ -32,147 +28,166 @@ type ServerClient struct {
 	Bursting bool
 }
 
-// NewServerClient upgrades a Client to a ServerClient
-func NewServerClient(c *Client) *ServerClient {
+// NewLocalServer upgrades a LocalClient to a LocalServer.
+func NewLocalServer(c *LocalClient) *LocalServer {
 	now := time.Now()
-	return &ServerClient{
-		Client:           *c,
-		TS6SID:           c.PreRegTS6SID,
+	s := &LocalServer{
+		LocalClient:      c,
+		SID:              TS6SID(c.PreRegTS6SID),
 		Capabs:           c.PreRegCapabs,
-		Name:             c.PreRegServerName,
-		Description:      c.PreRegServerDesc,
 		LastActivityTime: now,
 		LastPingTime:     now,
 		GotPING:          false,
 		GotPONG:          false,
 		Bursting:         true,
 	}
+
+	return s
 }
 
-func (c *ServerClient) getLastActivityTime() time.Time {
-	return c.LastActivityTime
+func (s *LocalServer) getLastActivityTime() time.Time {
+	return s.LastActivityTime
 }
 
-func (c *ServerClient) getLastPingTime() time.Time {
-	return c.LastPingTime
+func (s *LocalServer) getLastPingTime() time.Time {
+	return s.LastPingTime
 }
 
-func (c *ServerClient) setLastPingTime(t time.Time) {
-	c.LastPingTime = t
+func (s *LocalServer) setLastPingTime(t time.Time) {
+	s.LastPingTime = t
 }
 
-func (c *ServerClient) quit(msg string) {
-	c.messageFromServer("ERROR", []string{msg})
-	close(c.WriteChan)
+func (s *LocalServer) quit(msg string) {
+	// May already be cleaning up.
+	_, exists := s.Catbox.LocalServers[s.SID]
+	if !exists {
+		return
+	}
 
-	delete(c.Server.ServerClients, c.ID)
+	s.messageFromServer("ERROR", []string{msg})
+
+	close(s.WriteChan)
+
+	delete(s.Catbox.LocalServers, s.SID)
 
 	// TODO: Make all clients quit that are on the other side.
 }
 
-func (c *ServerClient) handleMessage(m irc.Message) {
+func (s *LocalServer) handleMessage(m irc.Message) {
 	// Record that client said something to us just now.
-	c.LastActivityTime = time.Now()
+	s.LastActivityTime = time.Now()
 
 	if m.Command == "PING" {
-		c.pingCommand(m)
+		s.pingCommand(m)
 		return
 	}
 
 	if m.Command == "PONG" {
-		c.pongCommand(m)
+		s.pongCommand(m)
 		return
 	}
 
 	if m.Command == "ERROR" {
-		c.errorCommand(m)
+		s.errorCommand(m)
+		return
+	}
+
+	if m.Command == "UID" {
+		s.uidCommand(m)
 		return
 	}
 
 	// 421 ERR_UNKNOWNCOMMAND
-	c.messageFromServer("421", []string{m.Command, "Unknown command"})
+	s.messageFromServer("421", []string{m.Command, "Unknown command"})
 }
 
-func (c *ServerClient) sendBurst() {
+func (s *LocalServer) sendBurst() {
+	// TODO
 }
 
-func (c *ServerClient) sendPING() {
+func (s *LocalServer) sendPING() {
 	// PING <My SID>
-	c.maybeQueueMessage(irc.Message{
+	s.maybeQueueMessage(irc.Message{
 		Command: "PING",
 		Params: []string{
-			c.Server.Config.TS6SID,
+			s.Catbox.Config.TS6SID,
 		},
 	})
 }
 
-func (c *ServerClient) pingCommand(m irc.Message) {
+func (s *LocalServer) pingCommand(m irc.Message) {
 	// We expect a PING from server as part of burst end.
 	// PING <Remote SID>
 	if len(m.Params) < 1 {
 		// 461 ERR_NEEDMOREPARAMS
-		c.messageFromServer("461", []string{"PING", "Not enough parameters"})
+		s.messageFromServer("461", []string{"PING", "Not enough parameters"})
 		return
 	}
 
 	// Allow multiple pings.
 
-	if m.Params[0] != c.TS6SID {
-		c.quit("Unexpected SID")
+	if TS6SID(m.Params[0]) != s.SID {
+		s.quit("Unexpected SID")
 		return
 	}
 
-	c.maybeQueueMessage(irc.Message{
-		Prefix:  c.Server.Config.TS6SID,
+	s.maybeQueueMessage(irc.Message{
+		Prefix:  s.Catbox.Config.TS6SID,
 		Command: "PONG",
 		Params: []string{
-			c.Server.Config.ServerName,
-			c.TS6SID,
+			s.Catbox.Config.ServerName,
+			string(s.SID),
 		},
 	})
 
-	c.GotPING = true
+	s.GotPING = true
 
-	if c.Bursting && c.GotPONG {
-		c.Server.noticeOpers(fmt.Sprintf("Burst with %s over.", c.Name))
-		c.Bursting = false
+	if s.Bursting && s.GotPONG {
+		s.Catbox.noticeOpers(fmt.Sprintf("Burst with %s over.", s.Name))
+		s.Bursting = false
 	}
 }
 
-func (c *ServerClient) pongCommand(m irc.Message) {
+func (s *LocalServer) pongCommand(m irc.Message) {
 	// We expect this at end of server link burst.
 	// :<Remote SID> PONG <Remote server name> <My SID>
 	if len(m.Params) < 2 {
 		// 461 ERR_NEEDMOREPARAMS
-		c.messageFromServer("461", []string{"SVINFO", "Not enough parameters"})
+		s.messageFromServer("461", []string{"SVINFO", "Not enough parameters"})
 		return
 	}
 
-	if m.Prefix != c.TS6SID {
-		c.quit("Unknown prefix")
+	if TS6SID(m.Prefix) != s.SID {
+		s.quit("Unknown prefix")
 		return
 	}
 
-	if m.Params[0] != c.Name {
-		c.quit("Unknown server name")
+	if m.Params[0] != s.Name {
+		s.quit("Unknown server name")
 		return
 	}
 
-	if m.Params[1] != c.Server.Config.TS6SID {
-		c.quit("Unknown SID")
+	if m.Params[1] != s.Catbox.Config.TS6SID {
+		s.quit("Unknown SID")
 		return
 	}
 
 	// No reply.
 
-	c.GotPONG = true
+	s.GotPONG = true
 
-	if c.Bursting && c.GotPING {
-		c.Server.noticeOpers(fmt.Sprintf("Burst with %s over.", c.Name))
-		c.Bursting = false
+	if s.Bursting && s.GotPING {
+		s.Catbox.noticeOpers(fmt.Sprintf("Burst with %s over.", s.Name))
+		s.Bursting = false
 	}
 }
 
-func (c *ServerClient) errorCommand(m irc.Message) {
-	c.quit("Bye")
+func (s *LocalServer) errorCommand(m irc.Message) {
+	s.quit("Bye")
+}
+
+// UID command introduces a client. It is on the server that is the source.
+func (s *LocalServer) uidCommand(m irc.Message) {
+	// Parameters: <nick> <hopcount> <nick TS> <umodes> <username> <hostname> <IP> <UID> :<real name>
+	// :8ZZ UID will 1 1475024621 +i will blashyrkh. 0 8ZZAAAAAB :will
 }
