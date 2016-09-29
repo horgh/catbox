@@ -63,7 +63,7 @@ The main ideas I plan for it are (in no particular order):
 # Todo
 
   * Rename files (e.g. client to local_client)
-  * Move everything out of command.go
+  * Fix unit tests
   * Figure out where messageClient/messageServer should go
   * Send +i to use on connect, and track that (e.g. when creating User)
   * Server to server (ircd-ratbox)
