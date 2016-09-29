@@ -100,7 +100,7 @@ func (s *LocalServer) sendBurst() {
 	// :8ZZ UID will 1 1475024621 +i will blashyrkh. 0 8ZZAAAAAB :will
 	for _, user := range s.Catbox.Users {
 		// Don't tell them about their own users.
-		if user.Server.LocalServer == s {
+		if user.Server != nil && user.Server.LocalServer == s {
 			continue
 		}
 

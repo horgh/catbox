@@ -481,7 +481,7 @@ func (u *LocalUser) joinCommand(m irc.Message) {
 		u.messageFromServer("353", []string{
 			// TODO: We need to include @ / + for each nick opped/voiced.
 			// TODO: Multiple nicks per RPL_NAMREPLY.
-			channelFlag, channel.Name, fmt.Sprintf(":%s", member.DisplayNick),
+			channelFlag, channel.Name, member.DisplayNick,
 		})
 	}
 
@@ -547,8 +547,15 @@ func (u *LocalUser) privmsgCommand(m irc.Message) {
 	// The message may be too long once we add the prefix/encode the message.
 	// Strip any trailing characters until it's short enough.
 	// TODO: Other messages can have this problem too (PART, QUIT, etc...)
+
+	// If sent remote, we convert target to UID (if it's a nick). So if it looks
+	// like a nick, let's say it is at least UID length (9).
+	targetLen := len(target)
+	if target[0] != '#' && len(target) < 9 {
+		targetLen = 9
+	}
 	msgLen := len(":") + len(u.User.nickUhost()) + len(" ") + len(m.Command) +
-		len(" ") + len(target) + len(" ") + len(":") + len(msg) + len("\r\n")
+		len(" ") + targetLen + len(" ") + len(":") + len(msg) + len("\r\n")
 	if msgLen > irc.MaxLineLength {
 		trimCount := msgLen - irc.MaxLineLength
 		msg = msg[:len(msg)-trimCount]
