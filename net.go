@@ -68,22 +68,6 @@ func (c Conn) Read() (string, error) {
 	return line, nil
 }
 
-// ReadMessage reads a line from the connection and parses it as an IRC message.
-func (c Conn) ReadMessage() (irc.Message, error) {
-	buf, err := c.Read()
-	if err != nil {
-		return irc.Message{}, err
-	}
-
-	m, err := irc.ParseMessage(buf)
-	if err != nil {
-		return irc.Message{}, fmt.Errorf("Unable to parse message: %s: %s", buf,
-			err)
-	}
-
-	return m, nil
-}
-
 // Write writes a string to the connection
 func (c Conn) Write(s string) error {
 	// Deadline so we will eventually give up.

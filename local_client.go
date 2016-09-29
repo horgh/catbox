@@ -101,12 +101,17 @@ func (c *LocalClient) readLoop() {
 			break
 		}
 
-		// This means if a client sends us an invalid message that we cut them off.
-		message, err := c.Conn.ReadMessage()
+		buf, err := c.Conn.Read()
 		if err != nil {
 			log.Printf("Client %s: %s", c, err)
 			c.Catbox.newEvent(Event{Type: DeadClientEvent, Client: c})
 			break
+		}
+
+		message, err := irc.ParseMessage(buf)
+		if err != nil {
+			log.Printf("Client %s: Invalid message: %s: %s", c, buf, err)
+			continue
 		}
 
 		c.Catbox.newEvent(Event{
@@ -258,7 +263,7 @@ func (c *LocalClient) registerUser() {
 	lu.lusersCommand()
 	lu.motdCommand()
 
-	u.messageUser(u, "MODE", []string{u.DisplayNick, "+i"})
+	lu.messageUser(u, "MODE", []string{u.DisplayNick, "+i"})
 	u.Modes['i'] = struct{}{}
 }
 

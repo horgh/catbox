@@ -66,7 +66,6 @@ The main ideas I plan for it are (in no particular order):
 
 # Todo
 
-  * Don't disconnect client/server on invalid message
   * Server to server (ircd-ratbox)
     * Burst: SID, SJOIN
     * Post-burst: INVITE, JOIN, KILL, NICK, NOTICE, PART, PRIVMSG, QUIT, SID,
