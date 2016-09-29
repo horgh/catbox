@@ -6,4 +6,5 @@ type Channel struct {
 	Name    string
 	Members map[TS6UID]struct{}
 	Topic   string
+	TS      int64
 }

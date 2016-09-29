@@ -1,15 +1,18 @@
-# Summary
+This is yet another IRC server! I'm creating it because I enjoy working with
+IRC and I thought it would be fun and good practice with Go. Also, I run a
+small IRC network, and it would be nice to have my own server for it. Right now
+I use ircd-ratbox.
 
-Yet another IRC server! I'm creating it because I enjoy working with IRC and I
-thought it would be good practice. I run a small IRC network, and it would be
-nice to have my own server for it. Right now I use ircd-ratbox.
+I call this server catbox. I went with the name for a few reasons: My domain
+name is summercat.com so I already have a cat reference. Cats love boxes. And
+because of another ircd I like a lot is called ratbox!
 
 The main ideas I plan for it are (in no particular order):
 
   * Server to server connections (to other instances)
   * Server to server connections (to ircd-ratbox)
-  * Only a small subset of RFC 2812 which I personally think makes sense. Only
-    what is critical for a minimal IRC server. As simple as possible. If the
+  * Only a subset of RFC 2812 which I personally think makes sense. Only what
+  * is critical for a minimal IRC server. As simple as possible. If the
     RFC suggests something I don't like, and I think clients will be compliant,
     then I'll probably do something else. I'll try to track differences.
   * TLS
@@ -22,8 +25,8 @@ The main ideas I plan for it are (in no particular order):
     * Inform clients when someone whois's them.
     * Inform clients about TLS ciphers in use (both on connect and in their
       whois)
-    * Bots could be built right into the ircd
-    * Highly private (very restricted whois, list, etc)
+    * Bots could be built into the ircd
+    * Private (very restricted whois, list, etc)
 
 
 # Differences from RFC 2812
@@ -37,8 +40,9 @@ The main ideas I plan for it are (in no particular order):
   * Added DIE command.
   * WHOIS command: No server target, and only single nicks.
   * WHOIS command: Currently not going to show any channels.
-  * User modes: Only +o
+  * User modes: Only +oi
   * Channel modes: Only +ns
+  * No channel ops or voices.
   * WHO: Support only 'WHO #channel'. And shows all nicks on that channel.
   * CONNECT: Single parameter only.
   * LINKS: No parameters supported.
@@ -67,9 +71,7 @@ The main ideas I plan for it are (in no particular order):
 # Todo
 
   * Server to server (ircd-ratbox)
-    * Burst: SID, SJOIN
-    * Post-burst: INVITE, JOIN, KILL, NICK, NOTICE, PART, PRIVMSG, QUIT, SID,
-      SJOIN, TOPIC, UID
+    * Post-burst: PRIVMSG, INVITE, JOIN, KILL, NICK, NOTICE, PART, QUIT, TOPIC
     * Nick collisions
   * TLS
   * Auto server connection.
@@ -96,3 +98,4 @@ The main ideas I plan for it are (in no particular order):
   * Reload configuration without restart
   * Upgrade in place (is this possible with TLS connections?)
   * Server console.
+  * Anti-abuse (throttling etc)

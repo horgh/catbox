@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	"summercat.com/irc"
@@ -97,15 +98,36 @@ func (s *LocalServer) quit(msg string) {
 	// TODO: Inform any other servers that are connected.
 }
 
+// Send the burst. This tells the server about the state of the world as we see
+// it.
+// We send our burst after seeing SVINFO. This means we have not yet processed
+// any SID, UID, or SJOIN messages from the other side.
 func (s *LocalServer) sendBurst() {
+	// Send all our connected servers with SID commands.
+	// Parameters: <server name> <hop count> <SID> <description>
+	// e.g.: :8ZZ SID irc3.example.com 2 9ZQ :My Desc
+	for _, server := range s.Catbox.Servers {
+		// Don't send it itself.
+		if server.LocalServer == s {
+			continue
+		}
+
+		s.maybeQueueMessage(irc.Message{
+			Prefix:  s.Catbox.Config.TS6SID,
+			Command: "SID",
+			Params: []string{
+				server.Name,
+				fmt.Sprintf("%d", server.HopCount+1),
+				string(server.SID),
+				server.Description,
+			},
+		})
+	}
+
 	// Send all our users with UID commands.
 	// Parameters: <nick> <hopcount> <nick TS> <umodes> <username> <hostname> <IP> <UID> :<real name>
 	// :8ZZ UID will 1 1475024621 +i will blashyrkh. 0 8ZZAAAAAB :will
 	for _, user := range s.Catbox.Users {
-		if user.isRemote() && user.Link == s {
-			continue
-		}
-
 		s.maybeQueueMessage(irc.Message{
 			Prefix:  s.Catbox.Config.TS6SID,
 			Command: "UID",
@@ -122,6 +144,26 @@ func (s *LocalServer) sendBurst() {
 				user.RealName,
 			},
 		})
+	}
+
+	// Send channels and the users in them with SJOIN commands.
+	// Parameters: <channel TS> <channel name> <modes> [mode params] :<UIDs>
+	// e.g., :8ZZ SJOIN 1475187553 #test2 +sn :@8ZZAAAAAB
+	for _, channel := range s.Catbox.Channels {
+		// TODO: Combine as many UIDs into a single SJOIN as we can, rather than
+		//   one SJOIN per UID.
+		for uid := range channel.Members {
+			s.maybeQueueMessage(irc.Message{
+				Prefix:  s.Catbox.Config.TS6SID,
+				Command: "SJOIN",
+				Params: []string{
+					fmt.Sprintf("%d", channel.TS),
+					channel.Name,
+					"+nt",
+					string(uid),
+				},
+			})
+		}
 	}
 }
 
@@ -171,6 +213,11 @@ func (s *LocalServer) handleMessage(m irc.Message) {
 
 	if m.Command == "SID" {
 		s.sidCommand(m)
+		return
+	}
+
+	if m.Command == "SJOIN" {
+		s.sjoinCommand(m)
 		return
 	}
 
@@ -368,6 +415,7 @@ func (s *LocalServer) uidCommand(m irc.Message) {
 		IP:          ip,
 		UID:         uid,
 		RealName:    realName,
+		Channels:    make(map[string]*Channel),
 		Link:        s,
 	}
 
@@ -493,6 +541,92 @@ func (s *LocalServer) sidCommand(m irc.Message) {
 	// Propagate to our connected servers.
 	for _, server := range s.Catbox.LocalServers {
 		// Don't tell the server we just heard it from.
+		if server == s {
+			continue
+		}
+
+		server.maybeQueueMessage(m)
+	}
+}
+
+// SJOIN occurs in two contexts:
+// 1. During bursts to inform us of channels and users in the channels.
+// 2. Outside bursts to inform us of channel creation (not joins in general)
+func (s *LocalServer) sjoinCommand(m irc.Message) {
+	// Parameters: <channel TS> <channel name> <modes> [mode params] :<UIDs>
+	// e.g., :8ZZ SJOIN 1475187553 #test2 +sn :@8ZZAAAAAB
+
+	// Do we know this server?
+	_, exists := s.Catbox.Servers[TS6SID(m.Prefix)]
+	if !exists {
+		s.quit("Unknown server")
+		return
+	}
+
+	if len(m.Params) < 4 {
+		// 461 ERR_NEEDMOREPARAMS
+		s.messageFromServer("461", []string{"PING", "Not enough parameters"})
+		return
+	}
+
+	channelTS, err := strconv.ParseInt(m.Params[0], 10, 64)
+	if err != nil {
+		s.quit(fmt.Sprintf("Invalid channel TS: %s: %s", m.Params[0], err))
+		return
+	}
+
+	chanName := m.Params[1]
+
+	// Currently I ignore modes. All channels have the same mode, or we pretend so
+	// anyway.
+
+	channel, exists := s.Catbox.Channels[canonicalizeChannel(chanName)]
+	if !exists {
+		channel = &Channel{
+			Name:    canonicalizeChannel(chanName),
+			Members: make(map[TS6UID]struct{}),
+			TS:      channelTS,
+		}
+		s.Catbox.Channels[channel.Name] = channel
+	}
+
+	// If we had mode parameters, then user list is bumped up one.
+	userList := m.Params[3]
+	if len(m.Params) > 4 {
+		userList = m.Params[4]
+	}
+
+	// Look at each of the members we were told about.
+	uidsRaw := strings.Split(userList, " ")
+	for _, uidRaw := range uidsRaw {
+		// May have op/voice prefix.
+		// Cut it off for now. I currently don't support op/voice.
+		uidRaw = strings.TrimLeft(uidRaw, "@+")
+
+		if !isValidUID(uidRaw) {
+			s.quit("Invalid UID")
+			// TODO: Possible to have empty channel at this point
+			return
+		}
+
+		uid := TS6UID(uidRaw)
+
+		user, exists := s.Catbox.Users[uid]
+		if !exists {
+			s.quit("Unknown user")
+			// TODO: Possible to have empty channel at this point
+			return
+		}
+
+		// We could check if we already have them flagged as in the channel.
+
+		channel.Members[user.UID] = struct{}{}
+		user.Channels[channel.Name] = channel
+	}
+
+	// Propagate.
+	for _, server := range s.Catbox.LocalServers {
+		// Don't send it to the server we just heard it from.
 		if server == s {
 			continue
 		}

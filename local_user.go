@@ -460,6 +460,7 @@ func (u *LocalUser) joinCommand(m irc.Message) {
 		channel = &Channel{
 			Name:    channelName,
 			Members: make(map[TS6UID]struct{}),
+			TS:      time.Now().Unix(),
 		}
 		u.Catbox.Channels[channelName] = channel
 	}
