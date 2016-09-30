@@ -63,17 +63,18 @@ The main ideas I plan for it are (in no particular order):
   * Nick TS changes when: Client connects or when it changes its nick.
   * Channel TS changes when: Channel created
   * Server to server (ircd-ratbox) commands I'm most interested in
-    * Burst: SID, UID, SJOIN
+    * Burst: SID, UID, SJOIN, ERROR, PING, PONG
     * Post-burst: INVITE, JOIN, KILL, NICK, NOTICE, PART, PRIVMSG, QUIT, SID,
-      SJOIN, TOPIC, UID
+      SJOIN, TOPIC, UID, SQUIT, ERROR, PING, PONG
 
 
 # Todo
 
-  * Server quitting
   * Server to server (ircd-ratbox)
-    * Post-burst: PART, QUIT, TOPIC, KILL
+    * Post-burst: PART, QUIT, TOPIC, KILL, SQUIT
     * Nick collisions
+  * Drop messageUser/messageFromServer? messageUser all together,
+    messageFromServer to be reply()?
   * TLS
   * Auto server connection.
   * Log to file.

@@ -94,9 +94,66 @@ func (s *LocalServer) quit(msg string) {
 	delete(s.Catbox.LocalServers, s.ID)
 	delete(s.Catbox.Servers, s.Server.SID)
 
-	// TODO: Make all clients quit that are on the other side.
+	// Clean up our records. All users on the other side must be forgotten.
 
-	// TODO: Inform any other servers that are connected.
+	for _, user := range s.Catbox.Users {
+		if user.isLocal() {
+			continue
+		}
+
+		// Is it on the side of the server delinking?
+		if user.Link != s {
+			continue
+		}
+
+		// This is a user we're losing.
+
+		// Tell each user who is in one or more channels with it that it is
+		// quitting.
+		informedClients := make(map[TS6UID]struct{})
+
+		for _, channel := range user.Channels {
+			for memberUID := range channel.Members {
+				member := s.Catbox.Users[memberUID]
+				if !member.isLocal() {
+					continue
+				}
+
+				_, exists := informedClients[member.UID]
+				if exists {
+					continue
+				}
+				informedClients[member.UID] = struct{}{}
+
+				member.LocalUser.maybeQueueMessage(irc.Message{
+					Prefix:  user.nickUhost(),
+					Command: "QUIT",
+					Params: []string{fmt.Sprintf("%s %s", s.Catbox.Config.ServerName,
+						s.Server.Name)},
+				})
+			}
+
+			delete(channel.Members, user.UID)
+			if len(channel.Members) == 0 {
+				delete(s.Catbox.Channels, channel.Name)
+			}
+		}
+
+		delete(s.Catbox.Users, user.UID)
+		if user.isOperator() {
+			delete(s.Catbox.Opers, user.UID)
+		}
+		delete(s.Catbox.Nicks, canonicalizeNick(user.DisplayNick))
+	}
+
+	// Inform other servers that we are connected to.
+	for _, server := range s.Catbox.LocalServers {
+		server.maybeQueueMessage(irc.Message{
+			Prefix:  string(s.Catbox.Config.TS6SID),
+			Command: "SQUIT",
+			Params:  []string{string(s.Server.SID), msg},
+		})
+	}
 }
 
 // Send the burst. This tells the server about the state of the world as we see
