@@ -373,6 +373,8 @@ func (u *LocalUser) nickCommand(m irc.Message) {
 	// Free the old nick.
 	delete(u.Catbox.Nicks, canonicalizeNick(oldDisplayNick))
 
+	u.User.NickTS = time.Now().Unix()
+
 	// We need to inform other clients about the nick change.
 	// Any that are in the same channel as this client.
 	informedClients := map[TS6UID]struct{}{}
@@ -387,7 +389,12 @@ func (u *LocalUser) nickCommand(m irc.Message) {
 			member := u.Catbox.Users[memberUID]
 
 			// Message needs to come from the OLD nick.
-			u.messageUser(member, "NICK", []string{nick})
+			if member.isLocal() {
+				u.messageUser(member, "NICK", []string{nick})
+			} else {
+				u.messageUser(member, "NICK", []string{nick,
+					fmt.Sprintf("%d", u.User.NickTS)})
+			}
 			informedClients[member.UID] = struct{}{}
 		}
 	}
@@ -403,9 +410,14 @@ func (u *LocalUser) nickCommand(m irc.Message) {
 	// as the old nick when crafting messages.
 	u.User.DisplayNick = nick
 
-	u.User.NickTS = time.Now().Unix()
-
-	// TODO: Propagate
+	// Propagate to servers.
+	for _, server := range u.Catbox.LocalServers {
+		server.maybeQueueMessage(irc.Message{
+			Prefix:  string(u.User.UID),
+			Command: "NICK",
+			Params:  []string{u.User.DisplayNick, fmt.Sprintf("%d", u.User.NickTS)},
+		})
+	}
 }
 
 // The USER command only occurs during connection registration.

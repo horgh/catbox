@@ -227,6 +227,11 @@ func (s *LocalServer) handleMessage(m irc.Message) {
 		return
 	}
 
+	if m.Command == "NICK" {
+		s.nickCommand(m)
+		return
+	}
+
 	// 421 ERR_UNKNOWNCOMMAND
 	s.messageFromServer("421", []string{m.Command, "Unknown command"})
 }
@@ -751,6 +756,75 @@ func (s *LocalServer) joinCommand(m irc.Message) {
 			continue
 		}
 
+		server.maybeQueueMessage(m)
+	}
+}
+
+func (s *LocalServer) nickCommand(m irc.Message) {
+	// Parameters: <nick> <nick TS>
+
+	if len(m.Params) < 2 {
+		// 461 ERR_NEEDMOREPARAMS
+		s.messageFromServer("461", []string{"NICK", "Not enough parameters"})
+		return
+	}
+
+	// Find the user.
+	user, exists := s.Catbox.Users[TS6UID(m.Prefix)]
+	if !exists {
+		s.quit("Unknown user (NICK)")
+		return
+	}
+
+	nick := m.Params[0]
+
+	nickTS, err := strconv.ParseInt(m.Params[1], 10, 64)
+	if err != nil {
+		s.quit("Invalid TS (NICK)")
+		return
+	}
+
+	// Deal with collisions.
+	_, exists = s.Catbox.Nicks[canonicalizeNick(nick)]
+	if exists {
+		// TODO: Kill client(s)
+		s.quit("Nick collision")
+		return
+	}
+
+	// Update their nick and nick TS.
+	user.DisplayNick = nick
+	user.NickTS = nickTS
+
+	// Tell our local clients who are in a channel with this user.
+	// Tell each user only once.
+	toldUsers := make(map[TS6UID]struct{})
+	for _, channel := range user.Channels {
+		for memberUID := range channel.Members {
+			member := s.Catbox.Users[memberUID]
+			if !member.isLocal() {
+				continue
+			}
+
+			_, exists := toldUsers[member.UID]
+			if exists {
+				continue
+			}
+			toldUsers[member.UID] = struct{}{}
+
+			member.LocalUser.maybeQueueMessage(irc.Message{
+				Prefix:  user.nickUhost(),
+				Command: "NICK",
+				Params:  []string{user.DisplayNick},
+			})
+		}
+	}
+
+	// Propagate to other servers.
+	for _, server := range s.Catbox.LocalServers {
+		if server == s {
+			continue
+		}
 		server.maybeQueueMessage(m)
 	}
 }

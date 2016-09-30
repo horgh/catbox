@@ -72,7 +72,7 @@ The main ideas I plan for it are (in no particular order):
 
   * Server quitting
   * Server to server (ircd-ratbox)
-    * Post-burst: NICK, PART, QUIT, TOPIC, KILL
+    * Post-burst: PART, QUIT, TOPIC, KILL
     * Nick collisions
   * TLS
   * Auto server connection.
