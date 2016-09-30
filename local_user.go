@@ -119,7 +119,6 @@ func (u *LocalUser) messageFromServer(command string, params []string) {
 // NOTE: Only the server goroutine should call this (as we interact with its
 //   member variables).
 func (u *LocalUser) part(channelName, message string) {
-	// NOTE: Difference from RFC 2812: I only accept one channel at a time.
 	channelName = canonicalizeChannel(channelName)
 
 	if !isValidChannel(channelName) {
@@ -566,6 +565,7 @@ func (u *LocalUser) joinCommand(m irc.Message) {
 
 func (u *LocalUser) partCommand(m irc.Message) {
 	// Parameters: <channel> *( "," <channel> ) [ <Part Message> ]
+	// NOTE: Difference from RFC 2812: I only accept one channel at a time.
 
 	if len(m.Params) == 0 {
 		// 461 ERR_NEEDMOREPARAMS

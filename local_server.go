@@ -289,6 +289,11 @@ func (s *LocalServer) handleMessage(m irc.Message) {
 		return
 	}
 
+	if m.Command == "PART" {
+		s.partCommand(m)
+		return
+	}
+
 	// 421 ERR_UNKNOWNCOMMAND
 	s.messageFromServer("421", []string{m.Command, "Unknown command"})
 }
@@ -878,6 +883,82 @@ func (s *LocalServer) nickCommand(m irc.Message) {
 	}
 
 	// Propagate to other servers.
+	for _, server := range s.Catbox.LocalServers {
+		if server == s {
+			continue
+		}
+		server.maybeQueueMessage(m)
+	}
+}
+
+func (s *LocalServer) partCommand(m irc.Message) {
+	// Params: <comma separated list of channels> <message>
+	// NOTE: I don't support comma separating channels.
+
+	if len(m.Params) < 1 {
+		// 461 ERR_NEEDMOREPARAMS
+		s.messageFromServer("461", []string{"PART", "Not enough parameters"})
+		return
+	}
+
+	chanName := canonicalizeChannel(m.Params[0])
+
+	msg := ""
+	if len(m.Params) > 1 {
+		msg = m.Params[1]
+	}
+
+	// Look up the source user.
+	sourceUser, exists := s.Catbox.Users[TS6UID(m.Prefix)]
+	if !exists {
+		s.quit("Unknown user (PART)")
+		return
+	}
+
+	// Look up the channel.
+	channel, exists := s.Catbox.Channels[chanName]
+	if !exists {
+		s.quit("Unknown channel (PART)")
+		return
+	}
+
+	// Remove them from the channel.
+
+	// While we expect these map keys to be set, check just to be safe.
+
+	_, exists = sourceUser.Channels[chanName]
+	if exists {
+		delete(sourceUser.Channels, chanName)
+	}
+
+	_, exists = channel.Members[sourceUser.UID]
+	if exists {
+		delete(channel.Members, sourceUser.UID)
+	}
+
+	if len(channel.Members) == 0 {
+		delete(s.Catbox.Channels, channel.Name)
+	}
+
+	// Tell local users about the part.
+	params := []string{channel.Name}
+	if len(msg) > 0 {
+		params = append(params, msg)
+	}
+	for memberUID := range channel.Members {
+		member := s.Catbox.Users[memberUID]
+		if !member.isLocal() {
+			continue
+		}
+
+		member.LocalUser.maybeQueueMessage(irc.Message{
+			Prefix:  sourceUser.nickUhost(),
+			Command: "PART",
+			Params:  params,
+		})
+	}
+
+	// Propagate to all other servers.
 	for _, server := range s.Catbox.LocalServers {
 		if server == s {
 			continue

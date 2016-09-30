@@ -65,13 +65,13 @@ The main ideas I plan for it are (in no particular order):
   * Server to server (ircd-ratbox) commands I'm most interested in
     * Burst: SID, UID, SJOIN, ERROR, PING, PONG
     * Post-burst: INVITE, JOIN, KILL, NICK, NOTICE, PART, PRIVMSG, QUIT, SID,
-      SJOIN, TOPIC, UID, SQUIT, ERROR, PING, PONG
+      SJOIN, TOPIC, UID, SQUIT, ERROR, PING, PONG, MODE (user)
 
 
 # Todo
 
   * Server to server (ircd-ratbox)
-    * Post-burst: PART, QUIT, TOPIC, KILL, SQUIT
+    * Post-burst: QUIT, TOPIC, KILL, SQUIT, MODE (user)
     * Nick collisions
   * Drop messageUser/messageFromServer? messageUser all together,
     messageFromServer to be reply()?
