@@ -231,8 +231,6 @@ func (c *LocalClient) registerUser() {
 	c.Catbox.Nicks[canonicalizeNick(u.DisplayNick)] = u.UID
 	c.Catbox.Users[u.UID] = u
 
-	// TODO: Tell linked servers about this new client.
-
 	// 001 RPL_WELCOME
 	lu.messageFromServer("001", []string{
 		fmt.Sprintf("Welcome to the Internet Relay Network %s", u.nickUhost()),
@@ -265,6 +263,26 @@ func (c *LocalClient) registerUser() {
 
 	lu.messageUser(u, "MODE", []string{u.DisplayNick, "+i"})
 	u.Modes['i'] = struct{}{}
+
+	// Tell linked servers about this new client.
+	for _, server := range c.Catbox.LocalServers {
+		server.maybeQueueMessage(irc.Message{
+			Prefix:  c.Catbox.Config.TS6SID,
+			Command: "UID",
+			Params: []string{
+				u.DisplayNick,
+				// Hop count increases for them.
+				fmt.Sprintf("%d", u.HopCount+1),
+				fmt.Sprintf("%d", u.NickTS),
+				u.modesString(),
+				u.Username,
+				u.Hostname,
+				u.IP,
+				string(u.UID),
+				u.RealName,
+			},
+		})
+	}
 }
 
 // Send an IRC message to a client. Appears to be from the server.

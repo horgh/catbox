@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"strconv"
 	"strings"
 	"time"
@@ -218,6 +219,11 @@ func (s *LocalServer) handleMessage(m irc.Message) {
 
 	if m.Command == "SJOIN" {
 		s.sjoinCommand(m)
+		return
+	}
+
+	if m.Command == "JOIN" {
+		s.joinCommand(m)
 		return
 	}
 
@@ -485,7 +491,30 @@ func (s *LocalServer) privmsgCommand(m irc.Message) {
 		// Fall through. Treat it as a channel name.
 	}
 
-	// TODO: Is target a channel?
+	// See if it's a channel.
+
+	channel, exists := s.Catbox.Channels[canonicalizeChannel(m.Params[0])]
+	if !exists {
+		log.Printf("PRIVMSG to unknown target %s", m.Params[0])
+		return
+	}
+
+	// Inform all members of the channel.
+	for memberUID := range channel.Members {
+		member := s.Catbox.Users[memberUID]
+
+		if member.isLocal() {
+			member.LocalUser.maybeQueueMessage(irc.Message{
+				Prefix:  sourceUser.nickUhost(),
+				Command: m.Command,
+				Params:  m.Params,
+			})
+			continue
+		}
+
+		// Remote user. Propagate it towards them.
+		member.Link.maybeQueueMessage(m)
+	}
 }
 
 // SID tells us about a new server.
@@ -590,6 +619,11 @@ func (s *LocalServer) sjoinCommand(m irc.Message) {
 		s.Catbox.Channels[channel.Name] = channel
 	}
 
+	// Update channel TS if needed. To oldest.
+	if channelTS < channel.TS {
+		channel.TS = channelTS
+	}
+
 	// If we had mode parameters, then user list is bumped up one.
 	userList := m.Params[3]
 	if len(m.Params) > 4 {
@@ -620,13 +654,99 @@ func (s *LocalServer) sjoinCommand(m irc.Message) {
 
 		// We could check if we already have them flagged as in the channel.
 
+		// Flag them as being in the channel.
 		channel.Members[user.UID] = struct{}{}
 		user.Channels[channel.Name] = channel
+
+		// Tell our local users who are in the channel.
+		for memberUID := range channel.Members {
+			member := s.Catbox.Users[memberUID]
+			if !member.isLocal() {
+				continue
+			}
+
+			member.LocalUser.maybeQueueMessage(irc.Message{
+				Prefix:  user.nickUhost(),
+				Command: "JOIN",
+				Params:  []string{channel.Name},
+			})
+		}
 	}
 
 	// Propagate.
 	for _, server := range s.Catbox.LocalServers {
 		// Don't send it to the server we just heard it from.
+		if server == s {
+			continue
+		}
+
+		server.maybeQueueMessage(m)
+	}
+}
+
+func (s *LocalServer) joinCommand(m irc.Message) {
+	// Parameters: <channel TS> <channel> +
+	// Prefix is UID.
+
+	// TODO: We could support JOIN 0 (to part all).
+
+	if len(m.Params) < 3 {
+		// 461 ERR_NEEDMOREPARAMS
+		s.messageFromServer("461", []string{"JOIN", "Not enough parameters"})
+		return
+	}
+
+	// Do we know the user?
+	user, exists := s.Catbox.Users[TS6UID(m.Prefix)]
+	if !exists {
+		s.quit("Unknown UID (JOIN)")
+		return
+	}
+
+	channelTS, err := strconv.ParseInt(m.Params[0], 10, 64)
+	if err != nil {
+		s.quit("Invalid TS (JOIN)")
+		return
+	}
+
+	chanName := canonicalizeChannel(m.Params[1])
+
+	// Create the channel if necessary.
+	channel, exists := s.Catbox.Channels[chanName]
+	if !exists {
+		channel = &Channel{
+			Name:    chanName,
+			Members: make(map[TS6UID]struct{}),
+			TS:      channelTS,
+		}
+		s.Catbox.Channels[channel.Name] = channel
+	}
+
+	// Update channel TS if needed. To oldest.
+	if channelTS < channel.TS {
+		channel.TS = channelTS
+	}
+
+	// Put the user in it.
+	channel.Members[user.UID] = struct{}{}
+	user.Channels[channel.Name] = channel
+
+	// Tell our local users who are in the channel.
+	for memberUID := range channel.Members {
+		member := s.Catbox.Users[memberUID]
+		if !member.isLocal() {
+			continue
+		}
+
+		member.LocalUser.maybeQueueMessage(irc.Message{
+			Prefix:  user.nickUhost(),
+			Command: "JOIN",
+			Params:  []string{channel.Name},
+		})
+	}
+
+	// Propagate.
+	for _, server := range s.Catbox.LocalServers {
 		if server == s {
 			continue
 		}

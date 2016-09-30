@@ -523,6 +523,33 @@ func (u *LocalUser) joinCommand(m irc.Message) {
 		// From the client to each member.
 		u.messageUser(member, "JOIN", []string{channel.Name})
 	}
+
+	// Tell servers about this.
+	// If it's a new channel, then use SJOIN. Otherwise JOIN.
+	for _, server := range u.Catbox.LocalServers {
+		if !exists {
+			server.maybeQueueMessage(irc.Message{
+				Prefix:  u.Catbox.Config.TS6SID,
+				Command: "SJOIN",
+				Params: []string{
+					fmt.Sprintf("%d", channel.TS),
+					channel.Name,
+					"+nt",
+					string(u.User.UID),
+				},
+			})
+		} else {
+			server.maybeQueueMessage(irc.Message{
+				Prefix:  string(u.User.UID),
+				Command: "JOIN",
+				Params: []string{
+					fmt.Sprintf("%d", channel.TS),
+					channel.Name,
+					"+",
+				},
+			})
+		}
+	}
 }
 
 func (u *LocalUser) partCommand(m irc.Message) {

@@ -70,8 +70,9 @@ The main ideas I plan for it are (in no particular order):
 
 # Todo
 
+  * Channel creation
   * Server to server (ircd-ratbox)
-    * Post-burst: PRIVMSG, INVITE, JOIN, KILL, NICK, NOTICE, PART, QUIT, TOPIC
+    * Post-burst: PRIVMSG, INVITE, KILL, NICK, NOTICE, PART, QUIT, TOPIC
     * Nick collisions
   * TLS
   * Auto server connection.
