@@ -402,6 +402,10 @@ func (u *LocalUser) nickCommand(m irc.Message) {
 	// Finally, make the update. Do this last as we need to ensure we act
 	// as the old nick when crafting messages.
 	u.User.DisplayNick = nick
+
+	u.User.NickTS = time.Now().Unix()
+
+	// TODO: Propagate
 }
 
 // The USER command only occurs during connection registration.

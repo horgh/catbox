@@ -6,7 +6,7 @@ import "fmt"
 type User struct {
 	DisplayNick string
 	HopCount    int
-	TS          int64
+	NickTS      int64
 	Modes       map[byte]struct{}
 	Username    string
 	Hostname    string
