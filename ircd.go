@@ -486,9 +486,10 @@ func (cb *Catbox) newEvent(evt Event) {
 func (cb *Catbox) noticeOpers(msg string) {
 	log.Print(msg)
 
-	for _, c := range cb.Opers {
-		if c.LocalUser != nil {
-			c.LocalUser.notice(msg)
+	for _, user := range cb.Opers {
+		if user.isLocal() {
+			user.LocalUser.serverNotice(msg)
+			continue
 		}
 
 		// TODO: Remote opers?

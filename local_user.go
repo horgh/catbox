@@ -75,7 +75,7 @@ func (u *LocalUser) messageUser(to *User, command string, params []string) {
 	})
 }
 
-func (u *LocalUser) notice(s string) {
+func (u *LocalUser) serverNotice(s string) {
 	u.messageFromServer("NOTICE", []string{
 		u.User.DisplayNick,
 		fmt.Sprintf("*** Notice --- %s", s),
@@ -1174,7 +1174,7 @@ func (u *LocalUser) connectCommand(m irc.Message) {
 	}
 	if linkedAlready {
 		// No great error code.
-		u.notice(fmt.Sprintf("I am already linked to %s.", serverName))
+		u.serverNotice(fmt.Sprintf("I am already linked to %s.", serverName))
 		return
 	}
 
@@ -1187,7 +1187,7 @@ func (u *LocalUser) connectCommand(m irc.Message) {
 	go func() {
 		defer u.Catbox.WG.Done()
 
-		u.notice(fmt.Sprintf("Connecting to %s...", linkInfo.Name))
+		u.serverNotice(fmt.Sprintf("Connecting to %s...", linkInfo.Name))
 
 		conn, err := net.DialTimeout("tcp",
 			fmt.Sprintf("%s:%d", linkInfo.Hostname, linkInfo.Port),
