@@ -294,6 +294,12 @@ func (s *LocalServer) handleMessage(m irc.Message) {
 		return
 	}
 
+	// ircd-ratbox sends OPERWALL between servers, like WALLOPS
+	if m.Command == "WALLOPS" || m.Command == "OPERWALL" {
+		s.wallopsCommand(m)
+		return
+	}
+
 	// 421 ERR_UNKNOWNCOMMAND
 	s.messageFromServer("421", []string{m.Command, "Unknown command"})
 }
@@ -345,8 +351,8 @@ func (s *LocalServer) pingCommand(m irc.Message) {
 		s.GotPING = true
 
 		if s.GotPONG {
-			s.Catbox.noticeOpers(fmt.Sprintf("Burst with %s over.", s.Server.Name))
 			s.Bursting = false
+			s.Catbox.noticeOpers(fmt.Sprintf("Burst with %s over.", s.Server.Name))
 		}
 	}
 }
@@ -964,5 +970,53 @@ func (s *LocalServer) partCommand(m irc.Message) {
 			continue
 		}
 		server.maybeQueueMessage(m)
+	}
+}
+
+func (s *LocalServer) wallopsCommand(m irc.Message) {
+	// Params: <text to send>
+	if len(m.Params) < 1 {
+		s.quit("Invalid parameters (WALLOPS)")
+		return
+	}
+
+	text := m.Params[0]
+
+	if len(m.Prefix) == 0 {
+		m.Prefix = string(s.Server.SID)
+	}
+
+	// Origin is either a user or a server.
+
+	origin := ""
+	user, exists := s.Catbox.Users[TS6UID(m.Prefix)]
+	if exists {
+		origin = user.nickUhost()
+	}
+	server, exists := s.Catbox.Servers[TS6SID(m.Prefix)]
+	if exists {
+		origin = server.Name
+	}
+
+	if len(origin) == 0 {
+		s.quit("Unknown origin (WALLOPS)")
+		return
+	}
+
+	// Send WALLOPS to all our local opers.
+	for _, oper := range s.Catbox.Opers {
+		if !oper.isLocal() {
+			continue
+		}
+		oper.LocalUser.maybeQueueMessage(irc.Message{
+			Prefix:  origin,
+			Command: "WALLOPS",
+			Params:  []string{text},
+		})
+	}
+
+	// Propagate to other servers.
+	for _, ls := range s.Catbox.LocalServers {
+		ls.maybeQueueMessage(m)
 	}
 }

@@ -328,8 +328,12 @@ func (u *LocalUser) handleMessage(m irc.Message) {
 		return
 	}
 
-	// Unknown command. We don't handle it yet anyway.
+	if m.Command == "WALLOPS" {
+		u.wallopsCommand(m)
+		return
+	}
 
+	// Unknown command. We don't handle it yet anyway.
 	// 421 ERR_UNKNOWNCOMMAND
 	u.messageFromServer("421", []string{m.Command, "Unknown command"})
 }
@@ -1245,4 +1249,37 @@ func (u *LocalUser) linksCommand(m irc.Message) {
 	// 365 RPL_ENDOFLINKS
 	// <mask> :End of LINKS list
 	u.messageFromServer("365", []string{"*", "End of LINKS list"})
+}
+
+// WALLOPS command causes us to send the text to all local operators as a
+// WALLOPS command. We also send it on to each remote server so it can do the
+// same and show its operators.
+func (u *LocalUser) wallopsCommand(m irc.Message) {
+	// Params: <text>
+	if len(m.Params) == 0 {
+		// 461 ERR_NEEDMOREPARAMS
+		u.messageFromServer("461", []string{"WALLOPS", "Not enough parameters"})
+		return
+	}
+
+	text := m.Params[0]
+
+	for _, user := range u.Catbox.Opers {
+		if !user.isLocal() {
+			continue
+		}
+		user.LocalUser.maybeQueueMessage(irc.Message{
+			Prefix:  user.nickUhost(),
+			Command: "WALLOPS",
+			Params:  []string{text},
+		})
+	}
+
+	for _, server := range u.Catbox.LocalServers {
+		server.maybeQueueMessage(irc.Message{
+			Prefix:  string(u.User.UID),
+			Command: "WALLOPS",
+			Params:  []string{text},
+		})
+	}
 }

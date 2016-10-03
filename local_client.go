@@ -111,6 +111,8 @@ func (c *LocalClient) readLoop() {
 		message, err := irc.ParseMessage(buf)
 		if err != nil {
 			log.Printf("Client %s: Invalid message: %s: %s", c, buf, err)
+			// Should we reply to the client? This silently ignores malformed
+			// messages.
 			continue
 		}
 

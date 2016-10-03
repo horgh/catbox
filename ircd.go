@@ -491,7 +491,17 @@ func (cb *Catbox) noticeOpers(msg string) {
 			user.LocalUser.serverNotice(msg)
 			continue
 		}
+	}
 
-		// TODO: Remote opers?
+	// Send as WALLOPS to each server.
+	for _, server := range cb.LocalServers {
+		if server.Bursting {
+			continue
+		}
+		server.maybeQueueMessage(irc.Message{
+			Prefix:  cb.Config.TS6SID,
+			Command: "WALLOPS",
+			Params:  []string{msg},
+		})
 	}
 }

@@ -76,7 +76,7 @@ The main ideas I plan for it are (in no particular order):
   * Drop messageUser/messageFromServer? messageUser all together,
     messageFromServer to be reply()?
   * TLS
-  * Auto server connection.
+  * Auto try/retry linking to servers if not connected
   * Log to file.
   * Daemonize
 
