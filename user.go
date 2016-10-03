@@ -30,6 +30,7 @@ type User struct {
 func (u *User) String() string {
 	return fmt.Sprintf("%s: %s", u.UID, u.nickUhost())
 }
+
 func (u *User) nickUhost() string {
 	return fmt.Sprintf("%s!~%s@%s", u.DisplayNick, u.Username, u.Hostname)
 }
