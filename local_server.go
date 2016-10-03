@@ -48,19 +48,7 @@ func NewLocalServer(c *LocalClient) *LocalServer {
 }
 
 func (s *LocalServer) String() string {
-	return s.Server.String()
-}
-
-func (s *LocalServer) getLastActivityTime() time.Time {
-	return s.LastActivityTime
-}
-
-func (s *LocalServer) getLastPingTime() time.Time {
-	return s.LastPingTime
-}
-
-func (s *LocalServer) setLastPingTime(t time.Time) {
-	s.LastPingTime = t
+	return fmt.Sprintf("%s %s", s.Server.String(), s.Conn.RemoteAddr())
 }
 
 func (s *LocalServer) messageFromServer(command string, params []string) {
@@ -223,16 +211,6 @@ func (s *LocalServer) sendBurst() {
 			})
 		}
 	}
-}
-
-func (s *LocalServer) sendPING() {
-	// PING <My SID>
-	s.maybeQueueMessage(irc.Message{
-		Command: "PING",
-		Params: []string{
-			s.Catbox.Config.TS6SID,
-		},
-	})
 }
 
 func (s *LocalServer) handleMessage(m irc.Message) {

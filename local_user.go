@@ -42,19 +42,7 @@ func NewLocalUser(c *LocalClient) *LocalUser {
 }
 
 func (u *LocalUser) String() string {
-	return u.User.String()
-}
-
-func (u *LocalUser) getLastActivityTime() time.Time {
-	return u.LastActivityTime
-}
-
-func (u *LocalUser) getLastPingTime() time.Time {
-	return u.LastPingTime
-}
-
-func (u *LocalUser) setLastPingTime(t time.Time) {
-	u.LastPingTime = t
+	return fmt.Sprintf("%s %s", u.User.String(), u.Conn.RemoteAddr())
 }
 
 // Message from this local user to another user, remote or local.

@@ -380,12 +380,12 @@ func (cb *Catbox) checkAndPingClients() {
 	// idle for a while.
 
 	for _, client := range cb.LocalUsers {
-		if client.isSendQueueExceeded() {
+		if client.SendQueueExceeded {
 			client.quit("SendQ exceeded")
 			continue
 		}
 
-		timeIdle := now.Sub(client.getLastActivityTime())
+		timeIdle := now.Sub(client.LastActivityTime)
 
 		// Was it active recently enough that we don't need to do anything?
 		if timeIdle < cb.Config.PingTime {
@@ -401,7 +401,7 @@ func (cb *Catbox) checkAndPingClients() {
 			continue
 		}
 
-		timeSincePing := now.Sub(client.getLastPingTime())
+		timeSincePing := now.Sub(client.LastPingTime)
 
 		// Should we ping it? We might have pinged it recently.
 		if timeSincePing < cb.Config.PingTime {
@@ -409,12 +409,12 @@ func (cb *Catbox) checkAndPingClients() {
 		}
 
 		client.messageFromServer("PING", []string{cb.Config.ServerName})
-		client.setLastPingTime(now)
+		client.LastPingTime = now
 		continue
 	}
 
 	for _, server := range cb.LocalServers {
-		if server.isSendQueueExceeded() {
+		if server.SendQueueExceeded {
 			server.quit("SendQ exceeded")
 			continue
 		}
@@ -433,7 +433,7 @@ func (cb *Catbox) checkAndPingClients() {
 		// Its burst completed. Now we monitor the last time we heard from it
 		// and possibly ping it.
 
-		timeIdle := now.Sub(server.getLastActivityTime())
+		timeIdle := now.Sub(server.LastActivityTime)
 
 		// Was it active recently enough that we don't need to do anything?
 		if timeIdle < cb.Config.PingTime {
@@ -449,7 +449,7 @@ func (cb *Catbox) checkAndPingClients() {
 			continue
 		}
 
-		timeSincePing := now.Sub(server.getLastPingTime())
+		timeSincePing := now.Sub(server.LastPingTime)
 
 		// Should we ping it? We might have pinged it recently.
 		if timeSincePing < cb.Config.PingTime {
@@ -458,7 +458,7 @@ func (cb *Catbox) checkAndPingClients() {
 
 		// PING origin is our SID for servers.
 		server.messageFromServer("PING", []string{cb.Config.TS6SID})
-		server.setLastPingTime(now)
+		server.LastPingTime = now
 		continue
 	}
 }

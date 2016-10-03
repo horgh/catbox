@@ -63,8 +63,6 @@ type LocalClient struct {
 	GotCAPAB  bool
 	GotSERVER bool
 
-	SentPASS   bool
-	SentCAPAB  bool
 	SentSERVER bool
 	SentSVINFO bool
 }
@@ -88,6 +86,26 @@ func NewLocalClient(cb *Catbox, id uint64, conn net.Conn) *LocalClient {
 
 func (c *LocalClient) String() string {
 	return fmt.Sprintf("%d %s", c.ID, c.Conn.RemoteAddr())
+}
+
+// Send a message to the client. We send it to its write channel, which in turn
+// leads to writing it to its TCP socket.
+//
+// This function won't block. If the client's queue is full, we flag it as
+// having a full send queue.
+//
+// Not blocking is important because the server sends the client messages this
+// way, and if we block on a problem client, everything would grind to a halt.
+func (c *LocalClient) maybeQueueMessage(m irc.Message) {
+	if c.SendQueueExceeded {
+		return
+	}
+
+	select {
+	case c.WriteChan <- m:
+	default:
+		c.SendQueueExceeded = true
+	}
 }
 
 // readLoop endlessly reads from the client's TCP connection. It parses each
@@ -312,60 +330,6 @@ func (c *LocalClient) messageFromServer(command string, params []string) {
 	})
 }
 
-// Send a message to the client. We send it to its write channel, which in turn
-// leads to writing it to its TCP socket.
-//
-// This function won't block. If the client's queue is full, we flag it as
-// having a full send queue.
-//
-// Not blocking is important because the server sends the client messages this
-// way, and if we block on a problem client, everything would grind to a halt.
-func (c *LocalClient) maybeQueueMessage(m irc.Message) {
-	if c.SendQueueExceeded {
-		return
-	}
-
-	select {
-	case c.WriteChan <- m:
-	default:
-		c.SendQueueExceeded = true
-	}
-}
-
-func (c *LocalClient) sendPASS(pass string) {
-	// PASS <password>, TS, <ts version>, <SID>
-	c.maybeQueueMessage(irc.Message{
-		Command: "PASS",
-		Params:  []string{pass, "TS", "6", c.Catbox.Config.TS6SID},
-	})
-
-	c.SentPASS = true
-}
-
-func (c *LocalClient) sendCAPAB() {
-	// CAPAB <space separated list>
-	c.maybeQueueMessage(irc.Message{
-		Command: "CAPAB",
-		Params:  []string{"QS ENCAP"},
-	})
-
-	c.SentCAPAB = true
-}
-
-func (c *LocalClient) sendSERVER() {
-	// SERVER <name> <hopcount> <description>
-	c.maybeQueueMessage(irc.Message{
-		Command: "SERVER",
-		Params: []string{
-			c.Catbox.Config.ServerName,
-			"1",
-			c.Catbox.Config.ServerInfo,
-		},
-	})
-
-	c.SentSERVER = true
-}
-
 func (c *LocalClient) sendSVINFO() {
 	// SVINFO <TS version> <min TS version> 0 <current time>
 	epoch := time.Now().Unix()
@@ -400,7 +364,14 @@ func (c *LocalClient) registerServer() {
 		c.PreRegServerName))
 
 	ls.sendBurst()
-	ls.sendPING()
+
+	// PING <My SID>
+	ls.maybeQueueMessage(irc.Message{
+		Command: "PING",
+		Params: []string{
+			ls.Catbox.Config.TS6SID,
+		},
+	})
 
 	// Tell connected servers about the new server.
 	// :<my SID> SID <server name> <hop count> <SID> <description>
@@ -417,10 +388,6 @@ func (c *LocalClient) registerServer() {
 				s.Description},
 		})
 	}
-}
-
-func (c *LocalClient) isSendQueueExceeded() bool {
-	return c.SendQueueExceeded
 }
 
 func (c *LocalClient) handleMessage(m irc.Message) {
@@ -767,9 +734,29 @@ func (c *LocalClient) serverCommand(m irc.Message) {
 	// instead.
 
 	if !c.SentSERVER {
-		c.sendPASS(linkInfo.Pass)
-		c.sendCAPAB()
-		c.sendSERVER()
+		// PASS <password>, TS, <ts version>, <SID>
+		c.maybeQueueMessage(irc.Message{
+			Command: "PASS",
+			Params:  []string{linkInfo.Pass, "TS", "6", c.Catbox.Config.TS6SID},
+		})
+
+		// CAPAB <space separated list>
+		c.maybeQueueMessage(irc.Message{
+			Command: "CAPAB",
+			Params:  []string{"QS ENCAP"},
+		})
+
+		// SERVER <name> <hopcount> <description>
+		c.maybeQueueMessage(irc.Message{
+			Command: "SERVER",
+			Params: []string{
+				c.Catbox.Config.ServerName,
+				"1",
+				c.Catbox.Config.ServerInfo,
+			},
+		})
+		c.SentSERVER = true
+
 		return
 	}
 
