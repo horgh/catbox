@@ -284,6 +284,11 @@ func (s *LocalServer) handleMessage(m irc.Message) {
 		return
 	}
 
+	if m.Command == "QUIT" {
+		s.quitCommand(m)
+		return
+	}
+
 	// 421 ERR_UNKNOWNCOMMAND
 	s.messageFromServer("421", []string{m.Command, "Unknown command"})
 }
@@ -515,6 +520,14 @@ func (s *LocalServer) uidCommand(m irc.Message) {
 	s.Catbox.Users[u.UID] = u
 
 	// No reply needed I think.
+
+	// Tell our other servers.
+	for _, server := range s.Catbox.LocalServers {
+		if server == s {
+			continue
+		}
+		server.maybeQueueMessage(m)
+	}
 }
 
 func (s *LocalServer) privmsgCommand(m irc.Message) {
@@ -1024,5 +1037,69 @@ func (s *LocalServer) wallopsCommand(m irc.Message) {
 	// Propagate to other servers.
 	for _, ls := range s.Catbox.LocalServers {
 		ls.maybeQueueMessage(m)
+	}
+}
+
+// QUIT tells us a client is gone.
+func (s *LocalServer) quitCommand(m irc.Message) {
+	// Parameters: <quit comment>
+
+	// Origin is the user who quit.
+	user, exists := s.Catbox.Users[TS6UID(m.Prefix)]
+	if !exists {
+		s.quit("Unknown user (QUIT)")
+		return
+	}
+
+	message := ""
+	if len(m.Params) >= 1 {
+		message = m.Params[0]
+	}
+
+	// Remove the user from each channel.
+	// Also, tell each local client that is in 1+ channel with the user that this
+	// user quit.
+	informedUsers := make(map[TS6UID]struct{})
+	quitParams := []string{}
+	if len(message) > 0 {
+		quitParams = append(quitParams, message)
+	}
+	for _, channel := range user.Channels {
+		for memberUID := range channel.Members {
+			member := s.Catbox.Users[memberUID]
+			if !member.isLocal() {
+				continue
+			}
+			_, exists := informedUsers[member.UID]
+			if exists {
+				continue
+			}
+			informedUsers[member.UID] = struct{}{}
+			member.LocalUser.maybeQueueMessage(irc.Message{
+				Prefix:  user.nickUhost(),
+				Command: "QUIT",
+				Params:  quitParams,
+			})
+		}
+
+		delete(channel.Members, user.UID)
+		if len(channel.Members) == 0 {
+			delete(s.Catbox.Channels, channel.Name)
+		}
+	}
+
+	// Forget the user.
+	delete(s.Catbox.Users, user.UID)
+	if user.isOperator() {
+		delete(s.Catbox.Opers, user.UID)
+	}
+	delete(s.Catbox.Nicks, canonicalizeNick(user.DisplayNick))
+
+	// Propagate to all servers.
+	for _, server := range s.Catbox.LocalServers {
+		if server == s {
+			continue
+		}
+		server.maybeQueueMessage(m)
 	}
 }

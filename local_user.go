@@ -130,19 +130,33 @@ func (u *LocalUser) part(channelName, message string) {
 		return
 	}
 
-	// Tell everyone (including the client) about the part.
-	for memberUID := range channel.Members {
-		params := []string{channelName}
+	partParams := []string{channelName}
+	if len(message) > 0 {
+		partParams = append(partParams, message)
+	}
 
-		// Add part message.
-		if len(message) > 0 {
-			params = append(params, message)
+	// Tell local clients (including the client) about the part.
+	for memberUID := range channel.Members {
+		member := u.Catbox.Users[memberUID]
+		if !member.isLocal() {
+			continue
 		}
 
-		member := u.Catbox.Users[memberUID]
+		member.LocalUser.maybeQueueMessage(irc.Message{
+			Prefix:  u.User.nickUhost(),
+			Command: "PART",
+			Params:  partParams,
+		})
+	}
 
-		// From the client to each member.
-		u.messageUser(member, "PART", params)
+	// Tell all servers. Looks like for TS6, or ratbox at least, channel
+	// membership is known globally, even if no clients present in the channel.
+	for _, server := range u.Catbox.LocalServers {
+		server.maybeQueueMessage(irc.Message{
+			Prefix:  string(u.User.UID),
+			Command: "PART",
+			Params:  partParams,
+		})
 	}
 
 	// Remove the client from the channel.
@@ -168,20 +182,30 @@ func (u *LocalUser) quit(msg string) {
 
 	// Tell each client only once.
 
+	// Tell only local clients. We tell servers separately, who in turn tell their
+	// clients.
+
 	toldClients := map[TS6UID]struct{}{}
 
 	for _, channel := range u.User.Channels {
 		for memberUID := range channel.Members {
-			_, exists := toldClients[memberUID]
-			if exists {
+			member := u.Catbox.Users[memberUID]
+			if !member.isLocal() {
 				continue
 			}
 
-			member := u.Catbox.Users[memberUID]
+			_, exists := toldClients[member.UID]
+			if exists {
+				continue
+			}
+			toldClients[member.UID] = struct{}{}
 
-			u.messageUser(member, "QUIT", []string{msg})
+			member.LocalUser.maybeQueueMessage(irc.Message{
+				Prefix:  u.User.nickUhost(),
+				Command: "QUIT",
+				Params:  []string{msg},
+			})
 
-			toldClients[memberUID] = struct{}{}
 		}
 
 		delete(channel.Members, u.User.UID)
@@ -194,6 +218,15 @@ func (u *LocalUser) quit(msg string) {
 	_, exists = toldClients[u.User.UID]
 	if !exists {
 		u.messageUser(u.User, "QUIT", []string{msg})
+	}
+
+	// Tell all servers. They need to know about client departing.
+	for _, server := range u.Catbox.LocalServers {
+		server.maybeQueueMessage(irc.Message{
+			Prefix:  string(u.User.UID),
+			Command: "QUIT",
+			Params:  []string{msg},
+		})
 	}
 
 	u.messageFromServer("ERROR", []string{msg})
@@ -368,25 +401,24 @@ func (u *LocalUser) nickCommand(m irc.Message) {
 
 	// We need to inform other clients about the nick change.
 	// Any that are in the same channel as this client.
+	// Tell only local clients. Tell all servers after.
+	// Tell each client only once.
+	// Message needs to come from the OLD nick.
 	informedClients := map[TS6UID]struct{}{}
 	for _, channel := range u.User.Channels {
 		for memberUID := range channel.Members {
-			// Tell each client only once.
-			_, exists := informedClients[memberUID]
-			if exists {
+			member := u.Catbox.Users[memberUID]
+			if !member.isLocal() {
 				continue
 			}
 
-			member := u.Catbox.Users[memberUID]
-
-			// Message needs to come from the OLD nick.
-			if member.isLocal() {
-				u.messageUser(member, "NICK", []string{nick})
-			} else {
-				u.messageUser(member, "NICK", []string{nick,
-					fmt.Sprintf("%d", u.User.NickTS)})
+			_, exists := informedClients[member.UID]
+			if exists {
+				continue
 			}
 			informedClients[member.UID] = struct{}{}
+
+			u.messageUser(member, "NICK", []string{nick})
 		}
 	}
 
@@ -515,13 +547,17 @@ func (u *LocalUser) joinCommand(m irc.Message) {
 	u.messageFromServer("366", []string{channel.Name, "End of NAMES list"})
 
 	// Tell each member in the channel about the client.
+	// Only local clients. Servers will tell their own clients.
 	for memberUID := range channel.Members {
-		// Don't tell the client. We already did (above).
-		if memberUID == u.User.UID {
+		member := u.Catbox.Users[memberUID]
+		if !member.isLocal() {
 			continue
 		}
 
-		member := u.Catbox.Users[memberUID]
+		// Don't tell the client. We already did (above).
+		if member.UID == u.User.UID {
+			continue
+		}
 
 		// From the client to each member.
 		u.messageUser(member, "JOIN", []string{channel.Name})
@@ -898,6 +934,15 @@ func (u *LocalUser) operCommand(m irc.Message) {
 
 	// 381 RPL_YOUREOPER
 	u.messageFromServer("381", []string{"You are now an IRC operator"})
+
+	// Tell all servers about this mode change.
+	for _, server := range u.Catbox.LocalServers {
+		server.maybeQueueMessage(irc.Message{
+			Prefix:  string(u.User.UID),
+			Command: "MODE",
+			Params:  []string{string(u.User.UID), "+o"},
+		})
+	}
 }
 
 // MODE command applies either to nicknames or to channels.
@@ -1003,6 +1048,15 @@ func (u *LocalUser) userModeCommand(targetUser *User, modes string) {
 		delete(u.User.Modes, 'o')
 		delete(u.Catbox.Opers, u.User.UID)
 		u.messageUser(u.User, "MODE", []string{"-o", u.User.DisplayNick})
+
+		// Tell all servers about this.
+		for _, server := range u.Catbox.LocalServers {
+			server.maybeQueueMessage(irc.Message{
+				Prefix:  string(u.User.UID),
+				Command: "MODE",
+				Params:  []string{string(u.User.UID), "-o"},
+			})
+		}
 	}
 }
 
@@ -1134,10 +1188,24 @@ func (u *LocalUser) topicCommand(m irc.Message) {
 	channel.Topic = topic
 
 	// Tell all members of the channel, including the client.
+	// Only local clients. We tell remote users by telling all servers.
 	for memberUID := range channel.Members {
 		member := u.Catbox.Users[memberUID]
+		if !member.isLocal() {
+			continue
+		}
+
 		// 332 RPL_TOPIC
 		u.messageUser(member, "TOPIC", []string{channel.Name, channel.Topic})
+	}
+
+	// Again, topic appears to propagate globally no matter what.
+	for _, server := range u.Catbox.LocalServers {
+		server.maybeQueueMessage(irc.Message{
+			Prefix:  string(u.User.UID),
+			Command: "TOPIC",
+			Params:  []string{channel.Name, channel.Topic},
+		})
 	}
 }
 

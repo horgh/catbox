@@ -77,8 +77,8 @@ The main ideas I plan for it are (in no particular order):
     messageFromServer to be reply()?
   * TLS
   * Auto try/retry linking to servers if not connected
-  * Log to file.
   * Daemonize
+  * Log to file
 
 
 ## Maybe
