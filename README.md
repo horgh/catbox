@@ -71,7 +71,7 @@ The main ideas I plan for it are (in no particular order):
 # Todo
 
   * Server to server (ircd-ratbox)
-    * Post-burst: QUIT, TOPIC, KILL, SQUIT, MODE (user)
+    * Post-burst: TOPIC, SQUIT, KILL, KLINE
     * Nick collisions
   * Drop messageUser/messageFromServer? messageUser all together,
     messageFromServer to be reply()?
@@ -94,7 +94,6 @@ The main ideas I plan for it are (in no particular order):
   * ADMIN
   * INFO
   * WHOWAS
-  * KILL
   * AWAY
   * Multi line motd
   * Reload configuration without restart

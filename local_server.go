@@ -289,6 +289,11 @@ func (s *LocalServer) handleMessage(m irc.Message) {
 		return
 	}
 
+	if m.Command == "MODE" {
+		s.modeCommand(m)
+		return
+	}
+
 	// 421 ERR_UNKNOWNCOMMAND
 	s.messageFromServer("421", []string{m.Command, "Unknown command"})
 }
@@ -1096,6 +1101,65 @@ func (s *LocalServer) quitCommand(m irc.Message) {
 	delete(s.Catbox.Nicks, canonicalizeNick(user.DisplayNick))
 
 	// Propagate to all servers.
+	for _, server := range s.Catbox.LocalServers {
+		if server == s {
+			continue
+		}
+		server.maybeQueueMessage(m)
+	}
+}
+
+// MODE tells us about either channel or user changes.
+// Right now I don't really support channel modes, so ignore those all together.
+// For user modes, I track only +i and +o. Ignore the rest.
+func (s *LocalServer) modeCommand(m irc.Message) {
+	// User mode message parameters: <client UID> <umode changes>
+	if len(m.Params) < 2 {
+		return
+	}
+
+	// Look up the user making the change.
+	user, exists := s.Catbox.Users[TS6UID(m.Prefix)]
+	if !exists {
+		s.quit("Unknown prefix (MODE)")
+		return
+	}
+
+	// The first parameter is the target. It's the user's UID or a channel name.
+	user2, exists := s.Catbox.Users[TS6UID(m.Params[0])]
+	if !exists {
+		// Assume it is a channel.
+		return
+	}
+
+	// It must be the same as the prefix.
+	if user != user2 {
+		s.quit("Invalid MODE: User changing another's mode")
+		return
+	}
+
+	// Now look at the mode changes that took place.
+	motion := ' '
+	for _, c := range m.Params[1] {
+		if c == '+' || c == '-' {
+			motion = c
+			continue
+		}
+
+		// I only track +i and +o right now.
+		if c == 'i' || c == 'o' {
+			if motion == '+' {
+				user.Modes[byte(c)] = struct{}{}
+			} else {
+				_, exists := user.Modes[byte(c)]
+				if exists {
+					delete(user.Modes, byte(c))
+				}
+			}
+		}
+	}
+
+	// Propagate.
 	for _, server := range s.Catbox.LocalServers {
 		if server == s {
 			continue
