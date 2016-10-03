@@ -239,6 +239,12 @@ func (s *LocalServer) handleMessage(m irc.Message) {
 	// Record that client said something to us just now.
 	s.LastActivityTime = time.Now()
 
+	// Ensure we always have a prefix. It removes the need to check this
+	// elsewhere.
+	if len(m.Prefix) == 0 {
+		m.Prefix = string(s.Server.SID)
+	}
+
 	if m.Command == "PING" {
 		s.pingCommand(m)
 		return
@@ -314,10 +320,6 @@ func (s *LocalServer) pingCommand(m irc.Message) {
 	}
 
 	// Allow multiple pings.
-
-	if len(m.Prefix) == 0 {
-		m.Prefix = string(s.Server.SID)
-	}
 
 	// :9ZQ PING irc3.example.com :000
 	// Where irc3.example.com == 9ZQ and it is remote
@@ -981,10 +983,6 @@ func (s *LocalServer) wallopsCommand(m irc.Message) {
 	}
 
 	text := m.Params[0]
-
-	if len(m.Prefix) == 0 {
-		m.Prefix = string(s.Server.SID)
-	}
 
 	// Origin is either a user or a server.
 
