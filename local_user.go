@@ -1183,7 +1183,7 @@ func (u *LocalUser) topicCommand(m irc.Message) {
 		topic = ":"
 	}
 
-	// TODO: If/when we have channel operators then we need additional logic
+	// If we have channel operators then we need additional logic.
 
 	channel.Topic = topic
 

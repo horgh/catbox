@@ -1,35 +1,43 @@
+# catbox
+
 This is yet another IRC server! I'm creating it because I enjoy working with
 IRC and I thought it would be fun and good practice with Go. Also, I run a
 small IRC network, and it would be nice to have my own server for it. Right now
-I use ircd-ratbox.
+I use ircd-ratbox which is great, but I wanted to try building one myself.
 
-I call this server catbox. I went with the name for a few reasons: My domain
-name is summercat.com so I already have a cat reference. Cats love boxes. And
-because of another ircd I like a lot is called ratbox!
+I call it catbox. I went with the name for a few reasons: My domain name is
+summercat.com so I already have a cat reference, cats love boxes, and because
+of it's similar to ircd-ratbox!
 
-The main ideas I plan for it are (in no particular order):
+Features:
 
-  * Server to server connections (to other instances)
-  * Server to server connections (to ircd-ratbox)
-  * Only a subset of RFC 2812 which I personally think makes sense. Only what
-  * is critical for a minimal IRC server. As simple as possible. If the
+  * Client protocol is generally RFC 2812/1459. It does not fully implement the
+    protocol and diverges in some cases for simplicity.
+  * Server to server communication using the TS6 protocol. This means it is able
+    to link to TS6 ircds (to a degree), such as ircd-ratbox. It can also link to
+    other instances of itself.
+  * Channels, private messages, etc. Most of the basic IRC commands and features
+    one expects are present.
+  * No channel operators. (Maybe in the future)
+  * No channel modes beyond +nt which is always set. (Maybe more in the future)
+  * No user modes beyond +i and +o. (Maybe more in the future)
+  * Global IRC operators.
+  * Operators can communicate network wide to other operators with WALLOPS.
+  * Private (WHOIS shows no channels, no LIST).
+
+Design philosophy:
+
+  * Only a subset of RFC 2812 / 1459 which I personally think makes sense. Only
+    what is critical for a minimal IRC server. As simple as possible. If the
     RFC suggests something I don't like, and I think clients will be compliant,
     then I'll probably do something else. I'll try to track differences.
-  * TLS
-  * Upgrade without losing connections
   * Minimal configuration
   * Simple and easily extensible
-  * Server to server connections allowing server IPs to change without
-    configuration updates (i.e., permitting dynamic server IPs)
-  * Cool features as I come up with them. Some ideas I have:
-    * Inform clients when someone whois's them.
-    * Inform clients about TLS ciphers in use (both on connect and in their
-      whois)
-    * Bots could be built into the ircd
-    * Private (very restricted whois, list, etc)
 
 
-# Differences from RFC 2812
+# Some differences from RFC 2812 / RFC 1459
+
+This is not exhaustive, but some of the differences are:
 
   * Only # channels supported.
   * Much more restricted characters in channels/nicks/users.
@@ -49,8 +57,10 @@ The main ideas I plan for it are (in no particular order):
   * LUSERS: Include +s channels in channel count.
 
 
-# Docs/references
+# External documentation and references
 
+  * https://tools.ietf.org/html/rfc2812
+  * https://tools.ietf.org/html/rfc1459
   * TS6 docs:
     * charybdis's ts6-protocol.txt
     * ircd-ratbox's ts6.txt, ts5.txt, README.TSora
@@ -58,17 +68,17 @@ The main ideas I plan for it are (in no particular order):
   * http://ircdocs.horse/
 
 
-# TS notes
+# TS6 notes
 
   * Nick TS changes when: Client connects or when it changes its nick.
   * Channel TS changes when: Channel created
-  * Server to server (ircd-ratbox) commands I'm most interested in
+  * Server to server (ircd-ratbox) commands I'm most interested in:
     * Burst: SID, UID, SJOIN, ERROR, PING, PONG
     * Post-burst: INVITE, JOIN, KILL, NICK, NOTICE, PART, PRIVMSG, QUIT, SID,
       SJOIN, TOPIC, UID, SQUIT, ERROR, PING, PONG, MODE (user)
 
 
-# Todo
+# TODO
 
   * Server to server (ircd-ratbox)
     * Post-burst: TOPIC, SQUIT, KILL, KLINE
@@ -100,3 +110,12 @@ The main ideas I plan for it are (in no particular order):
   * Upgrade in place (is this possible with TLS connections?)
   * Server console.
   * Anti-abuse (throttling etc)
+  * TLS
+  * Upgrade without losing connections
+  * Server to server connections allowing server IPs to change without
+    configuration updates (i.e., permitting dynamic server IPs)
+  * Some non standard ideas:
+    * Inform clients when someone whois's them.
+    * Inform clients about TLS ciphers in use (both on connect and in their
+      whois)
+    * Bots could be built into the ircd
