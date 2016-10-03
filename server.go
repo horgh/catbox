@@ -21,3 +21,7 @@ type Server struct {
 func (s *Server) String() string {
 	return fmt.Sprintf("%s %s", s.SID, s.Name)
 }
+
+func (s *Server) isLocal() bool {
+	return s.LocalServer != nil
+}

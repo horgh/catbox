@@ -37,7 +37,7 @@ type Config struct {
 	Servers map[string]ServerDefinition
 
 	// TS6 SID. Must be unique in the network. Format: [0-9][A-Z0-9]{2}
-	TS6SID string
+	TS6SID TS6SID
 }
 
 // ServerDefinition defines how to link to a server.
@@ -143,7 +143,7 @@ func (cb *Catbox) checkAndParseConfig(file string) error {
 	if !isValidSID(configMap["ts6-sid"]) {
 		return fmt.Errorf("Invalid TS6 SID")
 	}
-	cb.Config.TS6SID = configMap["ts6-sid"]
+	cb.Config.TS6SID = TS6SID(configMap["ts6-sid"])
 
 	return nil
 }

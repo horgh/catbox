@@ -62,7 +62,7 @@ func (s *LocalServer) messageFromServer(command string, params []string) {
 	}
 
 	s.maybeQueueMessage(irc.Message{
-		Prefix:  s.Catbox.Config.TS6SID,
+		Prefix:  string(s.Catbox.Config.TS6SID),
 		Command: command,
 		Params:  params,
 	})
@@ -149,7 +149,7 @@ func (s *LocalServer) quit(msg string) {
 // We send our burst after seeing SVINFO. This means we have not yet processed
 // any SID, UID, or SJOIN messages from the other side.
 func (s *LocalServer) sendBurst() {
-	// Send all our connected servers with SID commands.
+	// Tell it about all servers we know about. Use the SID command.
 	// Parameters: <server name> <hop count> <SID> <description>
 	// e.g.: :8ZZ SID irc3.example.com 2 9ZQ :My Desc
 	for _, server := range s.Catbox.Servers {
@@ -159,7 +159,7 @@ func (s *LocalServer) sendBurst() {
 		}
 
 		s.maybeQueueMessage(irc.Message{
-			Prefix:  s.Catbox.Config.TS6SID,
+			Prefix:  string(s.Catbox.Config.TS6SID),
 			Command: "SID",
 			Params: []string{
 				server.Name,
@@ -170,12 +170,12 @@ func (s *LocalServer) sendBurst() {
 		})
 	}
 
-	// Send all our users with UID commands.
+	// Tell it about all users we know about. Use the UID command.
 	// Parameters: <nick> <hopcount> <nick TS> <umodes> <username> <hostname> <IP> <UID> :<real name>
 	// :8ZZ UID will 1 1475024621 +i will blashyrkh. 0 8ZZAAAAAB :will
 	for _, user := range s.Catbox.Users {
 		s.maybeQueueMessage(irc.Message{
-			Prefix:  s.Catbox.Config.TS6SID,
+			Prefix:  string(s.Catbox.Config.TS6SID),
 			Command: "UID",
 			Params: []string{
 				user.DisplayNick,
@@ -200,7 +200,7 @@ func (s *LocalServer) sendBurst() {
 		//   one SJOIN per UID.
 		for uid := range channel.Members {
 			s.maybeQueueMessage(irc.Message{
-				Prefix:  s.Catbox.Config.TS6SID,
+				Prefix:  string(s.Catbox.Config.TS6SID),
 				Command: "SJOIN",
 				Params: []string{
 					fmt.Sprintf("%d", channel.TS),
@@ -288,16 +288,15 @@ func (s *LocalServer) handleMessage(m irc.Message) {
 	s.messageFromServer("421", []string{m.Command, "Unknown command"})
 }
 
+// We expect a PING from server as part of burst end. It also happens
+// periodically.
 func (s *LocalServer) pingCommand(m irc.Message) {
-	// We expect a PING from server as part of burst end.
-	// PING <Remote SID>
+	// PING <origin name> [Destination SID]
 	if len(m.Params) < 1 {
 		// 461 ERR_NEEDMOREPARAMS
 		s.messageFromServer("461", []string{"PING", "Not enough parameters"})
 		return
 	}
-
-	// Allow multiple pings.
 
 	// :9ZQ PING irc3.example.com :000
 	// Where irc3.example.com == 9ZQ and it is remote
@@ -305,36 +304,67 @@ func (s *LocalServer) pingCommand(m irc.Message) {
 	// We want to send back
 	// :000 PONG irc.example.com :9ZQ
 
-	sid := TS6SID(m.Prefix)
+	// I don't use origin name. Instead, look only at the prefix.
 
-	// Do we know the server pinging us?
-	_, exists := s.Catbox.Servers[sid]
+	sourceSID := TS6SID(m.Prefix)
+
+	// Do we know the server making the ping request?
+	_, exists := s.Catbox.Servers[sourceSID]
 	if !exists {
 		// 402 ERR_NOSUCHSERVER
 		s.maybeQueueMessage(irc.Message{
-			Prefix:  s.Catbox.Config.TS6SID,
+			Prefix:  string(s.Catbox.Config.TS6SID),
 			Command: "402",
-			Params:  []string{string(sid), "No such server"},
+			Params:  []string{string(sourceSID), "No such server"},
 		})
 		return
 	}
 
-	// Reply.
-	s.maybeQueueMessage(irc.Message{
-		Prefix:  s.Catbox.Config.TS6SID,
-		Command: "PONG",
-		Params:  []string{s.Catbox.Config.ServerName, string(sid)},
-	})
-
-	// If we're bursting, is it over?
-	if s.Bursting && sid == s.Server.SID {
-		s.GotPING = true
-
-		if s.GotPONG {
-			s.Bursting = false
-			s.Catbox.noticeOpers(fmt.Sprintf("Burst with %s over.", s.Server.Name))
-		}
+	// Who's the destination of the ping? Default to us if there is none set.
+	destinationSID := s.Catbox.Config.TS6SID
+	if len(m.Params) >= 2 {
+		destinationSID = TS6SID(m.Params[1])
 	}
+
+	// If it's for us, reply.
+	// If it's not for us, propagate it to where it should go.
+
+	if destinationSID == s.Catbox.Config.TS6SID {
+		s.maybeQueueMessage(irc.Message{
+			Prefix:  string(s.Catbox.Config.TS6SID),
+			Command: "PONG",
+			Params:  []string{s.Catbox.Config.ServerName, string(sourceSID)},
+		})
+
+		// If we're bursting, is it over? We expect to be PINGed at the end of their
+		// burst.
+		if s.Bursting && sourceSID == s.Server.SID {
+			s.GotPING = true
+			if s.GotPONG {
+				s.Bursting = false
+				s.Catbox.noticeOpers(fmt.Sprintf("Burst with %s over.", s.Server.Name))
+			}
+		}
+		return
+	}
+
+	// Propagate it to where it should go.
+	destServer, exists := s.Catbox.Servers[destinationSID]
+	if !exists {
+		// 402 ERR_NOSUCHSERVER
+		s.maybeQueueMessage(irc.Message{
+			Prefix:  string(s.Catbox.Config.TS6SID),
+			Command: "402",
+			Params:  []string{string(destinationSID), "No such server"},
+		})
+		return
+	}
+
+	if destServer.isLocal() {
+		destServer.LocalServer.maybeQueueMessage(m)
+		return
+	}
+	destServer.Link.maybeQueueMessage(m)
 }
 
 func (s *LocalServer) pongCommand(m irc.Message) {
@@ -356,7 +386,7 @@ func (s *LocalServer) pongCommand(m irc.Message) {
 		return
 	}
 
-	if m.Params[1] != s.Catbox.Config.TS6SID {
+	if m.Params[1] != string(s.Catbox.Config.TS6SID) {
 		s.quit("Unknown SID")
 		return
 	}

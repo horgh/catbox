@@ -29,6 +29,7 @@ type Catbox struct {
 	// LocalServers are clients registered as servers.
 	LocalServers map[uint64]*LocalServer
 
+	// Users with operator status. They may be local or remote.
 	Opers map[TS6UID]*User
 
 	// Canonicalized nickname to TS6 UID.
@@ -457,7 +458,7 @@ func (cb *Catbox) checkAndPingClients() {
 		}
 
 		// PING origin is our SID for servers.
-		server.messageFromServer("PING", []string{cb.Config.TS6SID})
+		server.messageFromServer("PING", []string{string(cb.Config.TS6SID)})
 		server.LastPingTime = now
 		continue
 	}
@@ -499,7 +500,7 @@ func (cb *Catbox) noticeOpers(msg string) {
 			continue
 		}
 		server.maybeQueueMessage(irc.Message{
-			Prefix:  cb.Config.TS6SID,
+			Prefix:  string(cb.Config.TS6SID),
 			Command: "WALLOPS",
 			Params:  []string{msg},
 		})

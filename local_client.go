@@ -287,7 +287,7 @@ func (c *LocalClient) registerUser() {
 	// Tell linked servers about this new client.
 	for _, server := range c.Catbox.LocalServers {
 		server.maybeQueueMessage(irc.Message{
-			Prefix:  c.Catbox.Config.TS6SID,
+			Prefix:  string(c.Catbox.Config.TS6SID),
 			Command: "UID",
 			Params: []string{
 				u.DisplayNick,
@@ -368,9 +368,7 @@ func (c *LocalClient) registerServer() {
 	// PING <My SID>
 	ls.maybeQueueMessage(irc.Message{
 		Command: "PING",
-		Params: []string{
-			ls.Catbox.Config.TS6SID,
-		},
+		Params:  []string{string(ls.Catbox.Config.TS6SID)},
 	})
 
 	// Tell connected servers about the new server.
@@ -382,12 +380,38 @@ func (c *LocalClient) registerServer() {
 			continue
 		}
 		server.maybeQueueMessage(irc.Message{
-			Prefix:  c.Catbox.Config.TS6SID,
+			Prefix:  string(c.Catbox.Config.TS6SID),
 			Command: "SID",
 			Params: []string{s.Name, fmt.Sprintf("%d", s.HopCount+1), string(s.SID),
 				s.Description},
 		})
 	}
+}
+
+func (c *LocalClient) sendServerIntro(pass string) {
+	// PASS <password>, TS, <ts version>, <SID>
+	c.maybeQueueMessage(irc.Message{
+		Command: "PASS",
+		Params: []string{
+			pass, "TS", "6", string(c.Catbox.Config.TS6SID)},
+	})
+
+	// CAPAB <space separated list>
+	c.maybeQueueMessage(irc.Message{
+		Command: "CAPAB",
+		Params:  []string{"QS ENCAP"},
+	})
+
+	// SERVER <name> <hopcount> <description>
+	c.maybeQueueMessage(irc.Message{
+		Command: "SERVER",
+		Params: []string{
+			c.Catbox.Config.ServerName,
+			"1",
+			c.Catbox.Config.ServerInfo,
+		},
+	})
+	c.SentSERVER = true
 }
 
 func (c *LocalClient) handleMessage(m irc.Message) {
@@ -734,28 +758,7 @@ func (c *LocalClient) serverCommand(m irc.Message) {
 	// instead.
 
 	if !c.SentSERVER {
-		// PASS <password>, TS, <ts version>, <SID>
-		c.maybeQueueMessage(irc.Message{
-			Command: "PASS",
-			Params:  []string{linkInfo.Pass, "TS", "6", c.Catbox.Config.TS6SID},
-		})
-
-		// CAPAB <space separated list>
-		c.maybeQueueMessage(irc.Message{
-			Command: "CAPAB",
-			Params:  []string{"QS ENCAP"},
-		})
-
-		// SERVER <name> <hopcount> <description>
-		c.maybeQueueMessage(irc.Message{
-			Command: "SERVER",
-			Params: []string{
-				c.Catbox.Config.ServerName,
-				"1",
-				c.Catbox.Config.ServerInfo,
-			},
-		})
-		c.SentSERVER = true
+		c.sendServerIntro(linkInfo.Pass)
 
 		return
 	}

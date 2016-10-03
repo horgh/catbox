@@ -77,7 +77,7 @@ func (u *LocalUser) makeTS6UID(id uint64) (TS6UID, error) {
 		return TS6UID(""), err
 	}
 
-	return TS6UID(u.Catbox.Config.TS6SID + string(ts6id)), nil
+	return TS6UID(string(u.Catbox.Config.TS6SID) + string(ts6id)), nil
 }
 
 // Send an IRC message to a client. Appears to be from the server.
@@ -532,7 +532,7 @@ func (u *LocalUser) joinCommand(m irc.Message) {
 	for _, server := range u.Catbox.LocalServers {
 		if !exists {
 			server.maybeQueueMessage(irc.Message{
-				Prefix:  u.Catbox.Config.TS6SID,
+				Prefix:  string(u.Catbox.Config.TS6SID),
 				Command: "SJOIN",
 				Params: []string{
 					fmt.Sprintf("%d", channel.TS),
@@ -1208,9 +1208,7 @@ func (u *LocalUser) connectCommand(m irc.Message) {
 		// Make sure we send to the client's write channel before telling the server
 		// about the client. It is possible otherwise that the server (if shutting
 		// down) could have closed the write channel on us.
-		client.sendPASS(linkInfo.Pass)
-		client.sendCAPAB()
-		client.sendSERVER()
+		client.sendServerIntro(linkInfo.Pass)
 
 		client.Catbox.newEvent(Event{Type: NewClientEvent, Client: client})
 
