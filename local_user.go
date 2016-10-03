@@ -1179,9 +1179,6 @@ func (u *LocalUser) topicCommand(m irc.Message) {
 	if len(topic) > maxTopicLength {
 		topic = topic[:maxTopicLength]
 	}
-	if len(topic) == 0 {
-		topic = ":"
-	}
 
 	// If we have channel operators then we need additional logic.
 
@@ -1199,7 +1196,7 @@ func (u *LocalUser) topicCommand(m irc.Message) {
 		u.messageUser(member, "TOPIC", []string{channel.Name, channel.Topic})
 	}
 
-	// Again, topic appears to propagate globally no matter what.
+	// Topic appears to propagate globally no matter what.
 	for _, server := range u.Catbox.LocalServers {
 		server.maybeQueueMessage(irc.Message{
 			Prefix:  string(u.User.UID),

@@ -81,7 +81,7 @@ This is not exhaustive, but some of the differences are:
 # TODO
 
   * Server to server (ircd-ratbox)
-    * Post-burst: TOPIC, SQUIT, KILL, KLINE
+    * Post-burst: SQUIT, KILL, KLINE
     * Nick collisions
   * Drop messageUser/messageFromServer? messageUser all together,
     messageFromServer to be reply()?

@@ -294,6 +294,11 @@ func (s *LocalServer) handleMessage(m irc.Message) {
 		return
 	}
 
+	if m.Command == "TOPIC" {
+		s.topicCommand(m)
+		return
+	}
+
 	// 421 ERR_UNKNOWNCOMMAND
 	s.messageFromServer("421", []string{m.Command, "Unknown command"})
 }
@@ -1160,6 +1165,58 @@ func (s *LocalServer) modeCommand(m irc.Message) {
 	}
 
 	// Propagate.
+	for _, server := range s.Catbox.LocalServers {
+		if server == s {
+			continue
+		}
+		server.maybeQueueMessage(m)
+	}
+}
+
+func (s *LocalServer) topicCommand(m irc.Message) {
+	// Parameters: <channel> [topic]
+	if len(m.Params) < 1 {
+		// 461 ERR_NEEDMOREPARAMS
+		s.messageFromServer("461", []string{"TOPIC", "Not enough parameters"})
+		return
+	}
+
+	// Find source user.
+	sourceUser, exists := s.Catbox.Users[TS6UID(m.Prefix)]
+	if !exists {
+		s.quit("Unknown source user (TOPIC)")
+		return
+	}
+
+	chanName := canonicalizeChannel(m.Params[0])
+	channel, exists := s.Catbox.Channels[chanName]
+	if !exists {
+		// 403 ERR_NOSUCHCHANNEL
+		s.messageFromServer("403", []string{chanName, "No such channel"})
+		return
+	}
+
+	// We could check the source user has ops (when we support ops).
+	// We could check the source is on the channel.
+
+	// Tell local clients who are in the channel about the topic change.
+	params := []string{channel.Name}
+	if len(m.Params) >= 2 && len(m.Params[1]) > 0 {
+		params = append(params, m.Params[1])
+	}
+	for memberUID := range channel.Members {
+		member := s.Catbox.Users[memberUID]
+		if !member.isLocal() {
+			continue
+		}
+		member.LocalUser.maybeQueueMessage(irc.Message{
+			Prefix:  sourceUser.nickUhost(),
+			Command: "TOPIC",
+			Params:  params,
+		})
+	}
+
+	// Propagate to other servers.
 	for _, server := range s.Catbox.LocalServers {
 		if server == s {
 			continue
