@@ -200,7 +200,7 @@ func (cb *Catbox) eventLoop() {
 				}
 				lu, exists := cb.LocalUsers[evt.Client.ID]
 				if exists {
-					lu.quit("I/O error")
+					lu.quit("I/O error", true)
 					continue
 				}
 				ls, exists := cb.LocalServers[evt.Client.ID]
@@ -260,11 +260,11 @@ func (cb *Catbox) shutdown() {
 	for _, client := range cb.LocalClients {
 		client.quit("Server shutting down")
 	}
-	for _, client := range cb.LocalUsers {
-		client.quit("Server shutting down")
-	}
 	for _, client := range cb.LocalServers {
 		client.quit("Server shutting down")
+	}
+	for _, client := range cb.LocalUsers {
+		client.quit("Server shutting down", false)
 	}
 }
 
@@ -382,7 +382,7 @@ func (cb *Catbox) checkAndPingClients() {
 
 	for _, client := range cb.LocalUsers {
 		if client.SendQueueExceeded {
-			client.quit("SendQ exceeded")
+			client.quit("SendQ exceeded", true)
 			continue
 		}
 
@@ -398,7 +398,7 @@ func (cb *Catbox) checkAndPingClients() {
 		// Has it been idle long enough that we consider it dead?
 		if timeIdle > cb.Config.DeadTime {
 			client.quit(fmt.Sprintf("Ping timeout: %d seconds",
-				int(timeIdle.Seconds())))
+				int(timeIdle.Seconds())), true)
 			continue
 		}
 
@@ -483,7 +483,7 @@ func (cb *Catbox) newEvent(evt Event) {
 	}
 }
 
-// Send a message to all local operator users.
+// Send a message to all operator users.
 func (cb *Catbox) noticeOpers(msg string) {
 	log.Print(msg)
 
@@ -504,5 +504,17 @@ func (cb *Catbox) noticeOpers(msg string) {
 			Command: "WALLOPS",
 			Params:  []string{msg},
 		})
+	}
+}
+
+// Send a message to all local operator users.
+func (cb *Catbox) noticeLocalOpers(msg string) {
+	log.Print(msg)
+
+	for _, user := range cb.Opers {
+		if user.isLocal() {
+			user.LocalUser.serverNotice(msg)
+			continue
+		}
 	}
 }

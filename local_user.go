@@ -169,8 +169,15 @@ func (u *LocalUser) part(channelName, message string) {
 	}
 }
 
+// We inform servers about a QUIT if propagate is true. You may not want to
+// do so if the client is getting kicked for another reason, such as KILL.
+//
+// In the case of KILL, you propagate a KILL message to servers rather than
+// QUIT. This function does not do that for you. It propagates only a QUIT
+// message if you ask it.
+//
 // Note: Only the server goroutine should call this (due to closing channel).
-func (u *LocalUser) quit(msg string) {
+func (u *LocalUser) quit(msg string, propagate bool) {
 	// May already be cleaning up.
 	_, exists := u.Catbox.LocalUsers[u.ID]
 	if !exists {
@@ -221,12 +228,14 @@ func (u *LocalUser) quit(msg string) {
 	}
 
 	// Tell all servers. They need to know about client departing.
-	for _, server := range u.Catbox.LocalServers {
-		server.maybeQueueMessage(irc.Message{
-			Prefix:  string(u.User.UID),
-			Command: "QUIT",
-			Params:  []string{msg},
-		})
+	if propagate {
+		for _, server := range u.Catbox.LocalServers {
+			server.maybeQueueMessage(irc.Message{
+				Prefix:  string(u.User.UID),
+				Command: "QUIT",
+				Params:  []string{msg},
+			})
+		}
 	}
 
 	u.messageFromServer("ERROR", []string{msg})
@@ -351,6 +360,11 @@ func (u *LocalUser) handleMessage(m irc.Message) {
 
 	if m.Command == "WALLOPS" {
 		u.wallopsCommand(m)
+		return
+	}
+
+	if m.Command == "KILL" {
+		u.killCommand(m)
 		return
 	}
 
@@ -813,7 +827,7 @@ func (u *LocalUser) quitCommand(m irc.Message) {
 		msg += " " + m.Params[0]
 	}
 
-	u.quit(msg)
+	u.quit(msg, true)
 }
 
 func (u *LocalUser) pingCommand(m irc.Message) {
@@ -1330,6 +1344,12 @@ func (u *LocalUser) wallopsCommand(m irc.Message) {
 		return
 	}
 
+	if !u.User.isOperator() {
+		// 481 ERR_NOPRIVILEGES
+		u.messageFromServer("481", []string{"Permission Denied- You're not an IRC operator"})
+		return
+	}
+
 	text := m.Params[0]
 
 	for _, user := range u.Catbox.Opers {
@@ -1348,6 +1368,65 @@ func (u *LocalUser) wallopsCommand(m irc.Message) {
 			Prefix:  string(u.User.UID),
 			Command: "WALLOPS",
 			Params:  []string{text},
+		})
+	}
+}
+
+func (u *LocalUser) killCommand(m irc.Message) {
+	// Parameters: <target username> [reason]
+	if len(m.Params) < 1 {
+		// 461 ERR_NEEDMOREPARAMS
+		u.messageFromServer("461", []string{"WALLOPS", "Not enough parameters"})
+		return
+	}
+
+	if !u.User.isOperator() {
+		// 481 ERR_NOPRIVILEGES
+		u.messageFromServer("481", []string{"Permission Denied- You're not an IRC operator"})
+		return
+	}
+
+	targetUID, exists := u.Catbox.Nicks[canonicalizeNick(m.Params[0])]
+	if !exists {
+		// 401 ERR_NOSUCHNICK
+		u.messageFromServer("401", []string{m.Params[0], "No such nick/channel"})
+		return
+	}
+	targetUser := u.Catbox.Users[targetUID]
+
+	reason := ""
+	if len(m.Params) >= 2 && len(m.Params[1]) > 0 {
+		reason = m.Params[1]
+	} else {
+		reason = "<No reason given>"
+	}
+
+	// Tell all opers about it.
+	u.Catbox.noticeOpers(fmt.Sprintf("Received KILL message for %s. From %s (%s)",
+		targetUser.DisplayNick, u.User.DisplayNick, reason))
+
+	// If it's a local user, cut them off.
+	if targetUser.isLocal() {
+		targetUser.LocalUser.quit(fmt.Sprintf("Killed (%s (%s))",
+			u.User.DisplayNick, reason), false)
+	}
+
+	// Propagate to all servers.
+	// For server message, the reason string must look like this:
+	// <source> (<Reason>)
+	// Where source looks like:
+	// <server name>!<user host>!<user>!<nick>
+	serverReason := fmt.Sprintf("%s!%s!%s!%s (%s)",
+		u.Catbox.Config.ServerName,
+		u.User.Hostname,
+		u.User.Username,
+		u.User.DisplayNick,
+		reason)
+	for _, server := range u.Catbox.LocalServers {
+		server.maybeQueueMessage(irc.Message{
+			Prefix:  string(u.User.UID),
+			Command: "KILL",
+			Params:  []string{string(targetUser.UID), serverReason},
 		})
 	}
 }

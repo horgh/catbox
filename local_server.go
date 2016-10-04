@@ -377,6 +377,11 @@ func (s *LocalServer) handleMessage(m irc.Message) {
 		return
 	}
 
+	if m.Command == "KILL" {
+		s.killCommand(m)
+		return
+	}
+
 	// 421 ERR_UNKNOWNCOMMAND
 	s.messageFromServer("421", []string{m.Command, "Unknown command"})
 }
@@ -1354,6 +1359,117 @@ func (s *LocalServer) squitCommand(m irc.Message) {
 	s.serverSplitCleanUp(targetServer)
 
 	// Propagate to other servers.
+	for _, server := range s.Catbox.LocalServers {
+		if server == s {
+			continue
+		}
+		server.maybeQueueMessage(m)
+	}
+}
+
+func (s *LocalServer) killCommand(m irc.Message) {
+	// Parameters: <target user UID> <reason>
+	// Reason has format:
+	// <source> (<reason text>)
+	// Where <source> looks something like:
+	// <killer server name>!<killer user host>!<killer user username>!<killer nick>
+	if len(m.Params) < 2 {
+		// 461 ERR_NEEDMOREPARAMS
+		s.messageFromServer("461", []string{"SQUIT", "Not enough parameters"})
+		return
+	}
+
+	// It's not guaranteed this is a user. It may be a server.
+	source := ""
+	sourceUser, exists := s.Catbox.Users[TS6UID(m.Prefix)]
+	if exists {
+		source = sourceUser.DisplayNick
+	}
+	if len(source) == 0 {
+		sourceServer, exists := s.Catbox.Servers[TS6SID(m.Prefix)]
+		if exists {
+			source = sourceServer.Name
+		}
+	}
+
+	targetUser, exists := s.Catbox.Users[TS6UID(m.Params[0])]
+	if !exists {
+		s.quit("Unknown user (KILL)")
+		return
+	}
+
+	// Pull out the source info and the reason.
+	sourceAndReason := m.Params[1]
+
+	space := strings.Index(sourceAndReason, " ")
+	if space == -1 {
+		s.quit("Malformed kill reason")
+		return
+	}
+	sourceInfo := sourceAndReason[:space]
+
+	sourceAndReason = sourceAndReason[space:]
+
+	lparen := strings.Index(sourceAndReason, "(")
+	rparen := strings.Index(sourceAndReason, ")")
+	if lparen == -1 || rparen == -1 || lparen > rparen ||
+		lparen+1 == len(sourceAndReason) {
+		s.quit("Malformed KILL reason")
+		return
+	}
+	reason := sourceAndReason[lparen+1 : rparen]
+
+	// Tell our local opers about this.
+	s.Catbox.noticeLocalOpers(
+		fmt.Sprintf("Received KILL message for %s. From %s Path: %s (%s)",
+			targetUser.DisplayNick, source, sourceInfo, reason))
+
+	quitReason := fmt.Sprintf("Killed (%s (%s))",
+		source, reason)
+
+	// If it's a local user, kick it off.
+	if targetUser.isLocal() {
+		targetUser.LocalUser.quit(quitReason, false)
+	}
+
+	// If it's remote, we need to forget about this user.
+	if targetUser.isRemote() {
+		// Remove the user from each channel.
+		// Also, tell each local client that is in 1+ channel with the user that
+		// this user quit.
+		informedUsers := make(map[TS6UID]struct{})
+		quitParams := []string{quitReason}
+		for _, channel := range targetUser.Channels {
+			for memberUID := range channel.Members {
+				member := s.Catbox.Users[memberUID]
+				if !member.isLocal() {
+					continue
+				}
+				_, exists := informedUsers[member.UID]
+				if exists {
+					continue
+				}
+				informedUsers[member.UID] = struct{}{}
+				member.LocalUser.maybeQueueMessage(irc.Message{
+					Prefix:  targetUser.nickUhost(),
+					Command: "QUIT",
+					Params:  quitParams,
+				})
+			}
+
+			delete(channel.Members, targetUser.UID)
+			if len(channel.Members) == 0 {
+				delete(s.Catbox.Channels, channel.Name)
+			}
+		}
+		delete(s.Catbox.Users, targetUser.UID)
+		if targetUser.isOperator() {
+			delete(s.Catbox.Opers, targetUser.UID)
+		}
+		delete(s.Catbox.Nicks, canonicalizeNick(targetUser.DisplayNick))
+	}
+
+	// Propagate to all servers.
 	for _, server := range s.Catbox.LocalServers {
 		if server == s {
 			continue

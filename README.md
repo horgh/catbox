@@ -19,7 +19,7 @@ Features:
   * Channels, private messages, etc. Most of the basic IRC commands and features
     one expects are present.
   * No channel operators. (Maybe in the future)
-  * No channel modes beyond +nt which is always set. (Maybe more in the future)
+  * No channel modes beyond +ns which is always set. (Maybe more in the future)
   * No user modes beyond +i and +o. (Maybe more in the future)
   * Global IRC operators.
   * Operators can communicate network wide to other operators with WALLOPS.
@@ -80,10 +80,10 @@ This is not exhaustive, but some of the differences are:
 
 # TODO
 
-  * Server to server (ircd-ratbox)
-    * Post-burst: SQUIT, KILL, KLINE
-    * Nick collisions
-    * Server SQUIT/introduction should send notice to opers
+  * S2S: Post-burst: KLINE
+  * Server SQUIT/introduction should send notice to opers
+  * Nick collisions (KILL instead of split in NICK/UID)
+  * Say something like processing connection on initial connect
   * Client connection notices to opers
   * TLS
   * Auto try/retry linking to servers if not connected
