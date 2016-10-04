@@ -75,30 +75,84 @@ func (s *LocalServer) quit(msg string) {
 		return
 	}
 
+	// When quitting, you may think we should send SQUIT to all servers.
+	// But we don't. Or ircd-ratbox does not. Do the same.
 	s.messageFromServer("ERROR", []string{msg})
 
 	close(s.WriteChan)
 
-	delete(s.Catbox.LocalServers, s.ID)
-	delete(s.Catbox.Servers, s.Server.SID)
+	s.serverSplitCleanUp(s.Server)
 
-	// Clean up our records. All users on the other side must be forgotten.
+	// Inform other servers that we are connected to.
+	for _, server := range s.Catbox.LocalServers {
+		server.maybeQueueMessage(irc.Message{
+			Prefix:  string(s.Catbox.Config.TS6SID),
+			Command: "SQUIT",
+			Params:  []string{string(s.Server.SID), msg},
+		})
+	}
+}
+
+// lostServer is departing the network.
+//
+// Inform all local users of QUITs for clients on the other side.
+//
+// Also do our local bookkeeping:
+// - Forget the clients on the other side
+// - Forget the servers on the other side
+// - Forget the server
+//
+// This can happen when a local server delinks from us, or we're hearing about
+// a server departing remotely (from a SQUIT command).
+//
+// This function does not propagate any messages to any servers. It only sends
+// messages to local clients.
+func (s *LocalServer) serverSplitCleanUp(lostServer *Server) {
+	// The server may have been linked to other servers. Figure out all servers
+	// we're losing.
+	lostServers := lostServer.getLinkedServers(s.Catbox.Servers)
+
+	// Include the one we're losing with its links.
+	lostServers = append(lostServers, lostServer)
 
 	for _, user := range s.Catbox.Users {
 		if user.isLocal() {
 			continue
 		}
 
-		// Is it on the side of the server delinking?
-		if user.Link != s {
+		// Are we losing this user?
+		// We are if it is on a server we are losing.
+		keepingUser := true
+		for _, server := range lostServers {
+			if user.Server == server {
+				keepingUser = false
+			}
+		}
+
+		if keepingUser {
 			continue
 		}
 
-		// This is a user we're losing.
+		log.Printf("Losing user %s", user)
 
-		// Tell each user who is in one or more channels with it that it is
-		// quitting.
+		// This user is gone.
+
+		// Tell local users about them quitting.
+		// Remote users will be told by their own servers.
+
+		// We tell each user who is in 1+ channels with the user.
 		informedClients := make(map[TS6UID]struct{})
+
+		// Quit message format is important. It tells that there was a netsplit,
+		// and between which two servers.
+		var quitMessage string
+		if lostServer.isLocal() {
+			quitMessage = fmt.Sprintf("%s %s", s.Catbox.Config.ServerName,
+				lostServer.Name)
+		} else {
+			quitMessage = fmt.Sprintf("%s %s", lostServer.LinkedTo.Name,
+				lostServer.Name)
+		}
 
 		for _, channel := range user.Channels {
 			for memberUID := range channel.Members {
@@ -116,17 +170,18 @@ func (s *LocalServer) quit(msg string) {
 				member.LocalUser.maybeQueueMessage(irc.Message{
 					Prefix:  user.nickUhost(),
 					Command: "QUIT",
-					Params: []string{fmt.Sprintf("%s %s", s.Catbox.Config.ServerName,
-						s.Server.Name)},
+					Params:  []string{quitMessage},
 				})
 			}
 
+			// Remove it from the channel.
 			delete(channel.Members, user.UID)
 			if len(channel.Members) == 0 {
 				delete(s.Catbox.Channels, channel.Name)
 			}
 		}
 
+		// Forget the user.
 		delete(s.Catbox.Users, user.UID)
 		if user.isOperator() {
 			delete(s.Catbox.Opers, user.UID)
@@ -134,13 +189,13 @@ func (s *LocalServer) quit(msg string) {
 		delete(s.Catbox.Nicks, canonicalizeNick(user.DisplayNick))
 	}
 
-	// Inform other servers that we are connected to.
-	for _, server := range s.Catbox.LocalServers {
-		server.maybeQueueMessage(irc.Message{
-			Prefix:  string(s.Catbox.Config.TS6SID),
-			Command: "SQUIT",
-			Params:  []string{string(s.Server.SID), msg},
-		})
+	// Forget all lost servers.
+	for _, server := range lostServers {
+		log.Printf("Losing server %s", server)
+		if server.isLocal() {
+			delete(s.Catbox.LocalServers, server.LocalServer.ID)
+		}
+		delete(s.Catbox.Servers, server.SID)
 	}
 }
 
@@ -149,7 +204,11 @@ func (s *LocalServer) quit(msg string) {
 // We send our burst after seeing SVINFO. This means we have not yet processed
 // any SID, UID, or SJOIN messages from the other side.
 func (s *LocalServer) sendBurst() {
-	// Tell it about all servers we know about. Use the SID command.
+	// Tell it about all servers we know about.
+	// Use the SID command.
+	// We do tell it about servers even if they are not directly linked to us.
+	// However we need to be sure we set the prefix/source correctly to indicate
+	// what server they are linked to.
 	// Parameters: <server name> <hop count> <SID> <description>
 	// e.g.: :8ZZ SID irc3.example.com 2 9ZQ :My Desc
 	for _, server := range s.Catbox.Servers {
@@ -158,8 +217,15 @@ func (s *LocalServer) sendBurst() {
 			continue
 		}
 
+		var linkedTo TS6SID
+		if server.isLocal() {
+			linkedTo = s.Catbox.Config.TS6SID
+		} else {
+			linkedTo = server.LinkedTo.SID
+		}
+
 		s.maybeQueueMessage(irc.Message{
-			Prefix:  string(s.Catbox.Config.TS6SID),
+			Prefix:  string(linkedTo),
 			Command: "SID",
 			Params: []string{
 				server.Name,
@@ -171,11 +237,18 @@ func (s *LocalServer) sendBurst() {
 	}
 
 	// Tell it about all users we know about. Use the UID command.
+	// Ensure we set the prefix/source to the server it is on.
 	// Parameters: <nick> <hopcount> <nick TS> <umodes> <username> <hostname> <IP> <UID> :<real name>
 	// :8ZZ UID will 1 1475024621 +i will blashyrkh. 0 8ZZAAAAAB :will
 	for _, user := range s.Catbox.Users {
+		var onServer TS6SID
+		if user.isLocal() {
+			onServer = s.Catbox.Config.TS6SID
+		} else {
+			onServer = user.Server.SID
+		}
 		s.maybeQueueMessage(irc.Message{
-			Prefix:  string(s.Catbox.Config.TS6SID),
+			Prefix:  string(onServer),
 			Command: "UID",
 			Params: []string{
 				user.DisplayNick,
@@ -299,6 +372,11 @@ func (s *LocalServer) handleMessage(m irc.Message) {
 		return
 	}
 
+	if m.Command == "SQUIT" {
+		s.squitCommand(m)
+		return
+	}
+
 	// 421 ERR_UNKNOWNCOMMAND
 	s.messageFromServer("421", []string{m.Command, "Unknown command"})
 }
@@ -379,7 +457,7 @@ func (s *LocalServer) pingCommand(m irc.Message) {
 		destServer.LocalServer.maybeQueueMessage(m)
 		return
 	}
-	destServer.Link.maybeQueueMessage(m)
+	destServer.ClosestServer.maybeQueueMessage(m)
 }
 
 func (s *LocalServer) pongCommand(m irc.Message) {
@@ -433,7 +511,7 @@ func (s *LocalServer) uidCommand(m irc.Message) {
 	sid := TS6SID(m.Prefix)
 
 	// Do we know the server the message originates on?
-	_, exists := s.Catbox.Servers[TS6SID(sid)]
+	usersServer, exists := s.Catbox.Servers[TS6SID(sid)]
 	if !exists {
 		s.quit("Message from unknown server")
 		return
@@ -510,17 +588,18 @@ func (s *LocalServer) uidCommand(m irc.Message) {
 	// OK, the user looks good.
 
 	u := &User{
-		DisplayNick: displayNick,
-		HopCount:    int(hopCount),
-		NickTS:      int64(nickTS),
-		Modes:       umodes,
-		Username:    username,
-		Hostname:    hostname,
-		IP:          ip,
-		UID:         uid,
-		RealName:    realName,
-		Channels:    make(map[string]*Channel),
-		Link:        s,
+		DisplayNick:   displayNick,
+		HopCount:      int(hopCount),
+		NickTS:        int64(nickTS),
+		Modes:         umodes,
+		Username:      username,
+		Hostname:      hostname,
+		IP:            ip,
+		UID:           uid,
+		RealName:      realName,
+		Channels:      make(map[string]*Channel),
+		ClosestServer: s,
+		Server:        usersServer,
 	}
 
 	if u.isOperator() {
@@ -588,7 +667,7 @@ func (s *LocalServer) privmsgCommand(m irc.Message) {
 				})
 			} else {
 				// Propagate to the server we know the target user through.
-				targetUser.Link.maybeQueueMessage(m)
+				targetUser.ClosestServer.maybeQueueMessage(m)
 			}
 
 			return
@@ -606,6 +685,9 @@ func (s *LocalServer) privmsgCommand(m irc.Message) {
 	}
 
 	// Inform all members of the channel.
+	// Message local users directly.
+	// If a user is remote, then we record the server to send the message towards.
+	toServers := make(map[*LocalServer]struct{})
 	for memberUID := range channel.Members {
 		member := s.Catbox.Users[memberUID]
 
@@ -618,8 +700,15 @@ func (s *LocalServer) privmsgCommand(m irc.Message) {
 			continue
 		}
 
-		// Remote user. Propagate it towards them.
-		member.Link.maybeQueueMessage(m)
+		// Remote user. We need to propagate it towards them.
+		if member.ClosestServer != s {
+			toServers[member.ClosestServer] = struct{}{}
+		}
+	}
+
+	// Propagate message to any servers that need it.
+	for server := range toServers {
+		server.maybeQueueMessage(m)
 	}
 }
 
@@ -635,7 +724,7 @@ func (s *LocalServer) sidCommand(m irc.Message) {
 	originSID := TS6SID(m.Prefix)
 
 	// Do I know this origin?
-	_, exists := s.Catbox.Servers[originSID]
+	linkedToServer, exists := s.Catbox.Servers[originSID]
 	if !exists {
 		s.quit("Unknown origin")
 		return
@@ -664,11 +753,12 @@ func (s *LocalServer) sidCommand(m irc.Message) {
 	desc := m.Params[3]
 
 	newServer := &Server{
-		SID:         sid,
-		Name:        name,
-		Description: desc,
-		HopCount:    int(hopCount),
-		Link:        s,
+		SID:           sid,
+		Name:          name,
+		Description:   desc,
+		HopCount:      int(hopCount),
+		ClosestServer: s,
+		LinkedTo:      linkedToServer,
 	}
 
 	s.Catbox.Servers[sid] = newServer
@@ -682,6 +772,9 @@ func (s *LocalServer) sidCommand(m irc.Message) {
 
 		server.maybeQueueMessage(m)
 	}
+
+	// We don't need to tell the new server about the servers we are connected to.
+	// They'll be informed by the server they linked to about us.
 }
 
 // SJOIN occurs in two contexts:
@@ -1215,6 +1308,50 @@ func (s *LocalServer) topicCommand(m irc.Message) {
 			Params:  params,
 		})
 	}
+
+	// Propagate to other servers.
+	for _, server := range s.Catbox.LocalServers {
+		if server == s {
+			continue
+		}
+		server.maybeQueueMessage(m)
+	}
+}
+
+// SQUIT tells us there is a server departing.
+// This can tell us either a server remote from us is going, or that the local
+// server is delinking. In practice, if the local server is delinking we will
+// be told with an ERROR message, and not see any SQUIT.
+func (s *LocalServer) squitCommand(m irc.Message) {
+	// Parameters: <target server> <comment>
+	if len(m.Params) < 2 {
+		// 461 ERR_NEEDMOREPARAMS
+		s.messageFromServer("461", []string{"SQUIT", "Not enough parameters"})
+		return
+	}
+
+	targetServer, exists := s.Catbox.Servers[TS6SID(m.Params[0])]
+	if !exists {
+		s.quit("Unknown server (SQUIT)")
+		return
+	}
+
+	// This should NOT be the local server, or any local server for that matter.
+	// When we're splitting from a local server, we'll be told with an ERROR
+	// command.
+	//
+	// It could be if an operator on another server wants us to split, but I
+	// choose to not support it.
+	for _, server := range s.Catbox.LocalServers {
+		if server.Server == targetServer {
+			s.quit("I won't SQUIT a local server")
+			return
+		}
+	}
+
+	// It's remote. We need to forget it and tell all local users about relevant
+	// things (split, etc).
+	s.serverSplitCleanUp(targetServer)
 
 	// Propagate to other servers.
 	for _, server := range s.Catbox.LocalServers {

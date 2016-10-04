@@ -83,8 +83,8 @@ This is not exhaustive, but some of the differences are:
   * Server to server (ircd-ratbox)
     * Post-burst: SQUIT, KILL, KLINE
     * Nick collisions
-  * Drop messageUser/messageFromServer? messageUser all together,
-    messageFromServer to be reply()?
+    * Server SQUIT/introduction should send notice to opers
+  * Client connection notices to opers
   * TLS
   * Auto try/retry linking to servers if not connected
   * Daemonize
@@ -93,6 +93,8 @@ This is not exhaustive, but some of the differences are:
 
 ## Maybe
 
+  * Drop messageUser/messageFromServer? messageUser all together,
+    messageFromServer to be reply()?
   * LIST
   * Channel keys
   * INVITE

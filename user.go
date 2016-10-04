@@ -20,11 +20,13 @@ type User struct {
 	// LocalUser set if this is a local user.
 	LocalUser *LocalUser
 
-	// Link set if this is a remote user.
 	// This is the server we heard about the user from. It is not necessarily the
 	// server they are on. It could be on a server linked to the one we are
 	// linked to.
-	Link *LocalServer
+	ClosestServer *LocalServer
+
+	// This is the server the user is connected to.
+	Server *Server
 }
 
 func (u *User) String() string {

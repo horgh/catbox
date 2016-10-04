@@ -56,7 +56,7 @@ func (u *LocalUser) messageUser(to *User, command string, params []string) {
 		return
 	}
 
-	to.Link.maybeQueueMessage(irc.Message{
+	to.ClosestServer.maybeQueueMessage(irc.Message{
 		Prefix:  string(u.User.UID),
 		Command: command,
 		Params:  params,
@@ -680,15 +680,32 @@ func (u *LocalUser) privmsgCommand(m irc.Message) {
 		u.LastMessageTime = time.Now()
 
 		// Send to all members of the channel. Except the client itself it seems.
+		// Tell local users directly.
+		// If a user is remote, record the server we should propagate the message
+		// towards. Tell each server only once.
+		toServers := make(map[*LocalServer]struct{})
 		for memberUID := range channel.Members {
-			if memberUID == u.User.UID {
+			member := u.Catbox.Users[memberUID]
+			if member.UID == u.User.UID {
 				continue
 			}
 
-			member := u.Catbox.Users[memberUID]
+			if member.isLocal() {
+				// From the client to each member.
+				u.messageUser(member, m.Command, []string{channel.Name, msg})
+				continue
+			}
 
-			// From the client to each member.
-			u.messageUser(member, m.Command, []string{channel.Name, msg})
+			toServers[member.ClosestServer] = struct{}{}
+		}
+
+		// Propagate message to any servers that need it.
+		for server := range toServers {
+			server.maybeQueueMessage(irc.Message{
+				Prefix:  string(u.User.UID),
+				Command: m.Command,
+				Params:  []string{channel.Name, msg},
+			})
 		}
 
 		return
