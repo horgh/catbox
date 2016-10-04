@@ -44,6 +44,8 @@ type Catbox struct {
 	// Channel name (canonicalized) to Channel.
 	Channels map[string]*Channel
 
+	KLines []KLine
+
 	// When we close this channel, this indicates that we're shutting down.
 	// Other goroutines can check if this channel is closed.
 	ShutdownChan chan struct{}
@@ -56,6 +58,14 @@ type Catbox struct {
 
 	// WaitGroup to ensure all goroutines clean up before we end.
 	WG sync.WaitGroup
+}
+
+// KLine holds a kline (a ban).
+type KLine struct {
+	// Together we have <usermask>@<hostmask>
+	UserMask string
+	HostMask string
+	Reason   string
 }
 
 // TS6ID is a client's unique identifier. Unique to this server only.
@@ -129,6 +139,7 @@ func newCatbox(configFile string) (*Catbox, error) {
 		Nicks:        make(map[string]TS6UID),
 		Servers:      make(map[TS6SID]*Server),
 		Channels:     make(map[string]*Channel),
+		KLines:       []KLine{},
 
 		// shutdown() closes this channel.
 		ShutdownChan: make(chan struct{}),
@@ -485,7 +496,7 @@ func (cb *Catbox) newEvent(evt Event) {
 
 // Send a message to all operator users.
 func (cb *Catbox) noticeOpers(msg string) {
-	log.Print(msg)
+	log.Printf("Global oper notice: %s", msg)
 
 	for _, user := range cb.Opers {
 		if user.isLocal() {
@@ -509,12 +520,53 @@ func (cb *Catbox) noticeOpers(msg string) {
 
 // Send a message to all local operator users.
 func (cb *Catbox) noticeLocalOpers(msg string) {
-	log.Print(msg)
+	log.Printf("Local oper notice: %s", msg)
 
 	for _, user := range cb.Opers {
 		if user.isLocal() {
 			user.LocalUser.serverNotice(msg)
 			continue
 		}
+	}
+}
+
+// Store a KLINE locally, and then check if any connected local users match
+// it. If so, cut them off and notify local opers.
+//
+// This function does not propagate to any other servers.
+//
+// KLines are currently always permanent locally.
+func (cb *Catbox) addAndApplyKLine(kline KLine, source, reason string) {
+	// If it's a duplicate KLINE, ignore it.
+	for _, k := range cb.KLines {
+		if k.UserMask != kline.UserMask {
+			continue
+		}
+		if k.HostMask != kline.HostMask {
+			continue
+		}
+		log.Printf("Ignoring duplicate KLine for [%s@%s] from %s", k.UserMask,
+			k.HostMask, source)
+		return
+	}
+
+	cb.KLines = append(cb.KLines, kline)
+
+	cb.noticeLocalOpers(fmt.Sprintf("%s added K-Line for [%s@%s] [%s]",
+		source, kline.UserMask, kline.HostMask, reason))
+
+	// Do we have any matching users connected? Cut them off if so.
+
+	quitReason := fmt.Sprintf("Connection closed: %s", reason)
+
+	for _, user := range cb.LocalUsers {
+		if !user.User.matchesMask(kline.UserMask, kline.HostMask) {
+			continue
+		}
+
+		user.quit(quitReason, true)
+
+		cb.noticeOpers(fmt.Sprintf("User disconnected due to KLINE: %s",
+			user.User.DisplayNick))
 	}
 }

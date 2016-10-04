@@ -1,6 +1,9 @@
 package main
 
-import "fmt"
+import (
+	"fmt"
+	"log"
+)
 
 // User holds information about a user. It may be remote or local.
 type User struct {
@@ -61,4 +64,27 @@ func (u *User) isLocal() bool {
 
 func (u *User) isRemote() bool {
 	return !u.isLocal()
+}
+
+// Determine if our user mask (Username@Hostname) matches the given mask.
+//
+// If there are no wildcards in the mask, then it must match our user@host.
+//
+// We support glob style (*) wildcards and ? to match any single char.
+func (u *User) matchesMask(userMask, hostMask string) bool {
+	userRE, err := maskToRegex(userMask)
+	if err != nil {
+		log.Printf("matchesMask: %s", err)
+		return false
+	}
+	if !userRE.MatchString(u.Username) {
+		return false
+	}
+
+	hostRE, err := maskToRegex(hostMask)
+	if err != nil {
+		log.Printf("matchesMask: %s", err)
+		return false
+	}
+	return hostRE.MatchString(u.Hostname)
 }

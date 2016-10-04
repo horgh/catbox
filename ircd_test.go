@@ -79,3 +79,70 @@ func TestMakeTS6ID(t *testing.T) {
 //		}
 //	}
 //}
+
+func TestUserMatchesMask(t *testing.T) {
+	tests := []struct {
+		inputUser     User
+		inputUserMask string
+		inputHostMask string
+		output        bool
+	}{
+		{
+			inputUser:     User{Username: "test", Hostname: "127.0.0.1"},
+			inputUserMask: "test",
+			inputHostMask: "127.0.0.1",
+			output:        true,
+		},
+		{
+			inputUser:     User{Username: "test", Hostname: "127.0.0.1"},
+			inputUserMask: "*",
+			inputHostMask: "127.0.0.1",
+			output:        true,
+		},
+		{
+			inputUser:     User{Username: "test", Hostname: "127.0.0.1"},
+			inputUserMask: "test",
+			inputHostMask: "*",
+			output:        true,
+		},
+		{
+			inputUser:     User{Username: "test", Hostname: "127.0.0.1"},
+			inputUserMask: "t?st",
+			inputHostMask: "127.0.0.1",
+			output:        true,
+		},
+		{
+			inputUser:     User{Username: "test", Hostname: "127.0.0.1"},
+			inputUserMask: "*est",
+			inputHostMask: "127.0.0.1",
+			output:        true,
+		},
+		{
+			inputUser:     User{Username: "test", Hostname: "127.0.0.1"},
+			inputUserMask: "*test",
+			inputHostMask: "127.0.0.1",
+			output:        true,
+		},
+		{
+			inputUser:     User{Username: "test", Hostname: "127.0.0.1"},
+			inputUserMask: "test",
+			inputHostMask: "127.0.0.*",
+			output:        true,
+		},
+
+		{
+			inputUser:     User{Username: "test", Hostname: "127.0.0.1"},
+			inputUserMask: "*tst",
+			inputHostMask: "127.0.0.1",
+			output:        false,
+		},
+	}
+
+	for _, test := range tests {
+		output := test.inputUser.matchesMask(test.inputUserMask, test.inputHostMask)
+		if output != test.output {
+			t.Errorf("matchesMask(%s, %s) = %v, wanted %v", test.inputUserMask,
+				test.inputHostMask, output, test.output)
+		}
+	}
+}

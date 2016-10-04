@@ -321,11 +321,6 @@ func (s *LocalServer) handleMessage(m irc.Message) {
 		return
 	}
 
-	// For now I ignore ENCAP.
-	if m.Command == "ENCAP" {
-		return
-	}
-
 	if m.Command == "SID" {
 		s.sidCommand(m)
 		return
@@ -379,6 +374,11 @@ func (s *LocalServer) handleMessage(m irc.Message) {
 
 	if m.Command == "KILL" {
 		s.killCommand(m)
+		return
+	}
+
+	if m.Command == "ENCAP" {
+		s.encapCommand(m)
 		return
 	}
 
@@ -639,18 +639,27 @@ func (s *LocalServer) privmsgCommand(m irc.Message) {
 		return
 	}
 
-	// Do we recognize the source?
-	if !isValidUID(m.Prefix) {
-		s.quit("Invalid source")
-		return
+	// Determine the source.
+	// We can receive NOTICE from servers.
+	// Otherwise it must be a user.
+	source := ""
+	if m.Command == "NOTICE" {
+		sourceServer, exists := s.Catbox.Servers[TS6SID(m.Prefix)]
+		if exists {
+			source = sourceServer.Name
+		}
 	}
 
-	sourceUID := TS6UID(m.Prefix)
+	// If we don't know source yet, then it must be a user.
+	if source == "" {
+		sourceUser, exists := s.Catbox.Users[TS6UID(m.Prefix)]
+		if exists {
+			source = sourceUser.nickUhost()
+		}
+	}
 
-	sourceUser, exists := s.Catbox.Users[sourceUID]
-	if !exists {
-		s.quit("I don't know this source")
-		return
+	if source == "" {
+		s.quit(fmt.Sprintf("Unknown source (%s)", m.Command))
 	}
 
 	// Is target a user?
@@ -666,7 +675,7 @@ func (s *LocalServer) privmsgCommand(m irc.Message) {
 				// respectively.
 				m.Params[0] = targetUser.DisplayNick
 				targetUser.LocalUser.maybeQueueMessage(irc.Message{
-					Prefix:  sourceUser.nickUhost(),
+					Prefix:  source,
 					Command: m.Command,
 					Params:  m.Params,
 				})
@@ -698,7 +707,7 @@ func (s *LocalServer) privmsgCommand(m irc.Message) {
 
 		if member.isLocal() {
 			member.LocalUser.maybeQueueMessage(irc.Message{
-				Prefix:  sourceUser.nickUhost(),
+				Prefix:  source,
 				Command: m.Command,
 				Params:  m.Params,
 			})
@@ -1475,5 +1484,129 @@ func (s *LocalServer) killCommand(m irc.Message) {
 			continue
 		}
 		server.maybeQueueMessage(m)
+	}
+}
+
+// For the ENCAP command spec, see:
+// http://www.leeh.co.uk/ircd/encap.txt
+//
+// Essentially it is a way to propagate commands to all servers. Apparently it
+// was to work around issues where commands were not propagating correctly.
+//
+// In practice, some commands propagate this way, such as KLINE. We see KLINE
+// propagated from servers in the TS6 protocol in this manner:
+// :1SNAAAAAF ENCAP * KLINE 0 * 127.5.5.5 :bye bye
+//
+// Format:
+// :<source, UID or possibly SID?> ENCAP <destination> <subcommand>
+// [params for the subcommand]
+//
+// Destination can be a mask. For servers it may be a wildcard. For clients
+// apparently not.
+//
+// Currently I will assume destination mask is always *.
+//
+// If the encapsulated command is one I know about, operate on it locally.
+func (s *LocalServer) encapCommand(m irc.Message) {
+	if len(m.Params) < 2 {
+		// 461 ERR_NEEDMOREPARAMS
+		s.messageFromServer("461", []string{"ENCAP", "Not enough parameters"})
+		return
+	}
+
+	// I don't look at destination right now. Assume it's for this server too.
+
+	// Extract the sub command and its parameters.
+	subCommand := strings.ToUpper(m.Params[1])
+	subParams := []string{}
+	if len(m.Params) > 2 {
+		subParams = append(subParams, m.Params[2:]...)
+	}
+
+	// Do we want to do something with the encapsulated command?
+	if subCommand == "KLINE" {
+		s.klineCommand(irc.Message{
+			Prefix:  m.Prefix,
+			Command: subCommand,
+			Params:  subParams,
+		})
+	}
+
+	// Propagate everywhere.
+	for _, server := range s.Catbox.LocalServers {
+		if server == s {
+			continue
+		}
+		server.maybeQueueMessage(m)
+	}
+}
+
+// The KLINE command comes only in ENCAP messages.
+//
+// Apply a ban on user@host.
+//
+// Currently this is persistent only for the runtime.
+//
+// Parameters: <duration> <user mask> <host mask> [<reason>]
+// Example (with ENCAP portion dropped):
+// :1SNAAAAAF KLINE 0 * 127.5.5.5 :bye bye
+//
+// At this time we treat all KLINEs as "permanent" for the duration of our run.
+// i.e., we ignore duration.
+func (s *LocalServer) klineCommand(m irc.Message) {
+	if len(m.Params) < 3 {
+		// 461 ERR_NEEDMOREPARAMS
+		s.messageFromServer("461", []string{"KLINE", "Not enough parameters"})
+		return
+	}
+
+	source := ""
+	user, exists := s.Catbox.Users[TS6UID(m.Prefix)]
+	if exists {
+		source = user.DisplayNick
+	}
+	if source == "" {
+		// I'm unsure if we can get klines this way (servers as source).
+		server, exists := s.Catbox.Servers[TS6SID(m.Prefix)]
+		if exists {
+			source = server.Name
+		}
+	}
+	if source == "" {
+		log.Printf("Unknown source for KLINE command")
+		return
+	}
+
+	// I ignore duration at this time. It's permanent.
+
+	reason := "<No reason given>"
+	if len(m.Params) > 3 {
+		reason = m.Params[3]
+	}
+
+	kline := KLine{
+		UserMask: m.Params[1],
+		HostMask: m.Params[2],
+		Reason:   reason,
+	}
+
+	s.Catbox.addAndApplyKLine(kline, source, reason)
+
+	// We don't need to propagate. Since KLINE comes in through an ENCAP command,
+	// it was propagated there.
+
+	// However, we should reply to the user who issued it. ratbox does this like
+	// so:
+	// :1SN NOTICE 000AAAAAA :Added K-Line [hi*hi@127.0.0.1]
+	// Only do this if we have a source user.
+	if user != nil {
+		user.ClosestServer.maybeQueueMessage(irc.Message{
+			Prefix:  string(s.Catbox.Config.TS6SID),
+			Command: "NOTICE",
+			Params: []string{
+				string(user.UID),
+				fmt.Sprintf("Added K-Line [%s@%s]", kline.UserMask, kline.HostMask),
+			},
+		})
 	}
 }

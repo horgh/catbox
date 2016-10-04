@@ -80,7 +80,9 @@ This is not exhaustive, but some of the differences are:
 
 # TODO
 
-  * S2S: Post-burst: KLINE
+  * UNKLINE
+  * STATS K
+
   * Server SQUIT/introduction should send notice to opers
   * Nick collisions (KILL instead of split in NICK/UID)
   * Say something like processing connection on initial connect
@@ -89,6 +91,7 @@ This is not exhaustive, but some of the differences are:
   * Auto try/retry linking to servers if not connected
   * Daemonize
   * Log to file
+  * Additional automated testing
 
 
 ## Maybe
@@ -121,3 +124,4 @@ This is not exhaustive, but some of the differences are:
     * Inform clients about TLS ciphers in use (both on connect and in their
       whois)
     * Bots could be built into the ircd
+  * Persistent KLINEs (currently they are in memory only)

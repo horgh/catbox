@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"regexp"
 	"time"
 
 	"summercat.com/irc"
@@ -365,6 +366,11 @@ func (u *LocalUser) handleMessage(m irc.Message) {
 
 	if m.Command == "KILL" {
 		u.killCommand(m)
+		return
+	}
+
+	if m.Command == "KLINE" {
+		u.klineCommand(m)
 		return
 	}
 
@@ -1376,7 +1382,7 @@ func (u *LocalUser) killCommand(m irc.Message) {
 	// Parameters: <target username> [reason]
 	if len(m.Params) < 1 {
 		// 461 ERR_NEEDMOREPARAMS
-		u.messageFromServer("461", []string{"WALLOPS", "Not enough parameters"})
+		u.messageFromServer("461", []string{"KILL", "Not enough parameters"})
 		return
 	}
 
@@ -1427,6 +1433,86 @@ func (u *LocalUser) killCommand(m irc.Message) {
 			Prefix:  string(u.User.UID),
 			Command: "KILL",
 			Params:  []string{string(targetUser.UID), serverReason},
+		})
+	}
+}
+
+// Apply a KLine (user ban) locally and cut off any users matching it.
+//
+// Propagate it to all servers.
+//
+// At this time we support only permanent (locally anyway) klines.
+func (u *LocalUser) klineCommand(m irc.Message) {
+	// Parameters: [duration] <user@host> <reason>
+	if len(m.Params) < 2 {
+		// 461 ERR_NEEDMOREPARAMS
+		u.messageFromServer("461", []string{"KLINE", "Not enough parameters"})
+		return
+	}
+
+	if !u.User.isOperator() {
+		// 481 ERR_NOPRIVILEGES
+		u.messageFromServer("481", []string{"Permission Denied- You're not an IRC operator"})
+		return
+	}
+
+	duration := "0"
+	uhost := ""
+	reason := ""
+
+	match, err := regexp.MatchString("^[0-9]+$", m.Params[0])
+	if err != nil {
+		log.Fatalf("KLine duration regex: %s", err)
+	}
+	if match {
+		duration = m.Params[0]
+
+		if len(m.Params) < 3 {
+			// 461 ERR_NEEDMOREPARAMS
+			u.messageFromServer("461", []string{"KLINE", "Not enough parameters"})
+			return
+		}
+
+		uhost = m.Params[1]
+		reason = m.Params[2]
+	} else {
+		uhost = m.Params[0]
+		reason = m.Params[1]
+	}
+
+	// Hostname regex leaves something to be desired.
+	re := regexp.MustCompile("^([a-zA-Z0-9*?]+)@([a-zA-Z0-9.*?]+)$")
+	matches := re.FindStringSubmatch(uhost)
+	if matches == nil {
+		// 415 ERR_BADMASK
+		u.messageFromServer("415", []string{uhost, "Bad Server/host mask"})
+		return
+	}
+	userMask := matches[1]
+	hostMask := matches[2]
+
+	kline := KLine{
+		UserMask: userMask,
+		HostMask: hostMask,
+		Reason:   reason,
+	}
+
+	u.Catbox.addAndApplyKLine(kline, u.User.DisplayNick, reason)
+
+	// Propagate.
+	// In TS6 this must be in ENCAP.
+	for _, server := range u.Catbox.LocalServers {
+		server.maybeQueueMessage(irc.Message{
+			Prefix:  string(u.User.UID),
+			Command: "ENCAP",
+			Params: []string{
+				"*",
+				"KLINE",
+				duration,
+				userMask,
+				hostMask,
+				reason,
+			},
 		})
 	}
 }

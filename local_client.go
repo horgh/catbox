@@ -240,6 +240,22 @@ func (c *LocalClient) registerUser() {
 
 	lu.User = u
 
+	// Check if they're klined. Don't accept further if so.
+	for _, kline := range c.Catbox.KLines {
+		if !u.matchesMask(kline.UserMask, kline.HostMask) {
+			continue
+		}
+		// 465 ERR_YOUREBANNEDCREEP
+		lu.messageFromServer("465", []string{"You are banned from this server"})
+
+		c.quit(fmt.Sprintf("Connection closed: %s", kline.Reason))
+
+		c.Catbox.noticeLocalOpers(fmt.Sprintf(
+			"Rejecting user registration for %s!%s@%s. KLined: %s",
+			u.DisplayNick, u.Username, u.Hostname, kline.Reason))
+		return
+	}
+
 	uid, err := lu.makeTS6UID(lu.ID)
 	if err != nil {
 		log.Fatal(err)
@@ -399,7 +415,12 @@ func (c *LocalClient) sendServerIntro(pass string) {
 	// CAPAB <space separated list>
 	c.maybeQueueMessage(irc.Message{
 		Command: "CAPAB",
-		Params:  []string{"QS ENCAP"},
+		// QS means quitstorm. This means we don't need to hear QUITs from servers
+		// that are delinking (AFAICT) -- that we can figure it out ourselves and
+		// generate the QUITs ourself locally (see client.c in ircd-ratbox).
+		// ENCAP means support for the ENCAP command. See
+		// http://www.leeh.co.uk/ircd/encap.txt
+		Params: []string{"QS ENCAP"},
 	})
 
 	// SERVER <name> <hopcount> <description>

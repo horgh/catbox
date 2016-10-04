@@ -202,3 +202,19 @@ func makeTS6ID(id uint64) (TS6ID, error) {
 
 	return TS6ID(ts6id), nil
 }
+
+// Convert a mask to a regexp.
+// This quotes all regexp metachars, and then turns "*" into ".*", and "?"
+// into ".".
+func maskToRegex(mask string) (*regexp.Regexp, error) {
+	regex := regexp.QuoteMeta(mask)
+	regex = strings.Replace(regex, "\\*", ".*", -1)
+	regex = strings.Replace(regex, "\\?", ".", -1)
+
+	re, err := regexp.Compile(regex)
+	if err != nil {
+		return nil, err
+	}
+
+	return re, nil
+}
