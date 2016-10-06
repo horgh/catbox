@@ -380,6 +380,11 @@ func (u *LocalUser) handleMessage(m irc.Message) {
 		return
 	}
 
+	if m.Command == "STATS" {
+		u.statsCommand(m)
+		return
+	}
+
 	// Unknown command. We don't handle it yet anyway.
 	// 421 ERR_UNKNOWNCOMMAND
 	u.messageFromServer("421", []string{m.Command, "Unknown command"})
@@ -1561,4 +1566,49 @@ func (u *LocalUser) unklineCommand(m irc.Message) {
 			},
 		})
 	}
+}
+
+// I support the following queries right now:
+// k/K - Show K-Lines
+// I do not support remote STATS yet.
+func (u *LocalUser) statsCommand(m irc.Message) {
+	if len(m.Params) == 0 {
+		// 461 ERR_NEEDMOREPARAMS
+		u.messageFromServer("461", []string{"STATS", "Not enough parameters"})
+		return
+	}
+
+	query := m.Params[0]
+	if query != "k" && query != "K" {
+		u.messageFromServer("NOTICE", []string{"Unknown stats query"})
+		return
+	}
+
+	if !u.User.isOperator() {
+		// 481 ERR_NOPRIVILEGES
+		u.messageFromServer("481", []string{"Permission Denied- You're not an IRC operator"})
+		return
+	}
+
+	// We could sort the KLines.
+
+	for _, kline := range u.Catbox.KLines {
+		// 216 RPL_STATSKLINE
+		// RFC 1459 says:
+		// K <host> * <username> <port> <class>
+		// RFC 2812 declines to say.
+		// ircd-ratbox says:
+		// K <host> * <username> <reason>
+		// I use ratbox's.
+		u.messageFromServer("216", []string{
+			"K",
+			kline.HostMask,
+			"*",
+			kline.UserMask,
+			kline.Reason,
+		})
+	}
+
+	// 219 RPL_ENDOFSTATS
+	u.messageFromServer("219", []string{"K", "End of /STATS report"})
 }

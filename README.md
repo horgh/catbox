@@ -80,9 +80,8 @@ This is not exhaustive, but some of the differences are:
 
 # TODO
 
-  * STATS K
-
   * Server SQUIT/introduction should send notice to opers
+  * Kill should send notice to opers
   * Nick collisions (KILL instead of split in NICK/UID)
   * Say something like processing connection on initial connect
   * Client connection notices to opers
@@ -124,3 +123,6 @@ This is not exhaustive, but some of the differences are:
       whois)
     * Bots could be built into the ircd
   * Persistent KLINEs (currently they are in memory only)
+  * Respond to remote STATS requests
+  * Support remote queries (e.g. STATS to another server)
+  * Exchange KLines during server burst
