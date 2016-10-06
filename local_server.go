@@ -385,6 +385,16 @@ func (s *LocalServer) handleMessage(m irc.Message) {
 		return
 	}
 
+	if m.Command == "WHOIS" {
+		s.whoisCommand(m)
+		return
+	}
+
+	if isNumericCommand(m.Command) {
+		s.numericCommand(m)
+		return
+	}
+
 	// 421 ERR_UNKNOWNCOMMAND
 	s.messageFromServer("421", []string{m.Command, "Unknown command"})
 }
@@ -1483,7 +1493,7 @@ func (s *LocalServer) killCommand(m irc.Message) {
 	sourceAndReason = sourceAndReason[space:]
 
 	lparen := strings.Index(sourceAndReason, "(")
-	rparen := strings.Index(sourceAndReason, ")")
+	rparen := strings.LastIndex(sourceAndReason, ")")
 	if lparen == -1 || rparen == -1 || lparen > rparen ||
 		lparen+1 == len(sourceAndReason) {
 		s.quit("Malformed KILL reason")
@@ -1500,11 +1510,14 @@ func (s *LocalServer) killCommand(m irc.Message) {
 
 	// If it's a local user, kick it off.
 	if targetUser.isLocal() {
+		s.Catbox.noticeOpers(fmt.Sprintf("Killing local user %s",
+			targetUser.DisplayNick))
 		targetUser.LocalUser.quit(quitReason, false)
 	}
 
 	// If it's remote, we need to forget about this user.
 	if targetUser.isRemote() {
+		log.Printf("Kill is for remote user %s", targetUser.DisplayNick)
 		// Remove the user from each channel.
 		// Also, tell each local client that is in 1+ channel with the user that
 		// this user quit.
@@ -1697,4 +1710,87 @@ func (s *LocalServer) unklineCommand(m irc.Message) {
 	s.Catbox.removeKLine(userMask, hostMask, source)
 
 	// We don't need to propagate as UNKLINE comes inside ENCAP.
+}
+
+// Params: <uid> <nick>
+// e.g. :1SNAAAAAB WHOIS 000AAAAAA :horgh
+func (s *LocalServer) whoisCommand(m irc.Message) {
+	if len(m.Params) < 2 {
+		// 461 ERR_NEEDMOREPARAMS
+		s.messageFromServer("461", []string{"WHOIS", "Not enough parameters"})
+		return
+	}
+
+	sourceUser, exists := s.Catbox.Users[TS6UID(m.Prefix)]
+	if !exists {
+		log.Printf("WHOIS from unknown user %s", m.Prefix)
+		return
+	}
+
+	user, exists := s.Catbox.Users[TS6UID(m.Params[0])]
+	if !exists {
+		// 401 ERR_NOSUCHNICK
+		sourceUser.ClosestServer.maybeQueueMessage(irc.Message{
+			Prefix:  s.Catbox.Config.ServerName,
+			Command: "401",
+			Params: []string{sourceUser.DisplayNick, m.Params[0],
+				"No such nick/channel"},
+		})
+	}
+
+	// If it's a local user, reply back to the server.
+	if user.isLocal() {
+		msgs := s.Catbox.createWHOISResponse(user, sourceUser,
+			string(s.Catbox.Config.TS6SID))
+		for _, msg := range msgs {
+			sourceUser.ClosestServer.maybeQueueMessage(msg)
+		}
+		return
+	}
+
+	// If remote user, propagate to the closest server
+	user.ClosestServer.maybeQueueMessage(m)
+}
+
+// We've got a numeric command.
+// For example, a reply to a remote WHOIS.
+//
+// Look up where it's going and if it's local, send it to the local client.
+// If it's remote, propagate it on.
+func (s *LocalServer) numericCommand(m irc.Message) {
+	// Only servers should be sending numerics.
+	sourceServer, exists := s.Catbox.Servers[TS6SID(m.Prefix)]
+	if !exists {
+		log.Printf("Numeric from unknown server %s", m.Prefix)
+		return
+	}
+
+	if len(m.Params) == 0 {
+		log.Printf("Numeric with no parameters")
+		return
+	}
+
+	// Find the target.
+	user, exists := s.Catbox.Users[TS6UID(m.Params[0])]
+	if !exists {
+		log.Printf("Numeric %s for unknown user %s", m.Command, m.Params[0])
+		return
+	}
+
+	// If it's for a local client, then send it to them, and done.
+	if user.isLocal() {
+		params := []string{user.DisplayNick}
+		if len(m.Params) > 1 {
+			params = append(params, m.Params[1:]...)
+		}
+		user.LocalUser.maybeQueueMessage(irc.Message{
+			Prefix:  string(sourceServer.SID),
+			Command: m.Command,
+			Params:  params,
+		})
+		return
+	}
+
+	// It's destined somewhere remote. Pass it on its way.
+	user.ClosestServer.maybeQueueMessage(m)
 }

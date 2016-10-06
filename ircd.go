@@ -299,6 +299,10 @@ func (cb *Catbox) shutdown() {
 	if err != nil {
 		log.Printf("Problem closing TCP listener: %s", err)
 	}
+	err = cb.TLSListener.Close()
+	if err != nil {
+		log.Printf("Problem closing TLS listener: %s", err)
+	}
 
 	// All clients need to be told. This also closes their write channels.
 	for _, client := range cb.LocalClients {
@@ -750,4 +754,105 @@ func (cb *Catbox) issueKill(u *User, reason string) {
 		delete(cb.Opers, u.UID)
 	}
 	delete(cb.Nicks, canonicalizeNick(u.DisplayNick))
+}
+
+// Build irc.Messages that make up a WHOIS response. You can then send them to
+// where they need to go.
+//
+// You should call this only if the user exists.
+//
+// from defines the prefix. For local responses to users we want this to be the
+// server name. When responding to servers it should be the SID.
+func (cb *Catbox) createWHOISResponse(user *User,
+	replyUser *User, from string) []irc.Message {
+	msgs := []irc.Message{}
+
+	// 311 RPL_WHOISUSER
+	msgs = append(msgs, irc.Message{
+		Prefix:  cb.Config.ServerName,
+		Command: "311",
+		Params: []string{
+			replyUser.DisplayNick,
+			user.DisplayNick,
+			user.Username,
+			user.Hostname,
+			"*",
+			user.RealName,
+		},
+	})
+
+	// 319 RPL_WHOISCHANNELS
+	// I choose to not show any.
+
+	// 312 RPL_WHOISSERVER
+	msgs = append(msgs, irc.Message{
+		Prefix:  cb.Config.ServerName,
+		Command: "312",
+		Params: []string{
+			replyUser.DisplayNick,
+			user.DisplayNick,
+			cb.Config.ServerName,
+			cb.Config.ServerInfo,
+		},
+	})
+
+	// 301 RPL_AWAY. When we have AWAY.
+
+	// 313 RPL_WHOISOPERATOR
+	if user.isOperator() {
+		msgs = append(msgs, irc.Message{
+			Prefix:  cb.Config.ServerName,
+			Command: "313",
+			Params: []string{
+				replyUser.DisplayNick,
+				user.DisplayNick,
+				"is an IRC operator",
+			},
+		})
+	}
+
+	// 671. Non standard. Ratbox uses it.
+	if user.isLocal() && user.LocalUser.isTLS() {
+		msgs = append(msgs, irc.Message{
+			Prefix:  cb.Config.ServerName,
+			Command: "671",
+			Params: []string{
+				replyUser.DisplayNick,
+				user.DisplayNick,
+				fmt.Sprintf("is using a secure connection (%s) (%s)",
+					tlsVersionToString(user.LocalUser.TLSConnectionState.Version),
+					cipherSuiteToString(user.LocalUser.TLSConnectionState.CipherSuite)),
+			},
+		})
+	}
+
+	// 317 RPL_WHOISIDLE. Only if local.
+	if user.isLocal() {
+		idleDuration := time.Now().Sub(user.LocalUser.LastMessageTime)
+		idleSeconds := int(idleDuration.Seconds())
+
+		msgs = append(msgs, irc.Message{
+			Prefix:  cb.Config.ServerName,
+			Command: "317",
+			Params: []string{
+				replyUser.DisplayNick,
+				user.DisplayNick,
+				fmt.Sprintf("%d", idleSeconds),
+				"seconds idle",
+			},
+		})
+	}
+
+	// 318 RPL_ENDOFWHOIS
+	msgs = append(msgs, irc.Message{
+		Prefix:  cb.Config.ServerName,
+		Command: "318",
+		Params: []string{
+			replyUser.DisplayNick,
+			user.DisplayNick,
+			"End of WHOIS list",
+		},
+	})
+
+	return msgs
 }

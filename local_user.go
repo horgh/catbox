@@ -889,72 +889,35 @@ func (u *LocalUser) whoisCommand(m irc.Message) {
 	}
 
 	nick := m.Params[0]
-	nickCanonical := canonicalizeNick(nick)
 
-	targetUID, exists := u.Catbox.Nicks[nickCanonical]
+	uid, exists := u.Catbox.Nicks[canonicalizeNick(nick)]
 	if !exists {
 		// 401 ERR_NOSUCHNICK
-		u.messageFromServer("401", []string{nick, "No such nick/channel"})
+		u.maybeQueueMessage(irc.Message{
+			Prefix:  u.Catbox.Config.ServerName,
+			Command: "401",
+			Params:  []string{u.User.DisplayNick, nick, "No such nick/channel"},
+		})
 		return
 	}
-	targetUser := u.Catbox.Users[targetUID]
+	user := u.Catbox.Users[uid]
 
-	// 311 RPL_WHOISUSER
-	u.messageFromServer("311", []string{
-		targetUser.DisplayNick,
-		targetUser.Username,
-		fmt.Sprintf("%s", targetUser.Hostname),
-		"*",
-		targetUser.RealName,
-	})
-
-	// 319 RPL_WHOISCHANNELS
-	// I choose to not show any.
-
-	// 312 RPL_WHOISSERVER
-	u.messageFromServer("312", []string{
-		targetUser.DisplayNick,
-		u.Catbox.Config.ServerName,
-		u.Catbox.Config.ServerInfo,
-	})
-
-	// 301 RPL_AWAY
-
-	// 313 RPL_WHOISOPERATOR
-	if targetUser.isOperator() {
-		u.messageFromServer("313", []string{
-			targetUser.DisplayNick,
-			"is an IRC operator",
+	// Ask the remote server for the whois.
+	if user.isRemote() {
+		user.ClosestServer.maybeQueueMessage(irc.Message{
+			Prefix:  string(u.User.UID),
+			Command: "WHOIS",
+			Params:  []string{string(user.UID), user.DisplayNick},
 		})
+		return
 	}
 
-	// 671. Non standard. Ratbox uses it.
-	if targetUser.isLocal() && targetUser.LocalUser.isTLS() {
-		u.messageFromServer("671", []string{
-			targetUser.DisplayNick,
-			fmt.Sprintf("is using a secure connection (%s) (%s)",
-				tlsVersionToString(targetUser.LocalUser.TLSConnectionState.Version),
-				cipherSuiteToString(targetUser.LocalUser.TLSConnectionState.CipherSuite)),
-		})
-	}
+	// It's a local user. Respond ourself.
 
-	// 317 RPL_WHOISIDLE
-	// Only if local.
-	if targetUser.LocalUser != nil {
-		idleDuration := time.Now().Sub(targetUser.LocalUser.LastMessageTime)
-		idleSeconds := int(idleDuration.Seconds())
-		u.messageFromServer("317", []string{
-			targetUser.DisplayNick,
-			fmt.Sprintf("%d", idleSeconds),
-			"seconds idle",
-		})
+	msgs := u.Catbox.createWHOISResponse(user, u.User, u.Catbox.Config.ServerName)
+	for _, msg := range msgs {
+		u.maybeQueueMessage(msg)
 	}
-
-	// 318 RPL_ENDOFWHOIS
-	u.messageFromServer("318", []string{
-		targetUser.DisplayNick,
-		"End of WHOIS list",
-	})
 }
 
 func (u *LocalUser) operCommand(m irc.Message) {

@@ -87,7 +87,9 @@ This is not exhaustive, but some of the differences are:
 
 # TODO
 
+  * Try linking to self
   * Auto try/retry linking to servers if not connected
+
   * Daemonize
   * Log to file
   * Additional automated testing
