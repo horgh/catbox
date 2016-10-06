@@ -80,7 +80,6 @@ This is not exhaustive, but some of the differences are:
 
 # TODO
 
-  * DNS lookups
   * TLS
   * Auto try/retry linking to servers if not connected
   * Daemonize

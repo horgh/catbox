@@ -316,25 +316,39 @@ func (cb *Catbox) acceptConnections() {
 			continue
 		}
 
-		id := cb.getClientID()
+		go func() {
+			id := cb.getClientID()
 
-		client := NewLocalClient(cb, id, conn)
+			client := NewLocalClient(cb, id, conn)
 
-		client.WriteChan <- irc.Message{
-			Command: "NOTICE",
-			Params: []string{
-				"AUTH",
+			msgs := []string{
 				fmt.Sprintf("*** Processing your connection to %s",
 					cb.Config.ServerName),
-			},
-		}
+				"*** Looking up your hostname...",
+			}
 
-		cb.newEvent(Event{Type: NewClientEvent, Client: client})
+			hostname := lookupHostname(client.Conn.IP)
+			if len(hostname) > 0 {
+				msgs = append(msgs, "*** Found your hostname")
+				client.Hostname = hostname
+			} else {
+				msgs = append(msgs, "*** Couldn't look up your hostname")
+			}
 
-		cb.WG.Add(1)
-		go client.readLoop()
-		cb.WG.Add(1)
-		go client.writeLoop()
+			for _, msg := range msgs {
+				client.WriteChan <- irc.Message{
+					Command: "NOTICE",
+					Params:  []string{"AUTH", msg},
+				}
+			}
+
+			cb.newEvent(Event{Type: NewClientEvent, Client: client})
+
+			cb.WG.Add(1)
+			go client.readLoop()
+			cb.WG.Add(1)
+			go client.writeLoop()
+		}()
 	}
 
 	log.Printf("Connection accepter shutting down.")

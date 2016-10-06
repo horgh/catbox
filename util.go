@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"net"
 	"regexp"
 	"strings"
 )
@@ -217,4 +218,38 @@ func maskToRegex(mask string) (*regexp.Regexp, error) {
 	}
 
 	return re, nil
+}
+
+// Attempt to resolve a client's IP to a hostname.
+//
+// This is a forward confirmed DNS lookup.
+//
+// First we look up IP reverse DNS and find name(s).
+//
+// We then look up each of these name(s) and if one of them matches the IP,
+// then we say the client has that host.
+//
+// If none match, we return blank indicating no hostname found.
+func lookupHostname(ip net.IP) string {
+	// TODO: How do we set a timeout on the lookups?
+
+	names, err := net.LookupAddr(ip.String())
+	if err != nil {
+		return ""
+	}
+
+	for _, name := range names {
+		ips, err := net.LookupIP(name)
+		if err != nil {
+			continue
+		}
+
+		for _, foundIP := range ips {
+			if foundIP.Equal(ip) {
+				return name
+			}
+		}
+	}
+
+	return ""
 }

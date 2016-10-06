@@ -16,7 +16,8 @@ import (
 // or as a server.
 type LocalClient struct {
 	// Conn is the TCP connection to the client.
-	Conn Conn
+	Conn     Conn
+	Hostname string
 
 	// Locally unique identifier.
 	ID uint64
@@ -225,14 +226,19 @@ func (c *LocalClient) registerUser() {
 
 	lu := NewLocalUser(c)
 
+	hostname := c.Conn.IP.String()
+	if len(c.Hostname) > 0 {
+		hostname = c.Hostname
+	}
+
 	u := &User{
 		DisplayNick: c.PreRegDisplayNick,
 		HopCount:    0,
 		NickTS:      time.Now().Unix(),
 		Modes:       make(map[byte]struct{}),
 		Username:    "~" + c.PreRegUser,
-		Hostname:    fmt.Sprintf("%s", c.Conn.IP),
-		IP:          fmt.Sprintf("%s", c.Conn.IP),
+		Hostname:    hostname,
+		IP:          c.Conn.IP.String(),
 		RealName:    c.PreRegRealName,
 		Channels:    make(map[string]*Channel),
 		LocalUser:   lu,
