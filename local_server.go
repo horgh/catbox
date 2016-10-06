@@ -91,6 +91,9 @@ func (s *LocalServer) quit(msg string) {
 			Params:  []string{string(s.Server.SID), msg},
 		})
 	}
+
+	s.Catbox.noticeLocalOpers(fmt.Sprintf("Server %s delinked: %s",
+		s.Server.Name, msg))
 }
 
 // lostServer is departing the network.
@@ -789,6 +792,9 @@ func (s *LocalServer) sidCommand(m irc.Message) {
 
 	// We don't need to tell the new server about the servers we are connected to.
 	// They'll be informed by the server they linked to about us.
+
+	s.Catbox.noticeLocalOpers(fmt.Sprintf("%s is introducing server %s",
+		s.Server.Name, newServer.Name))
 }
 
 // SJOIN occurs in two contexts:
@@ -1374,6 +1380,19 @@ func (s *LocalServer) squitCommand(m irc.Message) {
 		}
 		server.maybeQueueMessage(m)
 	}
+
+	reason := ""
+	if len(m.Params) > 1 {
+		reason = m.Params[1]
+	}
+
+	from := ""
+	if targetServer.LinkedTo != nil {
+		from = targetServer.LinkedTo.Name
+	}
+
+	s.Catbox.noticeLocalOpers(fmt.Sprintf("Server %s delinked from %s: %s",
+		s.Server.Name, from, reason))
 }
 
 func (s *LocalServer) killCommand(m irc.Message) {

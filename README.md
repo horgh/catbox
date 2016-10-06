@@ -80,8 +80,6 @@ This is not exhaustive, but some of the differences are:
 
 # TODO
 
-  * Server SQUIT/introduction should send notice to opers
-  * Kill should send notice to opers
   * Nick collisions (KILL instead of split in NICK/UID)
   * Say something like processing connection on initial connect
   * Client connection notices to opers
