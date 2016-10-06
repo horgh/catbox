@@ -230,7 +230,7 @@ func (c *LocalClient) registerUser() {
 		HopCount:    0,
 		NickTS:      time.Now().Unix(),
 		Modes:       make(map[byte]struct{}),
-		Username:    c.PreRegUser,
+		Username:    "~" + c.PreRegUser,
 		Hostname:    fmt.Sprintf("%s", c.Conn.IP),
 		IP:          fmt.Sprintf("%s", c.Conn.IP),
 		RealName:    c.PreRegRealName,

@@ -37,7 +37,11 @@ func (u *User) String() string {
 }
 
 func (u *User) nickUhost() string {
-	return fmt.Sprintf("%s!~%s@%s", u.DisplayNick, u.Username, u.Hostname)
+	return fmt.Sprintf("%s!%s@%s", u.DisplayNick, u.Username, u.Hostname)
+}
+
+func (u *User) userHost() string {
+	return fmt.Sprintf("%s@%s", u.Username, u.Hostname)
 }
 
 func (u *User) isOperator() bool {

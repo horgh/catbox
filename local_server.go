@@ -525,6 +525,18 @@ func (s *LocalServer) uidCommand(m irc.Message) {
 		return
 	}
 
+	if !isValidUID(m.Params[7]) {
+		s.quit("Invalid UID")
+		return
+	}
+	uid := TS6UID(m.Params[7])
+
+	nickTS, err := strconv.ParseInt(m.Params[2], 10, 64)
+	if err != nil {
+		s.quit("Invalid nick TS")
+		return
+	}
+
 	// Is this a valid nick?
 	if !isValidNick(s.Catbox.Config.MaxNickLength, m.Params[0]) {
 		s.quit("Invalid NICK!")
@@ -533,11 +545,23 @@ func (s *LocalServer) uidCommand(m irc.Message) {
 	displayNick := m.Params[0]
 
 	// Is there a nick collision?
-	_, exists = s.Catbox.Nicks[canonicalizeNick(displayNick)]
+	collidedUID, exists := s.Catbox.Nicks[canonicalizeNick(displayNick)]
+
+	// Collision. The TS6 protocol defines more detailed rules. I simply kill the
+	// one with the newer Nick TS without caring about user@host. I also tell
+	// every server rather than limiting the extent of the KILL message.
 	if exists {
-		// TODO: Issue kill(s). For now just kick the server.
-		s.quit("Nick collision")
-		return
+		collidedUser := s.Catbox.Users[collidedUID]
+		if nickTS < collidedUser.NickTS {
+			s.Catbox.issueKill(collidedUser, "Nick collision, newer killed")
+		} else if nickTS == collidedUser.NickTS {
+			s.Catbox.issueKill(collidedUser, "Nick collision, both killed")
+			s.Catbox.issueKill(&User{UID: uid}, "Nick collision, both killed")
+			return
+		} else if nickTS > collidedUser.NickTS {
+			s.Catbox.issueKill(&User{UID: uid}, "Nick collision, newer killed")
+			return
+		}
 	}
 
 	hopCount, err := strconv.ParseInt(m.Params[1], 10, 8)
@@ -546,11 +570,7 @@ func (s *LocalServer) uidCommand(m irc.Message) {
 		return
 	}
 
-	nickTS, err := strconv.ParseInt(m.Params[2], 10, 64)
-	if err != nil {
-		s.quit("Invalid nick TS")
-		return
-	}
+	// I get Nick TS above.
 
 	umodes := make(map[byte]struct{})
 	for i, umode := range m.Params[3] {
@@ -581,11 +601,7 @@ func (s *LocalServer) uidCommand(m irc.Message) {
 	// TODO: Validate IP
 	ip := m.Params[6]
 
-	if !isValidUID(m.Params[7]) {
-		s.quit("Invalid UID")
-		return
-	}
-	uid := TS6UID(m.Params[7])
+	// I get UID ahead of time, above.
 
 	if !isValidRealName(m.Params[8]) {
 		s.quit("Invalid real name")
@@ -813,7 +829,7 @@ func (s *LocalServer) sjoinCommand(m irc.Message) {
 
 	if len(m.Params) < 4 {
 		// 461 ERR_NEEDMOREPARAMS
-		s.messageFromServer("461", []string{"PING", "Not enough parameters"})
+		s.messageFromServer("461", []string{"SJOIN", "Not enough parameters"})
 		return
 	}
 
@@ -828,8 +844,8 @@ func (s *LocalServer) sjoinCommand(m irc.Message) {
 	// Currently I ignore modes. All channels have the same mode, or we pretend so
 	// anyway.
 
-	channel, exists := s.Catbox.Channels[canonicalizeChannel(chanName)]
-	if !exists {
+	channel, channelExists := s.Catbox.Channels[canonicalizeChannel(chanName)]
+	if !channelExists {
 		channel = &Channel{
 			Name:    canonicalizeChannel(chanName),
 			Members: make(map[TS6UID]struct{}),
@@ -856,18 +872,14 @@ func (s *LocalServer) sjoinCommand(m irc.Message) {
 		// Cut it off for now. I currently don't support op/voice.
 		uidRaw = strings.TrimLeft(uidRaw, "@+")
 
-		if !isValidUID(uidRaw) {
-			s.quit("Invalid UID")
-			// TODO: Possible to have empty channel at this point
-			return
-		}
-
-		uid := TS6UID(uidRaw)
-
-		user, exists := s.Catbox.Users[uid]
+		user, exists := s.Catbox.Users[TS6UID(uidRaw)]
 		if !exists {
-			s.quit("Unknown user")
-			// TODO: Possible to have empty channel at this point
+			// We may not know the user in case of nick collision where we killed.
+			// them and forgot them. Allow this.
+			log.Printf("SJOIN for unknown user %s, ignoring", uidRaw)
+			if !channelExists {
+				delete(s.Catbox.Channels, channel.Name)
+			}
 			return
 		}
 
@@ -998,12 +1010,24 @@ func (s *LocalServer) nickCommand(m irc.Message) {
 		return
 	}
 
-	// Deal with collisions.
-	_, exists = s.Catbox.Nicks[canonicalizeNick(nick)]
+	// Is there a nick collision?
+	collidedUID, exists := s.Catbox.Nicks[canonicalizeNick(nick)]
+
+	// Collision. The TS6 protocol defines more detailed rules. I simply kill the
+	// one with the newer Nick TS without caring about user@host. I also tell
+	// every server rather than limiting the extent of the KILL message.
 	if exists {
-		// TODO: Kill client(s)
-		s.quit("Nick collision")
-		return
+		collidedUser := s.Catbox.Users[collidedUID]
+		if nickTS < collidedUser.NickTS {
+			s.Catbox.issueKill(collidedUser, "Nick collision, newer killed")
+		} else if nickTS == collidedUser.NickTS {
+			s.Catbox.issueKill(collidedUser, "Nick collision, both killed")
+			s.Catbox.issueKill(user, "Nick collision, both killed")
+			return
+		} else if nickTS > collidedUser.NickTS {
+			s.Catbox.issueKill(user, "Nick collision, newer killed")
+			return
+		}
 	}
 
 	// Update their nick and nick TS.
@@ -1422,7 +1446,8 @@ func (s *LocalServer) killCommand(m irc.Message) {
 
 	targetUser, exists := s.Catbox.Users[TS6UID(m.Params[0])]
 	if !exists {
-		s.quit("Unknown user (KILL)")
+		s.Catbox.noticeOpers(fmt.Sprintf("Received KILL for unknown user %s",
+			m.Params[0]))
 		return
 	}
 
@@ -1452,8 +1477,7 @@ func (s *LocalServer) killCommand(m irc.Message) {
 		fmt.Sprintf("Received KILL message for %s. From %s Path: %s (%s)",
 			targetUser.DisplayNick, source, sourceInfo, reason))
 
-	quitReason := fmt.Sprintf("Killed (%s (%s))",
-		source, reason)
+	quitReason := fmt.Sprintf("Killed (%s (%s))", source, reason)
 
 	// If it's a local user, kick it off.
 	if targetUser.isLocal() {

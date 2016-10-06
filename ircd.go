@@ -603,3 +603,74 @@ func (cb *Catbox) removeKLine(userMask, hostMask, source string) bool {
 
 	return true
 }
+
+// Issue a KILL from this server.
+//
+// We send a KILL message to each server.
+//
+// We cut the user off if they are local.
+//
+// We tell local users a Quit if they are remote.
+//
+// We forget the user.
+func (cb *Catbox) issueKill(u *User, reason string) {
+	// Parameters: <target user UID> <reason>
+	// Reason has format:
+	// <source> (<reason text>)
+	// Where <source> looks something like:
+	// <killer server name>!<killer user host>!<killer user username>!<killer nick>
+
+	serverReason := fmt.Sprintf("%s (%s)", cb.Config.ServerName, reason)
+
+	// Send to all servers.
+	for _, server := range cb.LocalServers {
+		server.maybeQueueMessage(irc.Message{
+			Prefix:  string(cb.Config.TS6SID),
+			Command: "KILL",
+			Params:  []string{string(u.UID), serverReason},
+		})
+	}
+
+	quitReason := fmt.Sprintf("Killed (%s (%s))", cb.Config.ServerName, reason)
+
+	// If it's a local user, drop it.
+	if u.isLocal() {
+		u.LocalUser.quit(quitReason, false)
+		return
+	}
+
+	// It's a remote user. Tell local users a quit message.
+	// And forget the remote user.
+	informedUsers := make(map[TS6UID]struct{})
+	for _, channel := range u.Channels {
+		for memberUID := range channel.Members {
+			member := cb.Users[memberUID]
+			if !member.isLocal() {
+				continue
+			}
+
+			_, exists := informedUsers[member.UID]
+			if exists {
+				continue
+			}
+			informedUsers[member.UID] = struct{}{}
+
+			member.LocalUser.maybeQueueMessage(irc.Message{
+				Prefix:  u.nickUhost(),
+				Command: "QUIT",
+				Params:  []string{quitReason},
+			})
+		}
+
+		delete(channel.Members, u.UID)
+		if len(channel.Members) == 0 {
+			delete(cb.Channels, channel.Name)
+		}
+	}
+
+	delete(cb.Users, u.UID)
+	if u.isOperator() {
+		delete(cb.Opers, u.UID)
+	}
+	delete(cb.Nicks, canonicalizeNick(u.DisplayNick))
+}

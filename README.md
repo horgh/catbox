@@ -80,7 +80,7 @@ This is not exhaustive, but some of the differences are:
 
 # TODO
 
-  * Nick collisions (KILL instead of split in NICK/UID)
+  * Look at server to server commands for cases where we don't need to reply
   * Client connection notices to opers
   * TLS
   * Auto try/retry linking to servers if not connected
