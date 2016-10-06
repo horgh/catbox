@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/tls"
 	"fmt"
 	"log"
 	"net"
@@ -1338,11 +1339,25 @@ func (u *LocalUser) connectCommand(m irc.Message) {
 	go func() {
 		defer u.Catbox.WG.Done()
 
-		u.serverNotice(fmt.Sprintf("Connecting to %s...", linkInfo.Name))
+		var conn net.Conn
+		var err error
 
-		conn, err := net.DialTimeout("tcp",
-			fmt.Sprintf("%s:%d", linkInfo.Hostname, linkInfo.Port),
-			u.Catbox.Config.DeadTime)
+		if linkInfo.TLS {
+			u.serverNotice(fmt.Sprintf("Connecting to %s with TLS...", linkInfo.Name))
+			dialer := &net.Dialer{
+				Timeout: u.Catbox.Config.DeadTime,
+			}
+			conn, err = tls.DialWithDialer(dialer, "tcp",
+				fmt.Sprintf("%s:%d", linkInfo.Hostname, linkInfo.Port),
+				u.Catbox.TLSConfig)
+		} else {
+			u.serverNotice(fmt.Sprintf("Connecting to %s without TLS...",
+				linkInfo.Name))
+			conn, err = net.DialTimeout("tcp",
+				fmt.Sprintf("%s:%d", linkInfo.Hostname, linkInfo.Port),
+				u.Catbox.Config.DeadTime)
+		}
+
 		if err != nil {
 			log.Printf("Unable to connect to server [%s]: %s", linkInfo.Name, err)
 			return

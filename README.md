@@ -87,7 +87,6 @@ This is not exhaustive, but some of the differences are:
 
 # TODO
 
-  * Able to connect to servers with TLS
   * Auto try/retry linking to servers if not connected
   * Daemonize
   * Log to file

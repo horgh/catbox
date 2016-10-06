@@ -49,6 +49,7 @@ type ServerDefinition struct {
 	Hostname string
 	Port     int
 	Pass     string
+	TLS      bool
 }
 
 // checkAndParseConfig checks configuration keys are present and in an
@@ -159,10 +160,10 @@ func (cb *Catbox) checkAndParseConfig(file string) error {
 
 // Parse the value side of a server definition from the servers config.
 // Format:
-// <hostname>,<port>,<password>
+// <hostname>,<port>,<password>,<tls: 1 or 0>
 func parseLink(name, s string) (ServerDefinition, error) {
 	pieces := strings.Split(s, ",")
-	if len(pieces) != 3 {
+	if len(pieces) != 4 {
 		return ServerDefinition{}, fmt.Errorf("Unexpected number of fields")
 	}
 
@@ -187,5 +188,6 @@ func parseLink(name, s string) (ServerDefinition, error) {
 		Hostname: hostname,
 		Port:     int(port),
 		Pass:     pass,
+		TLS:      pieces[3] == "1",
 	}, nil
 }

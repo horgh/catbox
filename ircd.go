@@ -166,6 +166,8 @@ func newCatbox(configFile string) (*Catbox, error) {
 		Certificates:             []tls.Certificate{cert},
 		PreferServerCipherSuites: true,
 		SessionTicketsDisabled:   true,
+		// Unfortunately it is usual to use self signed certificates with IRC.
+		InsecureSkipVerify: true,
 		CipherSuites: []uint16{
 			tls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
 			tls.TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
