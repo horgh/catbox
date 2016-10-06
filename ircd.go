@@ -320,6 +320,15 @@ func (cb *Catbox) acceptConnections() {
 
 		client := NewLocalClient(cb, id, conn)
 
+		client.WriteChan <- irc.Message{
+			Command: "NOTICE",
+			Params: []string{
+				"AUTH",
+				fmt.Sprintf("*** Processing your connection to %s",
+					cb.Config.ServerName),
+			},
+		}
+
 		cb.newEvent(Event{Type: NewClientEvent, Client: client})
 
 		cb.WG.Add(1)
