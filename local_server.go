@@ -641,6 +641,21 @@ func (s *LocalServer) uidCommand(m irc.Message) {
 		}
 		server.maybeQueueMessage(m)
 	}
+
+	// Tell local operators.
+	if !s.Bursting {
+		for _, oper := range s.Catbox.Opers {
+			if !oper.isLocal() {
+				continue
+			}
+			_, exists := oper.Modes['C']
+			if !exists {
+				continue
+			}
+			oper.LocalUser.serverNotice(fmt.Sprintf("CLICONN %s %s %s %s %s (%s)",
+				u.DisplayNick, u.Username, u.Hostname, u.IP, u.RealName, u.Server.Name))
+		}
+	}
 }
 
 func (s *LocalServer) privmsgCommand(m irc.Message) {
@@ -1427,7 +1442,7 @@ func (s *LocalServer) killCommand(m irc.Message) {
 	// <killer server name>!<killer user host>!<killer user username>!<killer nick>
 	if len(m.Params) < 2 {
 		// 461 ERR_NEEDMOREPARAMS
-		s.messageFromServer("461", []string{"SQUIT", "Not enough parameters"})
+		s.messageFromServer("461", []string{"KILL", "Not enough parameters"})
 		return
 	}
 

@@ -1077,34 +1077,60 @@ func (u *LocalUser) userModeCommand(targetUser *User, modes string) {
 			continue
 		}
 
-		if char != 'o' {
-			// 501 ERR_UMODEUNKNOWNFLAG
-			u.messageFromServer("501", []string{"Unknown MODE flag"})
+		if char == 'o' {
+			// Ignore it if they try to +o (operator) themselves. RFC says to do so.
+			if action == '+' {
+				continue
+			}
+
+			// This is -o. They have to be operator for there to be any effect.
+			if !u.User.isOperator() {
+				continue
+			}
+
+			modeStr := "-o"
+			delete(u.User.Modes, 'o')
+			_, exists := u.User.Modes['C']
+			if exists {
+				delete(u.User.Modes, 'C')
+				modeStr += "C"
+			}
+			delete(u.Catbox.Opers, u.User.UID)
+			u.messageUser(u.User, "MODE", []string{modeStr, u.User.DisplayNick})
+
+			// Tell all servers about this.
+			for _, server := range u.Catbox.LocalServers {
+				server.maybeQueueMessage(irc.Message{
+					Prefix:  string(u.User.UID),
+					Command: "MODE",
+					// Don't tell them about -C. They shouldn't care.
+					Params: []string{string(u.User.UID), "-o"},
+				})
+			}
 			continue
 		}
 
-		// Ignore it if they try to +o (operator) themselves. RFC says to do so.
-		if action == '+' {
+		// Client connection notices
+		if char == 'C' {
+			if !u.User.isOperator() {
+				continue
+			}
+
+			if action == '+' {
+				u.User.Modes['C'] = struct{}{}
+				u.messageUser(u.User, "MODE", []string{"+C", u.User.DisplayNick})
+			} else {
+				_, exists := u.User.Modes['C']
+				if exists {
+					u.messageUser(u.User, "MODE", []string{"-C", u.User.DisplayNick})
+				}
+			}
 			continue
 		}
 
-		// This is -o. They have to be operator for there to be any effect.
-		if !u.User.isOperator() {
-			continue
-		}
-
-		delete(u.User.Modes, 'o')
-		delete(u.Catbox.Opers, u.User.UID)
-		u.messageUser(u.User, "MODE", []string{"-o", u.User.DisplayNick})
-
-		// Tell all servers about this.
-		for _, server := range u.Catbox.LocalServers {
-			server.maybeQueueMessage(irc.Message{
-				Prefix:  string(u.User.UID),
-				Command: "MODE",
-				Params:  []string{string(u.User.UID), "-o"},
-			})
-		}
+		// 501 ERR_UMODEUNKNOWNFLAG
+		u.messageFromServer("501", []string{"Unknown MODE flag"})
+		continue
 	}
 }
 

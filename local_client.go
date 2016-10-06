@@ -290,7 +290,7 @@ func (c *LocalClient) registerUser() {
 		// It seems ambiguous if these are to be separate parameters.
 		lu.Catbox.Config.ServerName,
 		lu.Catbox.Config.Version,
-		"io",
+		"ioC",
 		"ns",
 	})
 
@@ -318,6 +318,20 @@ func (c *LocalClient) registerUser() {
 				u.RealName,
 			},
 		})
+	}
+
+	// Tell local operators.
+	for _, oper := range c.Catbox.Opers {
+		if !oper.isLocal() {
+			continue
+		}
+		_, exists := oper.Modes['C']
+		if !exists {
+			continue
+		}
+		oper.LocalUser.serverNotice(fmt.Sprintf("CLICONN %s %s %s %s %s (%s)",
+			u.DisplayNick, u.Username, u.Hostname, u.IP, u.RealName,
+			c.Catbox.Config.ServerName))
 	}
 }
 
