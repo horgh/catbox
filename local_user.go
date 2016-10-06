@@ -5,6 +5,7 @@ import (
 	"log"
 	"net"
 	"regexp"
+	"strings"
 	"time"
 
 	"summercat.com/irc"
@@ -371,6 +372,11 @@ func (u *LocalUser) handleMessage(m irc.Message) {
 
 	if m.Command == "KLINE" {
 		u.klineCommand(m)
+		return
+	}
+
+	if m.Command == "UNKLINE" {
+		u.unklineCommand(m)
 		return
 	}
 
@@ -1512,6 +1518,46 @@ func (u *LocalUser) klineCommand(m irc.Message) {
 				userMask,
 				hostMask,
 				reason,
+			},
+		})
+	}
+}
+
+func (u *LocalUser) unklineCommand(m irc.Message) {
+	// Parameters: <usermask@hostmask>
+	if len(m.Params) < 1 {
+		// 461 ERR_NEEDMOREPARAMS
+		u.messageFromServer("461", []string{"UNKLINE", "Not enough parameters"})
+		return
+	}
+
+	if !u.User.isOperator() {
+		// 481 ERR_NOPRIVILEGES
+		u.messageFromServer("481", []string{"Permission Denied- You're not an IRC operator"})
+		return
+	}
+
+	pieces := strings.Split(m.Params[0], "@")
+	if len(pieces) != 2 {
+		// 415 ERR_BADMASK
+		u.messageFromServer("415", []string{m.Params[0], "Bad Server/host mask"})
+		return
+	}
+	userMask := pieces[0]
+	hostMask := pieces[1]
+
+	u.Catbox.removeKLine(userMask, hostMask, u.User.DisplayNick)
+
+	// Propagate.
+	for _, server := range u.Catbox.LocalServers {
+		server.maybeQueueMessage(irc.Message{
+			Prefix:  string(u.User.UID),
+			Command: "ENCAP",
+			Params: []string{
+				"*",
+				"UNKLINE",
+				userMask,
+				hostMask,
 			},
 		})
 	}

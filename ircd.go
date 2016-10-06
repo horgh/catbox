@@ -545,14 +545,14 @@ func (cb *Catbox) addAndApplyKLine(kline KLine, source, reason string) {
 		if k.HostMask != kline.HostMask {
 			continue
 		}
-		log.Printf("Ignoring duplicate KLine for [%s@%s] from %s", k.UserMask,
-			k.HostMask, source)
+		cb.noticeOpers(fmt.Sprintf("Ignoring duplicate K-Line for [%s@%s] from %s",
+			k.UserMask, k.HostMask, source))
 		return
 	}
 
 	cb.KLines = append(cb.KLines, kline)
 
-	cb.noticeLocalOpers(fmt.Sprintf("%s added K-Line for [%s@%s] [%s]",
+	cb.noticeOpers(fmt.Sprintf("%s added K-Line for [%s@%s] [%s]",
 		source, kline.UserMask, kline.HostMask, reason))
 
 	// Do we have any matching users connected? Cut them off if so.
@@ -566,7 +566,31 @@ func (cb *Catbox) addAndApplyKLine(kline KLine, source, reason string) {
 
 		user.quit(quitReason, true)
 
-		cb.noticeOpers(fmt.Sprintf("User disconnected due to KLINE: %s",
+		cb.noticeOpers(fmt.Sprintf("User disconnected due to K-Line: %s",
 			user.User.DisplayNick))
 	}
+}
+
+func (cb *Catbox) removeKLine(userMask, hostMask, source string) bool {
+	idx := -1
+	for i, kline := range cb.KLines {
+		if kline.UserMask != userMask || kline.HostMask != hostMask {
+			continue
+		}
+		idx = i
+		break
+	}
+
+	if idx == -1 {
+		cb.noticeOpers(fmt.Sprintf("Not removing K-Line for [%s@%s] (not found)",
+			userMask, hostMask))
+		return false
+	}
+
+	cb.KLines = append(cb.KLines[:idx], cb.KLines[idx+1:]...)
+
+	cb.noticeOpers(fmt.Sprintf("%s removed K-Line for [%s@%s]",
+		source, userMask, hostMask))
+
+	return true
 }

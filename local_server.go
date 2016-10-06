@@ -1531,6 +1531,13 @@ func (s *LocalServer) encapCommand(m irc.Message) {
 			Params:  subParams,
 		})
 	}
+	if subCommand == "UNKLINE" {
+		s.unklineCommand(irc.Message{
+			Prefix:  m.Prefix,
+			Command: subCommand,
+			Params:  subParams,
+		})
+	}
 
 	// Propagate everywhere.
 	for _, server := range s.Catbox.LocalServers {
@@ -1594,19 +1601,38 @@ func (s *LocalServer) klineCommand(m irc.Message) {
 
 	// We don't need to propagate. Since KLINE comes in through an ENCAP command,
 	// it was propagated there.
+}
 
-	// However, we should reply to the user who issued it. ratbox does this like
-	// so:
-	// :1SN NOTICE 000AAAAAA :Added K-Line [hi*hi@127.0.0.1]
-	// Only do this if we have a source user.
-	if user != nil {
-		user.ClosestServer.maybeQueueMessage(irc.Message{
-			Prefix:  string(s.Catbox.Config.TS6SID),
-			Command: "NOTICE",
-			Params: []string{
-				string(user.UID),
-				fmt.Sprintf("Added K-Line [%s@%s]", kline.UserMask, kline.HostMask),
-			},
-		})
+// UNKLINW <user mask> <host mask>
+func (s *LocalServer) unklineCommand(m irc.Message) {
+	if len(m.Params) < 2 {
+		// 461 ERR_NEEDMOREPARAMS
+		s.messageFromServer("461", []string{"UNKLINE", "Not enough parameters"})
+		return
 	}
+
+	source := ""
+	user, exists := s.Catbox.Users[TS6UID(m.Prefix)]
+	if exists {
+		source = user.DisplayNick
+	}
+	if source == "" {
+		// I'm unsure if we can get klines this way (servers as source).
+		server, exists := s.Catbox.Servers[TS6SID(m.Prefix)]
+		if exists {
+			source = server.Name
+		}
+	}
+	if source == "" {
+		log.Printf("Unknown source for UNKLINE command")
+		return
+	}
+
+	userMask := m.Params[0]
+	hostMask := m.Params[1]
+
+	// Find it.
+	s.Catbox.removeKLine(userMask, hostMask, source)
+
+	// We don't need to propagate as UNKLINE comes inside ENCAP.
 }

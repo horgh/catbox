@@ -80,7 +80,6 @@ This is not exhaustive, but some of the differences are:
 
 # TODO
 
-  * UNKLINE
   * STATS K
 
   * Server SQUIT/introduction should send notice to opers
