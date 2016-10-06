@@ -11,13 +11,16 @@ import (
 
 // Config holds a server's configuration.
 type Config struct {
-	ListenHost  string
-	ListenPort  string
-	ServerName  string
-	ServerInfo  string
-	Version     string
-	CreatedDate string
-	MOTD        string
+	ListenHost      string
+	ListenPort      string
+	ListenPortTLS   string
+	CertificateFile string
+	KeyFile         string
+	ServerName      string
+	ServerInfo      string
+	Version         string
+	CreatedDate     string
+	MOTD            string
 
 	MaxNickLength int
 
@@ -63,6 +66,9 @@ func (cb *Catbox) checkAndParseConfig(file string) error {
 	requiredKeys := []string{
 		"listen-host",
 		"listen-port",
+		"listen-port-tls",
+		"certificate-file",
+		"key-file",
 		"server-name",
 		"server-info",
 		"version",
@@ -93,6 +99,9 @@ func (cb *Catbox) checkAndParseConfig(file string) error {
 
 	cb.Config.ListenHost = configMap["listen-host"]
 	cb.Config.ListenPort = configMap["listen-port"]
+	cb.Config.ListenPortTLS = configMap["listen-port-tls"]
+	cb.Config.CertificateFile = configMap["certificate-file"]
+	cb.Config.KeyFile = configMap["key-file"]
 	cb.Config.ServerName = configMap["server-name"]
 	cb.Config.ServerInfo = configMap["server-info"]
 	cb.Config.Version = configMap["version"]

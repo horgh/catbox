@@ -927,6 +927,16 @@ func (u *LocalUser) whoisCommand(m irc.Message) {
 		})
 	}
 
+	// 671. Non standard. Ratbox uses it.
+	if targetUser.isLocal() && targetUser.LocalUser.isTLS() {
+		u.messageFromServer("671", []string{
+			targetUser.DisplayNick,
+			fmt.Sprintf("is using a secure connection (%s) (%s)",
+				tlsVersionToString(targetUser.LocalUser.TLSConnectionState.Version),
+				cipherSuiteToString(targetUser.LocalUser.TLSConnectionState.CipherSuite)),
+		})
+	}
+
 	// TODO: TLS information
 
 	// 317 RPL_WHOISIDLE

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/tls"
 	"fmt"
 	"log"
 	"net"
@@ -53,8 +54,11 @@ type Catbox struct {
 	// Tell the server something on this channel.
 	ToServerChan chan Event
 
-	// TCP listener.
-	Listener net.Listener
+	TLSConfig *tls.Config
+
+	// TCP plaintext listener.
+	Listener    net.Listener
+	TLSListener net.Listener
 
 	// WaitGroup to ensure all goroutines clean up before we end.
 	WG sync.WaitGroup
@@ -153,6 +157,23 @@ func newCatbox(configFile string) (*Catbox, error) {
 		return nil, fmt.Errorf("Configuration problem: %s", err)
 	}
 
+	cert, err := tls.LoadX509KeyPair(cb.Config.CertificateFile, cb.Config.KeyFile)
+	if err != nil {
+		return nil, fmt.Errorf("Unable to load certificate/key: %s", err)
+	}
+
+	tlsConfig := &tls.Config{
+		Certificates:             []tls.Certificate{cert},
+		PreferServerCipherSuites: true,
+		SessionTicketsDisabled:   true,
+		CipherSuites: []uint16{
+			tls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
+			tls.TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
+		},
+		MinVersion: tls.VersionTLS12,
+	}
+	cb.TLSConfig = tlsConfig
+
 	return &cb, nil
 }
 
@@ -161,7 +182,7 @@ func newCatbox(configFile string) (*Catbox, error) {
 // We open the TCP port, start goroutines, and then receive messages on our
 // channels.
 func (cb *Catbox) start() error {
-	// TODO: TLS
+	// Plaintext listener.
 	ln, err := net.Listen("tcp", fmt.Sprintf("%s:%s", cb.Config.ListenHost,
 		cb.Config.ListenPort))
 	if err != nil {
@@ -169,9 +190,19 @@ func (cb *Catbox) start() error {
 	}
 	cb.Listener = ln
 
+	// TLS listener.
+	tlsLN, err := tls.Listen("tcp", fmt.Sprintf("%s:%s", cb.Config.ListenHost,
+		cb.Config.ListenPortTLS), cb.TLSConfig)
+	if err != nil {
+		return fmt.Errorf("Unable to listen (TLS): %s", err)
+	}
+	cb.TLSListener = tlsLN
+
 	// acceptConnections accepts connections on the TCP listener.
 	cb.WG.Add(1)
-	go cb.acceptConnections()
+	go cb.acceptConnections(cb.Listener)
+	cb.WG.Add(1)
+	go cb.acceptConnections(cb.TLSListener)
 
 	// Alarm is a goroutine to wake up this one periodically so we can do things
 	// like ping clients.
@@ -302,7 +333,7 @@ func (cb *Catbox) getClientID() uint64 {
 // acceptConnections accepts TCP connections and tells the main server loop
 // through a channel. It sets up separate goroutines for reading/writing to
 // and from the client.
-func (cb *Catbox) acceptConnections() {
+func (cb *Catbox) acceptConnections(listener net.Listener) {
 	defer cb.WG.Done()
 
 	for {
@@ -310,48 +341,78 @@ func (cb *Catbox) acceptConnections() {
 			break
 		}
 
-		conn, err := cb.Listener.Accept()
+		conn, err := listener.Accept()
 		if err != nil {
 			log.Printf("Failed to accept connection: %s", err)
 			continue
 		}
 
-		go func() {
-			id := cb.getClientID()
-
-			client := NewLocalClient(cb, id, conn)
-
-			msgs := []string{
-				fmt.Sprintf("*** Processing your connection to %s",
-					cb.Config.ServerName),
-				"*** Looking up your hostname...",
-			}
-
-			hostname := lookupHostname(client.Conn.IP)
-			if len(hostname) > 0 {
-				msgs = append(msgs, "*** Found your hostname")
-				client.Hostname = hostname
-			} else {
-				msgs = append(msgs, "*** Couldn't look up your hostname")
-			}
-
-			for _, msg := range msgs {
-				client.WriteChan <- irc.Message{
-					Command: "NOTICE",
-					Params:  []string{"AUTH", msg},
-				}
-			}
-
-			cb.newEvent(Event{Type: NewClientEvent, Client: client})
-
-			cb.WG.Add(1)
-			go client.readLoop()
-			cb.WG.Add(1)
-			go client.writeLoop()
-		}()
+		cb.introduceClient(conn)
 	}
 
 	log.Printf("Connection accepter shutting down.")
+}
+
+// introduceClient sets up a client we just accepted.
+//
+// It creates a Client struct, and sends initial NOTICEs to the client. It also
+// attempts to look up the client's hostname.
+func (cb *Catbox) introduceClient(conn net.Conn) {
+	go func() {
+		id := cb.getClientID()
+
+		client := NewLocalClient(cb, id, conn)
+
+		msgs := []string{
+			fmt.Sprintf("*** Processing your connection to %s",
+				cb.Config.ServerName),
+		}
+
+		tlsConn, ok := conn.(*tls.Conn)
+		if ok {
+			// Call Handshake as we may not have completed handshake yet. If not, we
+			// are not able to have any useful connection state, so we can't tell them
+			// their version and cipher.
+			err := tlsConn.Handshake()
+			if err != nil {
+			}
+			client.TLSConnectionState = tlsConn.ConnectionState()
+			msgs = append(msgs, fmt.Sprintf("*** Connected with %s (%s)",
+				tlsVersionToString(client.TLSConnectionState.Version),
+				cipherSuiteToString(client.TLSConnectionState.CipherSuite)))
+		}
+
+		msgs = append(msgs, "*** Looking up your hostname...")
+
+		hostname := lookupHostname(client.Conn.IP)
+		if len(hostname) > 0 {
+			msgs = append(msgs, "*** Found your hostname")
+			client.Hostname = hostname
+		} else {
+			msgs = append(msgs, "*** Couldn't look up your hostname")
+		}
+
+		for _, msg := range msgs {
+			client.WriteChan <- irc.Message{
+				Command: "NOTICE",
+				Params:  []string{"AUTH", msg},
+			}
+		}
+
+		// Inform the main server goroutine about the client.
+		// Do this after sending any messages to the client's channel as it is
+		// possible the channel will be closed by the server (such as during
+		// shutdown).
+		cb.newEvent(Event{Type: NewClientEvent, Client: client})
+
+		// Start read goroutine (endlessly read messages from the client) and write
+		// goroutine (endlessly write messages to the client).
+		cb.WG.Add(1)
+		go client.readLoop()
+
+		cb.WG.Add(1)
+		go client.writeLoop()
+	}()
 }
 
 // Return true if the server is shutting down.

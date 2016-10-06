@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/tls"
 	"fmt"
 	"net"
 	"regexp"
@@ -252,4 +253,30 @@ func lookupHostname(ip net.IP) string {
 	}
 
 	return ""
+}
+
+func tlsVersionToString(version uint16) string {
+	switch version {
+	case tls.VersionSSL30:
+		return "SSL 3.0"
+	case tls.VersionTLS10:
+		return "TLS 1.0"
+	case tls.VersionTLS11:
+		return "TLS 1.1"
+	case tls.VersionTLS12:
+		return "TLS 1.2"
+	default:
+		return fmt.Sprintf("Unknown version %x", version)
+	}
+}
+
+func cipherSuiteToString(suite uint16) string {
+	switch suite {
+	case tls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384:
+		return "TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384"
+	case tls.TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384:
+		return "TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384"
+	default:
+		return fmt.Sprintf("Unknown cipher suite %x", suite)
+	}
 }

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/tls"
 	"fmt"
 	"log"
 	"net"
@@ -16,8 +17,13 @@ import (
 // or as a server.
 type LocalClient struct {
 	// Conn is the TCP connection to the client.
-	Conn     Conn
+	Conn Conn
+
+	// Their hostname. May be blank if we can't look it up.
 	Hostname string
+
+	// Set if they are connected via TLS.
+	TLSConnectionState tls.ConnectionState
 
 	// Locally unique identifier.
 	ID uint64
@@ -87,6 +93,10 @@ func NewLocalClient(cb *Catbox, id uint64, conn net.Conn) *LocalClient {
 
 func (c *LocalClient) String() string {
 	return fmt.Sprintf("%d %s", c.ID, c.Conn.RemoteAddr())
+}
+
+func (c *LocalClient) isTLS() bool {
+	return c.TLSConnectionState.Version != 0
 }
 
 // Send a message to the client. We send it to its write channel, which in turn

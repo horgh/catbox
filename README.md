@@ -35,6 +35,13 @@ Design philosophy:
   * Simple and easily extensible
 
 
+# Setup
+
+To generate a self-signed certificate for TLS:
+
+    openssl req -newkey rsa:4096 -x509 -keyout key.pem -out certificate.pem -days 3650 -nodes
+
+
 # Some differences from RFC 2812 / RFC 1459
 
 This is not exhaustive, but some of the differences are:
@@ -80,7 +87,7 @@ This is not exhaustive, but some of the differences are:
 
 # TODO
 
-  * TLS
+  * Able to connect to servers with TLS
   * Auto try/retry linking to servers if not connected
   * Daemonize
   * Log to file
@@ -114,8 +121,6 @@ This is not exhaustive, but some of the differences are:
     configuration updates (i.e., permitting dynamic server IPs)
   * Some non standard ideas:
     * Inform clients when someone whois's them.
-    * Inform clients about TLS ciphers in use (both on connect and in their
-      whois)
     * Bots could be built into the ircd
   * Persistent KLINEs (currently they are in memory only)
   * Respond to remote STATS requests
