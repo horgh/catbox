@@ -595,10 +595,10 @@ func (s *LocalServer) uidCommand(m irc.Message) {
 	}
 	username := m.Params[4]
 
-	// TODO: Validate hostname
+	// We could validate hostname
 	hostname := m.Params[5]
 
-	// TODO: Validate IP
+	// We could validate IP
 	ip := m.Params[6]
 
 	// I get UID ahead of time, above.
@@ -934,7 +934,7 @@ func (s *LocalServer) joinCommand(m irc.Message) {
 	// Parameters: <channel TS> <channel> +
 	// Prefix is UID.
 
-	// TODO: We could support JOIN 0 (to part all).
+	// No support for JOIN 0.
 
 	if len(m.Params) < 3 {
 		// 461 ERR_NEEDMOREPARAMS
@@ -956,6 +956,10 @@ func (s *LocalServer) joinCommand(m irc.Message) {
 	}
 
 	chanName := canonicalizeChannel(m.Params[1])
+	if !isValidChannel(chanName) {
+		s.quit("Invalid channel name")
+		return
+	}
 
 	// Create the channel if necessary.
 	channel, exists := s.Catbox.Channels[chanName]

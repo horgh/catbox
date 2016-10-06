@@ -170,7 +170,7 @@ func parseLink(name, s string) (ServerDefinition, error) {
 	if len(hostname) == 0 {
 		return ServerDefinition{}, fmt.Errorf("You must specify a hostname")
 	}
-	// TODO: Format check hostname
+	// We could format check hostname. But when we try to listen we'll fail.
 
 	port, err := strconv.ParseInt(strings.TrimSpace(pieces[1]), 10, 32)
 	if err != nil {

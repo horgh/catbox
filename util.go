@@ -36,7 +36,7 @@ func isValidNick(maxLen int, n string) bool {
 		return false
 	}
 
-	// TODO: For now I accept only a-z, 0-9, or _. RFC is more lenient.
+	// For now I accept only a-z, 0-9, or _. RFC is more lenient.
 	for i, char := range n {
 		if char >= 'a' && char <= 'z' {
 			continue
@@ -66,7 +66,7 @@ func isValidUser(maxLen int, u string) bool {
 		return false
 	}
 
-	// TODO: For now I accept only a-z or 0-9. RFC is more lenient.
+	// For now I accept only a-z or 0-9. RFC is more lenient.
 	for _, char := range u {
 		if char >= 'a' && char <= 'z' {
 			continue
@@ -95,11 +95,10 @@ func isValidChannel(c string) bool {
 		return false
 	}
 
-	// TODO: I accept only a-z or 0-9 as valid characters right now. RFC
-	//   accepts more.
+	// I accept only a-z or 0-9 as valid characters right now. RFC accepts more.
 	for i, char := range c {
 		if i == 0 {
-			// TODO: I only allow # channels right now.
+			// I only allow # channels right now.
 			if char == '#' {
 				continue
 			}

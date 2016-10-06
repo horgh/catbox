@@ -510,7 +510,7 @@ func (u *LocalUser) joinCommand(m irc.Message) {
 		return
 	}
 
-	// TODO: Support keys.
+	// We could support keys.
 
 	// Try to join the client to the channel.
 
@@ -558,7 +558,7 @@ func (u *LocalUser) joinCommand(m irc.Message) {
 	}
 
 	// Channel flag: = (public), * (private), @ (secret)
-	// TODO: When we have more chan modes (-s / +p) this needs to vary
+	// When we have more chan modes (-s / +p) this needs to vary
 	channelFlag := "@"
 
 	// RPL_NAMREPLY: This tells the client about who is in the channel
@@ -568,7 +568,8 @@ func (u *LocalUser) joinCommand(m irc.Message) {
 		member := u.Catbox.Users[memberUID]
 		// 353 RPL_NAMREPLY
 		u.messageFromServer("353", []string{
-			// TODO: We need to include @ / + for each nick opped/voiced.
+			// We need to include @ / + for each nick opped/voiced (when we have
+			// ops/voices).
 			// TODO: Multiple nicks per RPL_NAMREPLY.
 			channelFlag, channel.Name, member.DisplayNick,
 		})
@@ -700,8 +701,8 @@ func (u *LocalUser) privmsgCommand(m irc.Message) {
 		}
 
 		// Are they on it?
-		// TODO: Technically we should allow messaging if they aren't on it
-		//   depending on the mode.
+		// Technically we should allow messaging if they aren't on it
+		// depending on the mode.
 		if !u.User.onChannel(channel) {
 			// 404 ERR_CANNOTSENDTOCHAN
 			u.messageFromServer("404", []string{channelName, "Cannot send to channel"})
@@ -917,7 +918,6 @@ func (u *LocalUser) whoisCommand(m irc.Message) {
 	})
 
 	// 301 RPL_AWAY
-	// TODO: AWAY not implemented yet.
 
 	// 313 RPL_WHOISOPERATOR
 	if targetUser.isOperator() {
@@ -936,8 +936,6 @@ func (u *LocalUser) whoisCommand(m irc.Message) {
 				cipherSuiteToString(targetUser.LocalUser.TLSConnectionState.CipherSuite)),
 		})
 	}
-
-	// TODO: TLS information
 
 	// 317 RPL_WHOISIDLE
 	// Only if local.
@@ -972,7 +970,7 @@ func (u *LocalUser) operCommand(m irc.Message) {
 		return
 	}
 
-	// TODO: Host matching
+	// We could require particular user/hostmask per oper.
 
 	// Check if they gave acceptable permissions.
 	pass, exists := u.Catbox.Config.Opers[m.Params[0]]
