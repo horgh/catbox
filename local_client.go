@@ -862,6 +862,12 @@ func (c *LocalClient) svinfoCommand(m irc.Message) {
 		return
 	}
 
+	// Final check that we're not linked to this server.
+	if c.Catbox.isLinkedToServer(c.PreRegServerName) {
+		c.quit("I'm already linked to you!")
+		return
+	}
+
 	// If we initiated the connection, then we already sent SVINFO (in reply
 	// to them sending SERVER). This is their reply to our SVINFO.
 	if !c.SentSVINFO {
