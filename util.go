@@ -465,3 +465,38 @@ func parseAndResolveUmodeChanges(modes string,
 
 	return setModes, unsetModes, unknownModes, nil
 }
+
+// Certain commands accept a parameter that is a comma separated list of
+// channels. e.g. JOIN #one,#two means to join #one and #two.
+// This function parses such a parameter into its parts.
+//
+// It returns canonicalized channel names, and only those which are valid. It
+// also drops any duplicates.
+func commaChannelsToChannelNames(s string) []string {
+	channelNames := make(map[string]struct{})
+
+	rawChannelNames := strings.Split(s, ",")
+
+	for _, rawChannelName := range rawChannelNames {
+		rawChannelName = strings.TrimSpace(rawChannelName)
+
+		if len(rawChannelName) == 0 {
+			continue
+		}
+
+		rawChannelName = canonicalizeChannel(rawChannelName)
+
+		if !isValidChannel(rawChannelName) {
+			continue
+		}
+
+		channelNames[rawChannelName] = struct{}{}
+	}
+
+	channelNameList := []string{}
+	for channelName := range channelNames {
+		channelNameList = append(channelNameList, channelName)
+	}
+
+	return channelNameList
+}

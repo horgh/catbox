@@ -100,6 +100,114 @@ func (u *LocalUser) messageFromServer(command string, params []string) {
 	})
 }
 
+// join tries to join the client to a channel.
+//
+// We've validated the name is valid and have canonicalized it.
+func (u *LocalUser) join(channelName string) {
+	// Is the client in the channel already? Ignore it if so.
+	if u.User.onChannel(&Channel{Name: channelName}) {
+		return
+	}
+
+	// Look up the channel. Create it if necessary.
+	channel, exists := u.Catbox.Channels[channelName]
+	if !exists {
+		channel = &Channel{
+			Name:    channelName,
+			Members: make(map[TS6UID]struct{}),
+			TS:      time.Now().Unix(),
+		}
+		u.Catbox.Channels[channelName] = channel
+	}
+
+	// Add them to the channel.
+	channel.Members[u.User.UID] = struct{}{}
+	u.User.Channels[channelName] = channel
+
+	// Tell the client about the join.
+	// This is what RFC says to send: JOIN, RPL_TOPIC, and RPL_NAMREPLY.
+
+	// JOIN comes from the client, to the client.
+	u.messageUser(u.User, "JOIN", []string{channel.Name})
+
+	// If this is a new channel, send them the modes we set by default.
+	if !exists {
+		u.messageFromServer("MODE", []string{channel.Name, "+ns"})
+	}
+
+	// It appears RPL_TOPIC is optional, at least ircd-ratbox does always send it.
+	// Presumably if there is no topic.
+	if len(channel.Topic) > 0 {
+		// 332 RPL_TOPIC
+		u.messageFromServer("332", []string{channel.Name, channel.Topic})
+	}
+
+	// Channel flag: = (public), * (private), @ (secret)
+	// When we have more chan modes (-s / +p) this needs to vary
+	channelFlag := "@"
+
+	// RPL_NAMREPLY: This tells the client about who is in the channel
+	// (including itself).
+	// It ends with RPL_ENDOFNAMES.
+	for memberUID := range channel.Members {
+		member := u.Catbox.Users[memberUID]
+		// 353 RPL_NAMREPLY
+		u.messageFromServer("353", []string{
+			// We need to include @ / + for each nick opped/voiced (when we have
+			// ops/voices).
+			// TODO: Multiple nicks per RPL_NAMREPLY.
+			channelFlag, channel.Name, member.DisplayNick,
+		})
+	}
+
+	// 366 RPL_ENDOFNAMES
+	u.messageFromServer("366", []string{channel.Name, "End of NAMES list"})
+
+	// Tell each member in the channel about the client.
+	// Only local clients. Servers will tell their own clients.
+	for memberUID := range channel.Members {
+		member := u.Catbox.Users[memberUID]
+		if !member.isLocal() {
+			continue
+		}
+
+		// Don't tell the client. We already did (above).
+		if member.UID == u.User.UID {
+			continue
+		}
+
+		// From the client to each member.
+		u.messageUser(member, "JOIN", []string{channel.Name})
+	}
+
+	// Tell servers about this.
+	// If it's a new channel, then use SJOIN. Otherwise JOIN.
+	for _, server := range u.Catbox.LocalServers {
+		if !exists {
+			server.maybeQueueMessage(irc.Message{
+				Prefix:  string(u.Catbox.Config.TS6SID),
+				Command: "SJOIN",
+				Params: []string{
+					fmt.Sprintf("%d", channel.TS),
+					channel.Name,
+					"+ns",
+					string(u.User.UID),
+				},
+			})
+		} else {
+			server.maybeQueueMessage(irc.Message{
+				Prefix:  string(u.User.UID),
+				Command: "JOIN",
+				Params: []string{
+					fmt.Sprintf("%d", channel.TS),
+					channel.Name,
+					"+",
+				},
+			})
+		}
+	}
+}
+
 // part tries to remove the client from the channel.
 //
 // We send a reply to the client. We also inform any other clients that need to
@@ -494,142 +602,26 @@ func (u *LocalUser) joinCommand(m irc.Message) {
 	}
 
 	// JOIN 0 is a special case. Client leaves all channels.
-	if len(m.Params) == 1 && m.Params[0] == "0" {
+	if m.Params[0] == "0" {
 		for _, channel := range u.User.Channels {
 			u.part(channel.Name, "")
 		}
 		return
 	}
 
-	// Again, we could check if there are too many parameters, but we just
-	// ignore them.
-
-	// NOTE: I choose to not support comma separated channels. RFC 2812
-	//   allows multiple channels in a single command.
-
-	channelName := canonicalizeChannel(m.Params[0])
-	if !isValidChannel(channelName) {
-		// 403 ERR_NOSUCHCHANNEL. Used to indicate channel name is invalid.
-		u.messageFromServer("403", []string{channelName, "Invalid channel name"})
-		return
-	}
+	// May have multiple channels in a single command.
+	channels := commaChannelsToChannelNames(m.Params[0])
 
 	// We could support keys.
 
-	// Try to join the client to the channel.
-
-	// Is the client in the channel already?
-	if u.User.onChannel(&Channel{Name: channelName}) {
-		// 443 ERR_USERONCHANNEL
-		// This error code is supposed to be for inviting a user on a channel
-		// already, but it works.
-		u.messageFromServer("443", []string{u.User.DisplayNick, channelName,
-			"is already on channel"})
-		return
-	}
-
-	// Look up / create the channel
-	channel, exists := u.Catbox.Channels[channelName]
-	if !exists {
-		channel = &Channel{
-			Name:    channelName,
-			Members: make(map[TS6UID]struct{}),
-			TS:      time.Now().Unix(),
-		}
-		u.Catbox.Channels[channelName] = channel
-	}
-
-	// Add the client to the channel.
-	channel.Members[u.User.UID] = struct{}{}
-	u.User.Channels[channelName] = channel
-
-	// Tell the client about the join. This is what RFC says to send:
-	// Send JOIN, RPL_TOPIC, and RPL_NAMREPLY.
-
-	// JOIN comes from the client, to the client.
-	u.messageUser(u.User, "JOIN", []string{channel.Name})
-
-	// If this is a new channel, send them the modes we set by default.
-	if !exists {
-		u.messageFromServer("MODE", []string{channel.Name, "+ns"})
-	}
-
-	// It appears RPL_TOPIC is optional, at least ircd-ratbox does not send it.
-	// Presumably if there is no topic.
-	if len(channel.Topic) > 0 {
-		// 332 RPL_TOPIC
-		u.messageFromServer("332", []string{channel.Name, channel.Topic})
-	}
-
-	// Channel flag: = (public), * (private), @ (secret)
-	// When we have more chan modes (-s / +p) this needs to vary
-	channelFlag := "@"
-
-	// RPL_NAMREPLY: This tells the client about who is in the channel
-	// (including itself).
-	// It ends with RPL_ENDOFNAMES.
-	for memberUID := range channel.Members {
-		member := u.Catbox.Users[memberUID]
-		// 353 RPL_NAMREPLY
-		u.messageFromServer("353", []string{
-			// We need to include @ / + for each nick opped/voiced (when we have
-			// ops/voices).
-			// TODO: Multiple nicks per RPL_NAMREPLY.
-			channelFlag, channel.Name, member.DisplayNick,
-		})
-	}
-
-	// 366 RPL_ENDOFNAMES
-	u.messageFromServer("366", []string{channel.Name, "End of NAMES list"})
-
-	// Tell each member in the channel about the client.
-	// Only local clients. Servers will tell their own clients.
-	for memberUID := range channel.Members {
-		member := u.Catbox.Users[memberUID]
-		if !member.isLocal() {
-			continue
-		}
-
-		// Don't tell the client. We already did (above).
-		if member.UID == u.User.UID {
-			continue
-		}
-
-		// From the client to each member.
-		u.messageUser(member, "JOIN", []string{channel.Name})
-	}
-
-	// Tell servers about this.
-	// If it's a new channel, then use SJOIN. Otherwise JOIN.
-	for _, server := range u.Catbox.LocalServers {
-		if !exists {
-			server.maybeQueueMessage(irc.Message{
-				Prefix:  string(u.Catbox.Config.TS6SID),
-				Command: "SJOIN",
-				Params: []string{
-					fmt.Sprintf("%d", channel.TS),
-					channel.Name,
-					"+nt",
-					string(u.User.UID),
-				},
-			})
-		} else {
-			server.maybeQueueMessage(irc.Message{
-				Prefix:  string(u.User.UID),
-				Command: "JOIN",
-				Params: []string{
-					fmt.Sprintf("%d", channel.TS),
-					channel.Name,
-					"+",
-				},
-			})
-		}
+	// Try to join the client to the channels.
+	for _, channelName := range channels {
+		u.join(channelName)
 	}
 }
 
 func (u *LocalUser) partCommand(m irc.Message) {
 	// Parameters: <channel> *( "," <channel> ) [ <Part Message> ]
-	// NOTE: Difference from RFC 2812: I only accept one channel at a time.
 
 	if len(m.Params) == 0 {
 		// 461 ERR_NEEDMOREPARAMS
@@ -637,14 +629,17 @@ func (u *LocalUser) partCommand(m irc.Message) {
 		return
 	}
 
-	// Again, we don't raise error if there are too many parameters.
-
 	partMessage := ""
 	if len(m.Params) >= 2 {
 		partMessage = m.Params[1]
 	}
 
-	u.part(m.Params[0], partMessage)
+	// May have multiple channels in a single command.
+	channels := commaChannelsToChannelNames(m.Params[0])
+
+	for _, channel := range channels {
+		u.part(channel, partMessage)
+	}
 }
 
 // Per RFC 2812, PRIVMSG and NOTICE are essentially the same, so both PRIVMSG

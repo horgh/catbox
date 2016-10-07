@@ -35,6 +35,7 @@ Design philosophy:
     then I'll probably do something else. I'll try to track differences.
   * Minimal configuration
   * Simple and easily extensible
+  * If there are extra parameters to commands, ignore them.
 
 
 # Setup
@@ -52,12 +53,13 @@ This is not exhaustive, but some of the differences are:
   * Much more restricted characters in channels/nicks/users.
   * Do not support parameters to the LUSERS command.
   * Do not support parameters to the MOTD command.
-  * Not supporting forwarding PING/PONG to other servers.
+  * Not supporting forwarding PING/PONG to other servers (by users).
   * No wildcards or target server support in WHOIS command.
   * Added DIE command.
   * WHOIS command: No server target, and only single nicks.
   * WHOIS command: Currently not going to show any channels.
-  * User modes: Only +oi
+  * WHOIS command: Always send to remote server if remote user.
+  * User modes: Only +oiC
   * Channel modes: Only +ns
   * No channel ops or voices.
   * WHO: Support only 'WHO #channel'. And shows all nicks on that channel.
@@ -89,7 +91,6 @@ This is not exhaustive, but some of the differences are:
 
 # TODO
 
-  * Join comma support
   * Daemonize
   * Log to file
   * Additional automated testing
