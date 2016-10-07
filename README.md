@@ -1,5 +1,4 @@
 # catbox
-
 This is yet another IRC server! I'm creating it because I enjoy working with
 IRC and I thought it would be fun and good practice with Go. Also, I run a
 small IRC network, and it would be nice to have my own server for it. Right now
@@ -39,14 +38,43 @@ Design philosophy:
 
 
 # Setup
+The daemon always listens on a plaintext port and a TLS port. This means you
+must have a certificate and key available.
 
 To generate a self-signed certificate for TLS:
 
     openssl req -newkey rsa:4096 -x509 -keyout key.pem -out certificate.pem -days 3650 -nodes
 
+Copy the three configuration files {example,opers-example,servers-example}.conf
+and update their options as you need. Below I make suggestions for what you will
+want to update.
+
+Once you have edited the configuration files, you can start the daemona like so:
+
+    ./ircd -config server.conf
+
+
+## server.conf (example.conf)
+
+  * You will probably need to change listen-host
+  * You will probably want to change server-name
+  * You will probably want to change the opers-config and servers-config paths.
+
+The other options you may find it acceptable to leave as they are.
+
+
+## opers.conf (opers-example.conf)
+This file defines operators. Any user connected can become an oper by using the
+/OPER command and using a combination listed in this file. You should change
+the default.
+
+
+## servers.conf (servers-example.conf)
+This file defines servers to try to link to (and accept links from). You may not
+want any at first. Comment out the example server if so.
+
 
 # Some differences from RFC 2812 / RFC 1459
-
 This is not exhaustive, but some of the differences are:
 
   * Only # channels supported.
@@ -69,7 +97,6 @@ This is not exhaustive, but some of the differences are:
 
 
 # External documentation and references
-
   * https://tools.ietf.org/html/rfc2812
   * https://tools.ietf.org/html/rfc1459
   * TS6 docs:
@@ -80,48 +107,9 @@ This is not exhaustive, but some of the differences are:
 
 
 # TS6 notes
-
   * Nick TS changes when: Client connects or when it changes its nick.
   * Channel TS changes when: Channel created
   * Server to server (ircd-ratbox) commands I'm most interested in:
     * Burst: SID, UID, SJOIN, ERROR, PING, PONG
     * Post-burst: INVITE, JOIN, KILL, NICK, NOTICE, PART, PRIVMSG, QUIT, SID,
       SJOIN, TOPIC, UID, SQUIT, ERROR, PING, PONG, MODE (user)
-
-
-# TODO
-
-  * HUP should rehash
-  * Daemonize
-  * Log to file
-  * Additional automated testing
-
-
-## Maybe
-
-  * Drop messageUser/messageFromServer? messageUser all together,
-    messageFromServer to be reply()?
-  * LIST
-  * Channel keys
-  * INVITE
-  * KICK
-  * NAMES
-  * VERSION
-  * STATS (more flags)
-  * TIME
-  * ADMIN
-  * INFO
-  * WHOWAS
-  * AWAY
-  * Multi line motd
-  * Upgrade in place (is this possible with TLS connections? or at all?)
-  * Server console.
-  * Anti-abuse (throttling etc)
-  * Upgrade without losing connections
-  * Inform clients when someone whois's them.
-  * Bots could be built into the ircd
-  * Persistent K:Lines (currently they are in memory only)
-  * Respond to remote STATS requests
-  * Support sending more remote queries (e.g. STATS to another server)
-  * Exchange K:Lines during server burst
-  * User spoofs
