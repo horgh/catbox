@@ -89,6 +89,8 @@ This is not exhaustive, but some of the differences are:
 
 # TODO
 
+  * Join comma support
+  * LINKS should show ourselves.
   * Daemonize
   * Log to file
   * Additional automated testing

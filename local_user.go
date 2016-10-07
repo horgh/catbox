@@ -860,15 +860,19 @@ func (u *LocalUser) pingCommand(m irc.Message) {
 		return
 	}
 
-	server := m.Params[0]
+	// Certain client's dont send PING following any standard.
+	// For example, Quassel sends a timestamp like "PING 22:46:48.650". Which is
+	// even more interesting when we consider it has : in it, leading to us to
+	// have issues saying "<timestamp> :is not a valid server" (as : is then in
+	// the first parameter).
+	//
+	// Let's just reply with our server name as if they issued a correct PING to
+	// us.
+	//
+	// If we were strict, we should reply with:
+	// 402 <nick> <server> :No such server
 
-	if server != u.Catbox.Config.ServerName {
-		// 402 ERR_NOSUCHSERVER
-		u.messageFromServer("402", []string{server, "No such server"})
-		return
-	}
-
-	u.messageFromServer("PONG", []string{server})
+	u.messageFromServer("PONG", []string{u.Catbox.Config.ServerName})
 }
 
 func (u *LocalUser) dieCommand(m irc.Message) {
