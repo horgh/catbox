@@ -276,6 +276,7 @@ func (cb *Catbox) eventLoop() {
 
 			if evt.Type == WakeUpEvent {
 				cb.checkAndPingClients()
+				cb.connectToServers()
 				continue
 			}
 
@@ -563,6 +564,99 @@ func (cb *Catbox) checkAndPingClients() {
 		server.LastPingTime = now
 		continue
 	}
+}
+
+// connectToServers looks at our defined server links. If we are not connected
+// to any, it attempts to initiate a connection.
+//
+// It tries each server only once per configured period. i.e., if you call this
+// function repeatedly, it may not try to connect to a server twice if it failed
+func (cb *Catbox) connectToServers() {
+	now := time.Now()
+
+	for _, linkInfo := range cb.Config.Servers {
+		// It does not make sense to try to connect to ourself. Even if we're in the
+		// config.
+		if linkInfo.Name == cb.Config.ServerName {
+			continue
+		}
+
+		if cb.isLinkedToServer(linkInfo.Name) {
+			continue
+		}
+
+		timeSinceLastAttempt := now.Sub(linkInfo.LastConnectAttempt)
+
+		if timeSinceLastAttempt < cb.Config.ConnectAttemptTime {
+			continue
+		}
+
+		linkInfo.LastConnectAttempt = now
+		cb.connectToServer(linkInfo)
+	}
+}
+
+func (cb *Catbox) isLinkedToServer(name string) bool {
+	for _, server := range cb.Servers {
+		if server.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
+// Initiate a connection to a server.
+//
+// Does this in a goroutine to avoid blocking server goroutine.
+func (cb *Catbox) connectToServer(linkInfo *ServerDefinition) {
+	cb.WG.Add(1)
+
+	go func() {
+		defer cb.WG.Done()
+
+		var conn net.Conn
+		var err error
+
+		if linkInfo.TLS {
+			cb.noticeOpers(fmt.Sprintf("Connecting to %s with TLS...", linkInfo.Name))
+
+			dialer := &net.Dialer{
+				Timeout: cb.Config.DeadTime,
+			}
+			conn, err = tls.DialWithDialer(dialer, "tcp",
+				fmt.Sprintf("%s:%d", linkInfo.Hostname, linkInfo.Port),
+				cb.TLSConfig)
+		} else {
+			cb.noticeOpers(fmt.Sprintf("Connecting to %s without TLS...",
+				linkInfo.Name))
+			conn, err = net.DialTimeout("tcp",
+				fmt.Sprintf("%s:%d", linkInfo.Hostname, linkInfo.Port),
+				cb.Config.DeadTime)
+		}
+
+		if err != nil {
+			cb.noticeOpers(fmt.Sprintf("Unable to connect to server [%s]: %s",
+				linkInfo.Name, err))
+			return
+		}
+
+		id := cb.getClientID()
+
+		client := NewLocalClient(cb, id, conn)
+
+		// Make sure we send to the client's write channel before telling the server
+		// about the client. It is possible otherwise that the server (if shutting
+		// down) could have closed the write channel on us.
+		client.sendServerIntro(linkInfo.Pass)
+
+		cb.newEvent(Event{Type: NewClientEvent, Client: client})
+
+		cb.WG.Add(1)
+		go client.readLoop()
+
+		cb.WG.Add(1)
+		go client.writeLoop()
+	}()
 }
 
 // newEvent tells the server something happens.

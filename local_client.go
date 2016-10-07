@@ -770,9 +770,11 @@ func (c *LocalClient) serverCommand(m irc.Message) {
 		return
 	}
 
+	serverName := m.Params[0]
+
 	// We could validate the hostname format. But we have a list of hosts we will
 	// link to, so check against that directly.
-	linkInfo, exists := c.Catbox.Config.Servers[m.Params[0]]
+	linkInfo, exists := c.Catbox.Config.Servers[serverName]
 	if !exists {
 		c.quit("I don't know you")
 		return
@@ -791,13 +793,12 @@ func (c *LocalClient) serverCommand(m irc.Message) {
 	}
 
 	// Is this server already linked?
-	_, exists = c.Catbox.Servers[TS6SID(m.Params[0])]
-	if exists {
-		c.quit("Already linked")
+	if c.Catbox.isLinkedToServer(serverName) {
+		c.quit("I'm already linked to you!")
 		return
 	}
 
-	c.PreRegServerName = m.Params[0]
+	c.PreRegServerName = serverName
 	c.PreRegServerDesc = m.Params[2]
 
 	c.GotSERVER = true

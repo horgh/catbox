@@ -1,10 +1,8 @@
 package main
 
 import (
-	"crypto/tls"
 	"fmt"
 	"log"
-	"net"
 	"regexp"
 	"strings"
 	"time"
@@ -1280,68 +1278,15 @@ func (u *LocalUser) connectCommand(m irc.Message) {
 	}
 
 	// Are we already linked to it?
-	linkedAlready := false
-	for _, server := range u.Catbox.Servers {
-		if server.Name == serverName {
-			linkedAlready = true
-			break
-		}
-	}
-	if linkedAlready {
+	if u.Catbox.isLinkedToServer(serverName) {
 		// No great error code.
 		u.serverNotice(fmt.Sprintf("I am already linked to %s.", serverName))
 		return
 	}
 
-	// We could check if we're trying to link to it. But the result should be the
-	// same.
-
-	// Initiate a connection.
-	// Put it in a goroutine to avoid blocking server goroutine.
-	u.Catbox.WG.Add(1)
-	go func() {
-		defer u.Catbox.WG.Done()
-
-		var conn net.Conn
-		var err error
-
-		if linkInfo.TLS {
-			u.serverNotice(fmt.Sprintf("Connecting to %s with TLS...", linkInfo.Name))
-			dialer := &net.Dialer{
-				Timeout: u.Catbox.Config.DeadTime,
-			}
-			conn, err = tls.DialWithDialer(dialer, "tcp",
-				fmt.Sprintf("%s:%d", linkInfo.Hostname, linkInfo.Port),
-				u.Catbox.TLSConfig)
-		} else {
-			u.serverNotice(fmt.Sprintf("Connecting to %s without TLS...",
-				linkInfo.Name))
-			conn, err = net.DialTimeout("tcp",
-				fmt.Sprintf("%s:%d", linkInfo.Hostname, linkInfo.Port),
-				u.Catbox.Config.DeadTime)
-		}
-
-		if err != nil {
-			log.Printf("Unable to connect to server [%s]: %s", linkInfo.Name, err)
-			return
-		}
-
-		id := u.Catbox.getClientID()
-
-		client := NewLocalClient(u.Catbox, id, conn)
-
-		// Make sure we send to the client's write channel before telling the server
-		// about the client. It is possible otherwise that the server (if shutting
-		// down) could have closed the write channel on us.
-		client.sendServerIntro(linkInfo.Pass)
-
-		client.Catbox.newEvent(Event{Type: NewClientEvent, Client: client})
-
-		client.Catbox.WG.Add(1)
-		go client.readLoop()
-		client.Catbox.WG.Add(1)
-		go client.writeLoop()
-	}()
+	// We could check if we're already trying to link to it. But the result should
+	// be the same.
+	u.Catbox.connectToServer(linkInfo)
 }
 
 func (u *LocalUser) linksCommand(m irc.Message) {
