@@ -15,7 +15,11 @@ import (
 // I put everything global to a server in an instance of struct rather than
 // have global variables.
 type Catbox struct {
-	Config Config
+	// ConfigFile is the path to the config file.
+	ConfigFile string
+
+	// Config is the currently loaded config.
+	Config *Config
 
 	// Next client ID to issue. This turns into TS6 ID which gets concatenated
 	// with our SID to make the TS6 UID.
@@ -135,6 +139,7 @@ func main() {
 
 func newCatbox(configFile string) (*Catbox, error) {
 	cb := Catbox{
+		ConfigFile:   configFile,
 		LocalClients: make(map[uint64]*LocalClient),
 		LocalUsers:   make(map[uint64]*LocalUser),
 		LocalServers: make(map[uint64]*LocalServer),
@@ -152,10 +157,11 @@ func newCatbox(configFile string) (*Catbox, error) {
 		ToServerChan: make(chan Event),
 	}
 
-	err := cb.checkAndParseConfig(configFile)
+	cfg, err := checkAndParseConfig(configFile)
 	if err != nil {
 		return nil, fmt.Errorf("Configuration problem: %s", err)
 	}
+	cb.Config = cfg
 
 	cert, err := tls.LoadX509KeyPair(cb.Config.CertificateFile, cb.Config.KeyFile)
 	if err != nil {
@@ -597,6 +603,11 @@ func (cb *Catbox) connectToServers() {
 }
 
 func (cb *Catbox) isLinkedToServer(name string) bool {
+	// We're always linked to ourself.
+	if name == cb.Config.ServerName {
+		return true
+	}
+
 	for _, server := range cb.Servers {
 		if server.Name == name {
 			return true

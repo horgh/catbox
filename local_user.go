@@ -384,6 +384,11 @@ func (u *LocalUser) handleMessage(m irc.Message) {
 		return
 	}
 
+	if m.Command == "REHASH" {
+		u.rehashCommand(m)
+		return
+	}
+
 	// Unknown command. We don't handle it yet anyway.
 	// 421 ERR_UNKNOWNCOMMAND
 	u.messageFromServer("421", []string{m.Command, "Unknown command"})
@@ -1568,4 +1573,31 @@ func (u *LocalUser) statsCommand(m irc.Message) {
 
 	// 219 RPL_ENDOFSTATS
 	u.messageFromServer("219", []string{"K", "End of /STATS report"})
+}
+
+// Reload config.
+// No parameters.
+func (u *LocalUser) rehashCommand(m irc.Message) {
+	if !u.User.isOperator() {
+		// 481 ERR_NOPRIVILEGES
+		u.messageFromServer("481", []string{"Permission Denied- You're not an IRC operator"})
+		return
+	}
+
+	cfg, err := checkAndParseConfig(u.Catbox.ConfigFile)
+	if err != nil {
+		u.Catbox.noticeOpers(fmt.Sprintf("Rehash: Configuration problem: %s", err))
+		return
+	}
+
+	// Only certain config options can change during rehash.
+
+	// We could close listeners and open new ones. But nah.
+
+	u.Catbox.Config.MOTD = cfg.MOTD
+	u.Catbox.Config.Opers = cfg.Opers
+	u.Catbox.Config.Servers = cfg.Servers
+
+	u.Catbox.noticeOpers(fmt.Sprintf("%s rehashed configuration.",
+		u.User.DisplayNick))
 }

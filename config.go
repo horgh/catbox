@@ -62,10 +62,10 @@ type ServerDefinition struct {
 // We parse some values into alternate representations.
 //
 // This function populates both the server.Config and server.Opers fields.
-func (cb *Catbox) checkAndParseConfig(file string) error {
+func checkAndParseConfig(file string) (*Config, error) {
 	configMap, err := config.ReadStringMap(file)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	requiredKeys := []string{
@@ -93,79 +93,82 @@ func (cb *Catbox) checkAndParseConfig(file string) error {
 	for _, key := range requiredKeys {
 		v, exists := configMap[key]
 		if !exists {
-			return fmt.Errorf("Missing required key: %s", key)
+			return nil, fmt.Errorf("Missing required key: %s", key)
 		}
 
 		if len(v) == 0 {
-			return fmt.Errorf("Configuration value is blank: %s", key)
+			return nil, fmt.Errorf("Configuration value is blank: %s", key)
 		}
 	}
 
 	// Populate our struct.
 
-	cb.Config.ListenHost = configMap["listen-host"]
-	cb.Config.ListenPort = configMap["listen-port"]
-	cb.Config.ListenPortTLS = configMap["listen-port-tls"]
-	cb.Config.CertificateFile = configMap["certificate-file"]
-	cb.Config.KeyFile = configMap["key-file"]
-	cb.Config.ServerName = configMap["server-name"]
-	cb.Config.ServerInfo = configMap["server-info"]
-	cb.Config.Version = configMap["version"]
-	cb.Config.CreatedDate = configMap["created-date"]
-	cb.Config.MOTD = configMap["motd"]
+	c := &Config{}
+
+	c.ListenHost = configMap["listen-host"]
+	c.ListenPort = configMap["listen-port"]
+	c.ListenPortTLS = configMap["listen-port-tls"]
+	c.CertificateFile = configMap["certificate-file"]
+	c.KeyFile = configMap["key-file"]
+	c.ServerName = configMap["server-name"]
+	c.ServerInfo = configMap["server-info"]
+	c.Version = configMap["version"]
+	c.CreatedDate = configMap["created-date"]
+	c.MOTD = configMap["motd"]
 
 	nickLen64, err := strconv.ParseInt(configMap["max-nick-length"], 10, 8)
 	if err != nil {
-		return fmt.Errorf("Max nick length is not valid: %s", err)
+		return nil, fmt.Errorf("Max nick length is not valid: %s", err)
 	}
-	cb.Config.MaxNickLength = int(nickLen64)
+	c.MaxNickLength = int(nickLen64)
 
-	cb.Config.WakeupTime, err = time.ParseDuration(configMap["wakeup-time"])
+	c.WakeupTime, err = time.ParseDuration(configMap["wakeup-time"])
 	if err != nil {
-		return fmt.Errorf("Wakeup time is in invalid format: %s", err)
-	}
-
-	cb.Config.PingTime, err = time.ParseDuration(configMap["ping-time"])
-	if err != nil {
-		return fmt.Errorf("Ping time is in invalid format: %s", err)
+		return nil, fmt.Errorf("Wakeup time is in invalid format: %s", err)
 	}
 
-	cb.Config.DeadTime, err = time.ParseDuration(configMap["dead-time"])
+	c.PingTime, err = time.ParseDuration(configMap["ping-time"])
 	if err != nil {
-		return fmt.Errorf("Dead time is in invalid format: %s", err)
+		return nil, fmt.Errorf("Ping time is in invalid format: %s", err)
 	}
 
-	cb.Config.ConnectAttemptTime, err = time.ParseDuration(configMap["connect-attempt-time"])
+	c.DeadTime, err = time.ParseDuration(configMap["dead-time"])
 	if err != nil {
-		return fmt.Errorf("Connect attempt time is in invalid format: %s", err)
+		return nil, fmt.Errorf("Dead time is in invalid format: %s", err)
+	}
+
+	c.ConnectAttemptTime, err = time.ParseDuration(configMap["connect-attempt-time"])
+	if err != nil {
+		return nil, fmt.Errorf("Connect attempt time is in invalid format: %s", err)
 	}
 
 	opers, err := config.ReadStringMap(configMap["opers-config"])
 	if err != nil {
-		return fmt.Errorf("Unable to load opers config: %s", err)
+		return nil, fmt.Errorf("Unable to load opers config: %s", err)
 	}
-	cb.Config.Opers = opers
+	c.Opers = opers
 
-	cb.Config.Servers = make(map[string]*ServerDefinition)
+	c.Servers = make(map[string]*ServerDefinition)
 	servers, err := config.ReadStringMap(configMap["servers-config"])
 	if err != nil {
-		return fmt.Errorf("Unable to load servers config: %s", err)
+		return nil, fmt.Errorf("Unable to load servers config: %s", err)
 	}
 
 	for name, v := range servers {
 		link, err := parseLink(name, v)
 		if err != nil {
-			return fmt.Errorf("Malformed server link information: %s: %s", name, err)
+			return nil, fmt.Errorf("Malformed server link information: %s: %s", name,
+				err)
 		}
-		cb.Config.Servers[name] = link
+		c.Servers[name] = link
 	}
 
 	if !isValidSID(configMap["ts6-sid"]) {
-		return fmt.Errorf("Invalid TS6 SID")
+		return nil, fmt.Errorf("Invalid TS6 SID")
 	}
-	cb.Config.TS6SID = TS6SID(configMap["ts6-sid"])
+	c.TS6SID = TS6SID(configMap["ts6-sid"])
 
-	return nil
+	return c, nil
 }
 
 // Parse the value side of a server definition from the servers config.

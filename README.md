@@ -89,8 +89,6 @@ This is not exhaustive, but some of the differences are:
 
 # TODO
 
-  * Reload configuration without restart
-
   * Daemonize
   * Log to file
   * Additional automated testing
