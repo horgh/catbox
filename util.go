@@ -264,7 +264,8 @@ func lookupHostname(ip net.IP) string {
 
 		for _, foundIP := range ips {
 			if foundIP.Equal(ip) {
-				return name
+				// Drop trailing "."
+				return strings.TrimSuffix(name, ".")
 			}
 		}
 	}
@@ -326,4 +327,141 @@ func cipherSuiteToString(suite uint16) string {
 	default:
 		return fmt.Sprintf("Unknown cipher suite %x", suite)
 	}
+}
+
+// Take a request set of mode changes and parse them and apply the changes.
+//
+// We check each for whether it is valid to apply.
+//
+// Parameters:
+// - modes - The requested mode change by the user. Unvalidated.
+// - currentModes - The modes the user currently has.
+//
+// Returns:
+// - Modes set.
+// - Modes unset.
+// - Unknown modes.
+// - Whether there was an error (e.g., parsing error). If this is set, then
+//   there will be no useful mode information returned.
+func parseAndResolveUmodeChanges(modes string,
+	currentModes map[byte]struct{}) (map[byte]struct{}, map[byte]struct{},
+	map[byte]struct{}, error) {
+	// Requested mode changes. We don't know they will be applied.
+	requestSetModes := make(map[byte]struct{})
+	requestUnsetModes := make(map[byte]struct{})
+
+	// + / -
+	action := ' '
+
+	// Parse the mode string. Find those requested to be set and unset.
+	for _, char := range modes {
+		if char == '+' || char == '-' {
+			action = char
+			continue
+		}
+
+		if action == '+' {
+			requestSetModes[byte(char)] = struct{}{}
+			continue
+		}
+
+		if action == '-' {
+			requestUnsetModes[byte(char)] = struct{}{}
+			continue
+		}
+
+		// Malformed. If this is a mode character we should have +/- already.
+		return nil, nil, nil, fmt.Errorf("No +/- found")
+	}
+
+	// Filter out modes we don't support. Track them too.
+	unknownModes := make(map[byte]struct{})
+
+	for mode := range requestSetModes {
+		if mode != 'i' && mode != 'o' && mode != 'C' {
+			delete(requestSetModes, mode)
+			unknownModes[mode] = struct{}{}
+		}
+	}
+	for mode := range requestUnsetModes {
+		if mode != 'i' && mode != 'o' && mode != 'C' {
+			delete(requestUnsetModes, mode)
+			unknownModes[mode] = struct{}{}
+		}
+	}
+
+	// Unsetting certain modes triggers unsetting others. They're dependent.
+	for mode := range requestUnsetModes {
+		if mode == 'o' {
+			// Must be operator to have +C.
+			requestUnsetModes['C'] = struct{}{}
+			// Block any request to set it.
+			_, exists := requestSetModes['C']
+			if exists {
+				delete(requestSetModes, 'C')
+			}
+		}
+	}
+
+	// If any modes are to be both set and unset, forget them. Ambiguous.
+	for mode := range requestSetModes {
+		_, exists := requestUnsetModes[mode]
+		if exists {
+			delete(requestSetModes, mode)
+			delete(requestUnsetModes, mode)
+		}
+	}
+
+	// Apply changes. Only if applying them makes sense and is legal.
+
+	// Track changes made.
+	setModes := make(map[byte]struct{})
+	unsetModes := make(map[byte]struct{})
+
+	for mode := range requestUnsetModes {
+		// We do not permit changing i.
+		if mode == 'i' {
+			continue
+		}
+
+		// Don't have it? Nothing to change.
+		_, exists := currentModes[mode]
+		if !exists {
+			continue
+		}
+
+		// Unset it.
+		unsetModes[mode] = struct{}{}
+		delete(currentModes, mode)
+	}
+
+	for mode := range requestSetModes {
+		// We do not permit changing i.
+		if mode == 'i' {
+			continue
+		}
+
+		// Have it already? Nothing to change.
+		_, exists := currentModes[mode]
+		if exists {
+			continue
+		}
+
+		// Ignore it if they try to +o (operator) themselves. (RFC says to do so,
+		// but it only comes from OPER).
+		if mode == 'o' {
+			continue
+		}
+
+		// Must be +o to have +C.
+		if mode == 'C' {
+			_, exists := currentModes['o']
+			if exists {
+				currentModes[mode] = struct{}{}
+				setModes[mode] = struct{}{}
+			}
+		}
+	}
+
+	return setModes, unsetModes, unknownModes, nil
 }

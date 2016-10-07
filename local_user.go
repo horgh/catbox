@@ -1015,6 +1015,10 @@ func (u *LocalUser) modeCommand(m irc.Message) {
 	u.messageFromServer("403", []string{target, "No such channel"})
 }
 
+// Modes we support at this time:
+// +i (but not changing) (invisible)
+// +o/-o (operator)
+// +C/-C (must be +o to alter) (client connection notices)
 func (u *LocalUser) userModeCommand(targetUser *User, modes string) {
 	// They can only change their own mode.
 	if targetUser.LocalUser != u {
@@ -1025,91 +1029,68 @@ func (u *LocalUser) userModeCommand(targetUser *User, modes string) {
 
 	// No modes given means we should send back their current mode.
 	if len(modes) == 0 {
-		modeReturn := "+"
-		for k := range u.User.Modes {
-			modeReturn += string(k)
-		}
-
 		// 221 RPL_UMODEIS
-		u.messageFromServer("221", []string{modeReturn})
+		u.messageFromServer("221", []string{u.User.modesString()})
 		return
 	}
 
-	action := ' '
-	for _, char := range modes {
-		if char == '+' || char == '-' {
-			action = char
-			continue
-		}
-
-		if action == ' ' {
-			// Malformed. No +/-.
-			// 472 ERR_UNKNOWNMODE
-			u.messageFromServer("472", []string{modes, "is unknown mode to me"})
-			continue
-		}
-
-		// Only mode I support right now is 'o' (operator).
-		// But some others I will ignore silently to avoid clients getting unknown
-		// mode messages.
-		if char == 'i' || char == 'w' || char == 's' {
-			continue
-		}
-
-		if char == 'o' {
-			// Ignore it if they try to +o (operator) themselves. RFC says to do so.
-			if action == '+' {
-				continue
-			}
-
-			// This is -o. They have to be operator for there to be any effect.
-			if !u.User.isOperator() {
-				continue
-			}
-
-			modeStr := "-o"
-			delete(u.User.Modes, 'o')
-			_, exists := u.User.Modes['C']
-			if exists {
-				delete(u.User.Modes, 'C')
-				modeStr += "C"
-			}
-			delete(u.Catbox.Opers, u.User.UID)
-			u.messageUser(u.User, "MODE", []string{modeStr, u.User.DisplayNick})
-
-			// Tell all servers about this.
-			for _, server := range u.Catbox.LocalServers {
-				server.maybeQueueMessage(irc.Message{
-					Prefix:  string(u.User.UID),
-					Command: "MODE",
-					// Don't tell them about -C. They shouldn't care.
-					Params: []string{string(u.User.UID), "-o"},
-				})
-			}
-			continue
-		}
-
-		// Client connection notices
-		if char == 'C' {
-			if !u.User.isOperator() {
-				continue
-			}
-
-			if action == '+' {
-				u.User.Modes['C'] = struct{}{}
-				u.messageUser(u.User, "MODE", []string{"+C", u.User.DisplayNick})
-			} else {
-				_, exists := u.User.Modes['C']
-				if exists {
-					u.messageUser(u.User, "MODE", []string{"-C", u.User.DisplayNick})
-				}
-			}
-			continue
-		}
-
+	setModes, unsetModes, unknownModes, err := parseAndResolveUmodeChanges(modes,
+		u.User.Modes)
+	if err != nil {
 		// 501 ERR_UMODEUNKNOWNFLAG
 		u.messageFromServer("501", []string{"Unknown MODE flag"})
-		continue
+		return
+	}
+
+	// Apply changes and build the mode string.
+	setModeStr := ""
+	for mode := range setModes {
+		if mode == 'o' {
+			u.Catbox.Opers[u.User.UID] = u.User
+		}
+		u.User.Modes[mode] = struct{}{}
+		setModeStr += string(mode)
+	}
+	unsetModeStr := ""
+	for mode := range unsetModes {
+		if mode == 'o' {
+			delete(u.Catbox.Opers, u.User.UID)
+		}
+		delete(u.User.Modes, mode)
+		unsetModeStr += string(mode)
+	}
+
+	// Combined string.
+	modeStr := ""
+	if len(setModeStr) > 0 {
+		modeStr += "+" + setModeStr
+	}
+	if len(unsetModeStr) > 0 {
+		modeStr += "-" + unsetModeStr
+	}
+
+	// We only inform the user or server if there was a change.
+	if len(modeStr) > 0 {
+		// Tell the user.
+		u.maybeQueueMessage(irc.Message{
+			Prefix:  u.User.nickUhost(),
+			Command: "MODE",
+			Params:  []string{u.User.DisplayNick, modeStr},
+		})
+
+		// Inform servers about the mode change.
+		for _, server := range u.Catbox.LocalServers {
+			server.maybeQueueMessage(irc.Message{
+				Prefix:  string(u.User.UID),
+				Command: "MODE",
+				Params:  []string{string(u.User.UID), modeStr},
+			})
+		}
+	}
+
+	if len(unknownModes) > 0 {
+		// 501 ERR_UMODEUNKNOWNFLAG
+		u.messageFromServer("501", []string{"Unknown MODE flag"})
 	}
 }
 

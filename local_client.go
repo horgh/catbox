@@ -306,13 +306,16 @@ func (c *LocalClient) registerUser() {
 		// It seems ambiguous if these are to be separate parameters.
 		lu.Catbox.Config.ServerName,
 		lu.Catbox.Config.Version,
+		// User modes we support.
 		"ioC",
+		// Channel modes we support.
 		"ns",
 	})
 
 	lu.lusersCommand()
 	lu.motdCommand()
 
+	// Set user mode +i automatically.
 	lu.messageUser(u, "MODE", []string{u.DisplayNick, "+i"})
 	u.Modes['i'] = struct{}{}
 

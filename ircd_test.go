@@ -146,3 +146,166 @@ func TestUserMatchesMask(t *testing.T) {
 		}
 	}
 }
+
+func TestParseAndResolveUmodeChanges(t *testing.T) {
+	tests := []struct {
+		inputModes         string
+		inputCurrentModes  map[byte]struct{}
+		outputSetModes     map[byte]struct{}
+		outputUnsetModes   map[byte]struct{}
+		outputUnknownModes map[byte]struct{}
+		success            bool
+	}{
+		{
+			inputCurrentModes:  map[byte]struct{}{'i': struct{}{}},
+			inputModes:         "-i",
+			outputSetModes:     map[byte]struct{}{},
+			outputUnsetModes:   map[byte]struct{}{},
+			outputUnknownModes: map[byte]struct{}{},
+			success:            true,
+		},
+		{
+			inputCurrentModes:  map[byte]struct{}{'i': struct{}{}},
+			inputModes:         "i",
+			outputSetModes:     map[byte]struct{}{},
+			outputUnsetModes:   map[byte]struct{}{},
+			outputUnknownModes: map[byte]struct{}{},
+			success:            false,
+		},
+		{
+			inputCurrentModes:  map[byte]struct{}{'o': struct{}{}},
+			inputModes:         "+C-C",
+			outputSetModes:     map[byte]struct{}{},
+			outputUnsetModes:   map[byte]struct{}{},
+			outputUnknownModes: map[byte]struct{}{},
+			success:            true,
+		},
+		{
+			inputCurrentModes:  map[byte]struct{}{'o': struct{}{}},
+			inputModes:         "+C",
+			outputSetModes:     map[byte]struct{}{'C': struct{}{}},
+			outputUnsetModes:   map[byte]struct{}{},
+			outputUnknownModes: map[byte]struct{}{},
+			success:            true,
+		},
+		{
+			inputCurrentModes:  map[byte]struct{}{'i': struct{}{}},
+			inputModes:         "+C",
+			outputSetModes:     map[byte]struct{}{},
+			outputUnsetModes:   map[byte]struct{}{},
+			outputUnknownModes: map[byte]struct{}{},
+			success:            true,
+		},
+		{
+			inputCurrentModes:  map[byte]struct{}{'i': struct{}{}},
+			inputModes:         "-C",
+			outputSetModes:     map[byte]struct{}{},
+			outputUnsetModes:   map[byte]struct{}{},
+			outputUnknownModes: map[byte]struct{}{},
+			success:            true,
+		},
+		{
+			inputCurrentModes:  map[byte]struct{}{'i': struct{}{}},
+			inputModes:         "+o",
+			outputSetModes:     map[byte]struct{}{},
+			outputUnsetModes:   map[byte]struct{}{},
+			outputUnknownModes: map[byte]struct{}{},
+			success:            true,
+		},
+		{
+			inputCurrentModes:  map[byte]struct{}{'o': struct{}{}},
+			inputModes:         "+C1",
+			outputSetModes:     map[byte]struct{}{'C': struct{}{}},
+			outputUnsetModes:   map[byte]struct{}{},
+			outputUnknownModes: map[byte]struct{}{'1': struct{}{}},
+			success:            true,
+		},
+		{
+			inputCurrentModes:  map[byte]struct{}{'o': struct{}{}, 'C': struct{}{}},
+			inputModes:         "+C",
+			outputSetModes:     map[byte]struct{}{},
+			outputUnsetModes:   map[byte]struct{}{},
+			outputUnknownModes: map[byte]struct{}{},
+			success:            true,
+		},
+		{
+			inputCurrentModes:  map[byte]struct{}{'o': struct{}{}, 'C': struct{}{}},
+			inputModes:         "-C",
+			outputSetModes:     map[byte]struct{}{},
+			outputUnsetModes:   map[byte]struct{}{'C': struct{}{}},
+			outputUnknownModes: map[byte]struct{}{},
+			success:            true,
+		},
+		{
+			inputCurrentModes:  map[byte]struct{}{'o': struct{}{}, 'C': struct{}{}},
+			inputModes:         "-o",
+			outputSetModes:     map[byte]struct{}{},
+			outputUnsetModes:   map[byte]struct{}{'o': struct{}{}, 'C': struct{}{}},
+			outputUnknownModes: map[byte]struct{}{},
+			success:            true,
+		},
+		{
+			inputCurrentModes:  map[byte]struct{}{'o': struct{}{}, 'C': struct{}{}},
+			inputModes:         "-oC",
+			outputSetModes:     map[byte]struct{}{},
+			outputUnsetModes:   map[byte]struct{}{'o': struct{}{}, 'C': struct{}{}},
+			outputUnknownModes: map[byte]struct{}{},
+			success:            true,
+		},
+	}
+
+	for _, test := range tests {
+		setModes, unsetModes, unknownModes, err := parseAndResolveUmodeChanges(
+			test.inputModes, test.inputCurrentModes)
+		if err != nil {
+			if test.success {
+				t.Errorf("parseAndResolveUmodeChanges(%s, %v) failed, should have succeeded",
+					test.inputModes, test.inputCurrentModes)
+				continue
+			}
+			continue
+		}
+
+		if !test.success {
+			t.Errorf("parseAndResolveUmodeChanges(%s, %v) succeeded, should have failed",
+				test.inputModes, test.inputCurrentModes)
+			continue
+		}
+
+		if !modesAreEqual(setModes, test.outputSetModes) {
+			t.Errorf("parseAndResolveUmodeChanges(%s, %v) set modes = %v, wanted %v",
+				test.inputModes, test.inputCurrentModes, setModes, test.outputSetModes)
+			continue
+		}
+
+		if !modesAreEqual(unsetModes, test.outputUnsetModes) {
+			t.Errorf("parseAndResolveUmodeChanges(%s, %v) unset modes = %v, wanted %v",
+				test.inputModes, test.inputCurrentModes, unsetModes,
+				test.outputUnsetModes)
+			continue
+		}
+
+		if !modesAreEqual(unknownModes, test.outputUnknownModes) {
+			t.Errorf("parseAndResolveUmodeChanges(%s, %v) unknown modes = %v, wanted %v",
+				test.inputModes, test.inputCurrentModes, unknownModes,
+				test.outputUnknownModes)
+			continue
+		}
+	}
+}
+
+func modesAreEqual(mode0 map[byte]struct{}, mode1 map[byte]struct{}) bool {
+	for mode := range mode0 {
+		_, exists := mode1[mode]
+		if !exists {
+			return false
+		}
+	}
+	for mode := range mode1 {
+		_, exists := mode0[mode]
+		if !exists {
+			return false
+		}
+	}
+	return true
+}
