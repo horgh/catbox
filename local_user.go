@@ -821,6 +821,37 @@ func (u *LocalUser) lusersCommand() {
 		fmt.Sprintf("I have %d clients and %d servers",
 			len(u.Catbox.LocalUsers), len(u.Catbox.LocalServers)),
 	})
+
+	// Counter variables are accessed by several goroutines. Freeze them so we
+	// get consistent numbers. Even though we're only reading them, we can't be
+	// sure they are not totally out of whack if we don't synchronize.
+	u.Catbox.CountersLock.Lock()
+	defer u.Catbox.CountersLock.Unlock()
+
+	// 265 tells current local user count and max. Not standard.
+	u.messageFromServer("265", []string{
+		fmt.Sprintf("%d", len(u.Catbox.LocalUsers)),
+		fmt.Sprintf("%d", u.Catbox.HighestLocalUserCount),
+		fmt.Sprintf("Current local users %d, max %d",
+			len(u.Catbox.LocalUsers), u.Catbox.HighestLocalUserCount),
+	})
+
+	// 266 tells global user count and max. Not standard.
+	u.messageFromServer("266", []string{
+		fmt.Sprintf("%d", len(u.Catbox.Users)),
+		fmt.Sprintf("%d", u.Catbox.HighestGlobalUserCount),
+		fmt.Sprintf("Current local global %d, max %d",
+			len(u.Catbox.Users), u.Catbox.HighestGlobalUserCount),
+	})
+
+	// 250 tells highest total connections, highest total local users (again,
+	// it does seem like ratbox does this), and the total number of connections
+	// received. Again this is not standard, but interesting.
+	u.messageFromServer("250", []string{
+		fmt.Sprintf("Highest connection count: %d (%d clients) (%d connections received)",
+			u.Catbox.HighestConnectionCount, u.Catbox.HighestLocalUserCount,
+			u.Catbox.ConnectionCount),
+	})
 }
 
 func (u *LocalUser) motdCommand() {

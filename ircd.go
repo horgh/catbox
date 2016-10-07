@@ -63,6 +63,22 @@ type Catbox struct {
 	// Tell the server something on this channel.
 	ToServerChan chan Event
 
+	// The highest number of local users we have seen at once.
+	HighestLocalUserCount int
+
+	// The highest number of global users we have seen at once.
+	HighestGlobalUserCount int
+
+	// The highest number of local clients (unregistered + users + servers) we have
+	// seen at once.
+	HighestConnectionCount int
+
+	// Track how many connections we've received in total.
+	ConnectionCount int
+
+	// CountersLock protects the above counters.
+	CountersLock sync.Mutex
+
 	// Our TLS configuration.
 	TLSConfig *tls.Config
 
@@ -341,6 +357,7 @@ func (cb *Catbox) shutdown() {
 // We take a lock to allow it to be called safely from any goroutine.
 func (cb *Catbox) getClientID() uint64 {
 	cb.NextClientIDLock.Lock()
+	defer cb.NextClientIDLock.Unlock()
 
 	id := cb.NextClientID
 
@@ -348,8 +365,6 @@ func (cb *Catbox) getClientID() uint64 {
 		log.Fatalf("Client id overflow")
 	}
 	cb.NextClientID++
-
-	cb.NextClientIDLock.Unlock()
 
 	return id
 }
@@ -370,6 +385,8 @@ func (cb *Catbox) acceptConnections(listener net.Listener) {
 			log.Printf("Failed to accept connection: %s", err)
 			continue
 		}
+
+		cb.updateCounters(true)
 
 		cb.introduceClient(conn)
 	}
@@ -987,4 +1004,39 @@ func (cb *Catbox) createWHOISResponse(user, replyUser *User,
 	})
 
 	return msgs
+}
+
+// Update our counters.
+//
+// We track the maximum number of local users we've seen, and the maximum number
+// of global users we've seen.
+//
+// The main reason is to show in LUSERS output.
+//
+// You should call this after you have made any changes to clients/users/servers
+// counts.
+//
+// If this adding a new client connection, pass newClient as true.
+// This should only be the case if we just accepted a new connection locally.
+func (cb *Catbox) updateCounters(newClient bool) {
+	cb.CountersLock.Lock()
+	defer cb.CountersLock.Unlock()
+
+	if len(cb.LocalUsers) > cb.HighestLocalUserCount {
+		cb.HighestLocalUserCount = len(cb.LocalUsers)
+	}
+
+	if len(cb.Users) > cb.HighestGlobalUserCount {
+		cb.HighestGlobalUserCount = len(cb.Users)
+	}
+
+	currentClientCount := len(cb.LocalClients) + len(cb.LocalUsers) +
+		len(cb.LocalServers)
+	if currentClientCount > cb.HighestConnectionCount {
+		cb.HighestConnectionCount = currentClientCount
+	}
+
+	if newClient {
+		cb.ConnectionCount++
+	}
 }

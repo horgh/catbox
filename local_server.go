@@ -690,6 +690,8 @@ func (s *LocalServer) uidCommand(m irc.Message) {
 				u.DisplayNick, u.Username, u.Hostname, u.IP, u.RealName, u.Server.Name))
 		}
 	}
+
+	s.Catbox.updateCounters(false)
 }
 
 func (s *LocalServer) privmsgCommand(m irc.Message) {

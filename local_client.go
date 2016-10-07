@@ -315,6 +315,8 @@ func (c *LocalClient) registerUser() {
 		"ns",
 	})
 
+	c.Catbox.updateCounters(false)
+
 	lu.lusersCommand()
 	lu.motdCommand()
 
