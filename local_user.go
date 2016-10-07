@@ -1282,6 +1282,15 @@ func (u *LocalUser) connectCommand(m irc.Message) {
 func (u *LocalUser) linksCommand(m irc.Message) {
 	// Difference from RFC: No parameters respected.
 
+	// Ourself.
+	// 364 RPL_LINKS
+	// <mask> <server> :<hopcount> <server info>
+	u.messageFromServer("364", []string{
+		u.Catbox.Config.ServerName,
+		u.Catbox.Config.ServerName,
+		fmt.Sprintf("%d %s", 0, u.Catbox.Config.ServerInfo),
+	})
+
 	for _, s := range u.Catbox.Servers {
 		// 364 RPL_LINKS
 		// <mask> <server> :<hopcount> <server info>

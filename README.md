@@ -90,7 +90,6 @@ This is not exhaustive, but some of the differences are:
 # TODO
 
   * Join comma support
-  * LINKS should show ourselves.
   * Daemonize
   * Log to file
   * Additional automated testing
@@ -106,21 +105,20 @@ This is not exhaustive, but some of the differences are:
   * KICK
   * NAMES
   * VERSION
-  * STATS
+  * STATS (more flags)
   * TIME
   * ADMIN
   * INFO
   * WHOWAS
   * AWAY
   * Multi line motd
-  * Upgrade in place (is this possible with TLS connections?)
+  * Upgrade in place (is this possible with TLS connections? or at all?)
   * Server console.
   * Anti-abuse (throttling etc)
   * Upgrade without losing connections
-  * Some non standard ideas:
-    * Inform clients when someone whois's them.
-    * Bots could be built into the ircd
-  * Persistent KLINEs (currently they are in memory only)
+  * Inform clients when someone whois's them.
+  * Bots could be built into the ircd
+  * Persistent K:Lines (currently they are in memory only)
   * Respond to remote STATS requests
-  * Support remote queries (e.g. STATS to another server)
-  * Exchange KLines during server burst
+  * Support sending more remote queries (e.g. STATS to another server)
+  * Exchange K:Lines during server burst
