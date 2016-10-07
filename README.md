@@ -123,3 +123,4 @@ This is not exhaustive, but some of the differences are:
   * Respond to remote STATS requests
   * Support sending more remote queries (e.g. STATS to another server)
   * Exchange K:Lines during server burst
+  * User spoofs
