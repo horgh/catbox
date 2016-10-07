@@ -14,6 +14,12 @@ const maxChannelLength = 50
 // Arbitrary. Something low enough we won't hit message limit.
 const maxTopicLength = 300
 
+// There is no limit defined in any RFC that I see. However, ratbox has username
+// length hardcoded to 10, and truncates at that.
+// It counts ~ in its length.
+// This limit of 10 I do not see in any RFC. However, ratbox has it hardcoded.
+const maxUsernameLength = 10
+
 // canonicalizeNick converts the given nick to its canonical representation
 // (which must be unique).
 //
@@ -65,13 +71,17 @@ func isValidNick(maxLen int, n string) bool {
 }
 
 // isValidUser checks if a user (USER command) is valid
-func isValidUser(maxLen int, u string) bool {
-	if len(u) == 0 || len(u) > maxLen {
+func isValidUser(u string) bool {
+	if len(u) == 0 || len(u) > maxUsernameLength {
 		return false
 	}
 
 	// For now I accept only a-z or 0-9. RFC is more lenient.
-	for _, char := range u {
+	for i, char := range u {
+		if char == '~' && i == 0 {
+			continue
+		}
+
 		if char >= 'a' && char <= 'z' {
 			continue
 		}

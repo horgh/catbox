@@ -246,7 +246,7 @@ func (c *LocalClient) registerUser() {
 		HopCount:    0,
 		NickTS:      time.Now().Unix(),
 		Modes:       make(map[byte]struct{}),
-		Username:    "~" + c.PreRegUser,
+		Username:    c.PreRegUser,
 		Hostname:    hostname,
 		IP:          c.Conn.IP.String(),
 		RealName:    c.PreRegRealName,
@@ -624,13 +624,15 @@ func (c *LocalClient) userCommand(m irc.Message) {
 		return
 	}
 
-	user := m.Params[0]
+	// I don't check ident. So we always prefix ~. Add it here before we check
+	// length to ensure length includes it.
+	user := "~" + m.Params[0]
 
-	if len(user) > c.Catbox.Config.MaxNickLength {
-		user = user[0:c.Catbox.Config.MaxNickLength]
+	if len(user) > maxUsernameLength {
+		user = user[0:maxUsernameLength]
 	}
 
-	if !isValidUser(c.Catbox.Config.MaxNickLength, user) {
+	if !isValidUser(user) {
 		// There isn't an appropriate response in the RFC. ircd-ratbox sends an
 		// ERROR message. Do that.
 		c.messageFromServer("ERROR", []string{"Invalid username"})

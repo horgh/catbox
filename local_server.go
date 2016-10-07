@@ -601,13 +601,7 @@ func (s *LocalServer) uidCommand(m irc.Message) {
 	}
 
 	username := m.Params[4]
-	checkUser := username
-	// Drop ~ from username check. It's to indicate no identd, not really part of
-	// the username. It is set by the server.
-	if checkUser[0] == '~' {
-		checkUser = checkUser[1:]
-	}
-	if !isValidUser(s.Catbox.Config.MaxNickLength, checkUser) {
+	if !isValidUser(username) {
 		s.quit("Invalid username")
 		return
 	}
