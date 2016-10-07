@@ -358,7 +358,7 @@ func (u *LocalUser) quit(msg string, propagate bool) {
 	}
 }
 
-// The server sent us a message. Deal with it.
+// The user sent us a message. Deal with it.
 func (u *LocalUser) handleMessage(m irc.Message) {
 	// Record that client said something to us just now.
 	u.LastActivityTime = time.Now()
@@ -653,7 +653,7 @@ func (u *LocalUser) privmsgCommand(m irc.Message) {
 		return
 	}
 
-	if len(m.Params) == 1 {
+	if len(m.Params) == 1 || len(m.Params[1]) == 0 {
 		// 412 ERR_NOTEXTTOSEND
 		u.messageFromServer("412", []string{"No text to send"})
 		return
@@ -855,7 +855,7 @@ func (u *LocalUser) pingCommand(m irc.Message) {
 		return
 	}
 
-	// Certain client's dont send PING following any standard.
+	// Certain clients don't send PING following any standard.
 	// For example, Quassel sends a timestamp like "PING 22:46:48.650". Which is
 	// even more interesting when we consider it has : in it, leading to us to
 	// have issues saying "<timestamp> :is not a valid server" (as : is then in
@@ -904,7 +904,8 @@ func (u *LocalUser) whoisCommand(m irc.Message) {
 	}
 	user := u.Catbox.Users[uid]
 
-	// Ask the remote server for the whois.
+	// Ask the remote server for the whois if it is a remote user. This gets us
+	// all the interesting details we may not have locally.
 	if user.isRemote() {
 		user.ClosestServer.maybeQueueMessage(irc.Message{
 			Prefix:  string(u.User.UID),

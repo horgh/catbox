@@ -487,35 +487,52 @@ func (s *LocalServer) pingCommand(m irc.Message) {
 func (s *LocalServer) pongCommand(m irc.Message) {
 	// We expect this at end of server link burst.
 	// :<Remote SID> PONG <Remote server name> <My SID>
+	// However we can also get it afterwards and may need to propagate it.
 	if len(m.Params) < 2 {
 		// 461 ERR_NEEDMOREPARAMS
-		s.messageFromServer("461", []string{"SVINFO", "Not enough parameters"})
+		s.messageFromServer("461", []string{"PONG", "Not enough parameters"})
 		return
 	}
 
-	if TS6SID(m.Prefix) != s.Server.SID {
-		s.quit("Unknown prefix")
+	// Check the source of the PONG.
+	_, exists := s.Catbox.Servers[TS6SID(m.Prefix)]
+	if !exists {
+		s.quit("Unknown source server (PONG)")
 		return
 	}
 
-	if m.Params[0] != s.Server.Name {
-		s.quit("Unknown server name")
+	// We don't need to look at the remote server name. It should be referring to
+	// the same server as the source SID.
+
+	// The destination for the PONG.
+	destinationSID := TS6SID(m.Params[1])
+
+	// If it's for us, just accept it. There's no need to reply.
+	// If it's for another server, propagate it on its way.
+
+	if destinationSID == s.Catbox.Config.TS6SID {
+		s.GotPONG = true
+
+		if s.Bursting && s.GotPING {
+			s.Catbox.noticeOpers(fmt.Sprintf("Burst with %s over.", s.Server.Name))
+			s.Bursting = false
+		}
 		return
 	}
 
-	if m.Params[1] != string(s.Catbox.Config.TS6SID) {
-		s.quit("Unknown SID")
+	// It's for a different server. Propagate it.
+
+	destinationServer, exists := s.Catbox.Servers[destinationSID]
+	if !exists {
+		s.quit("Unknown destination server (PONG)")
 		return
 	}
 
-	// No reply.
-
-	s.GotPONG = true
-
-	if s.Bursting && s.GotPING {
-		s.Catbox.noticeOpers(fmt.Sprintf("Burst with %s over.", s.Server.Name))
-		s.Bursting = false
+	if destinationServer.isLocal() {
+		destinationServer.LocalServer.maybeQueueMessage(m)
+		return
 	}
+	destinationServer.ClosestServer.maybeQueueMessage(m)
 }
 
 func (s *LocalServer) errorCommand(m irc.Message) {
@@ -1219,6 +1236,9 @@ func (s *LocalServer) wallopsCommand(m irc.Message) {
 
 	// Propagate to other servers.
 	for _, ls := range s.Catbox.LocalServers {
+		if ls == s {
+			continue
+		}
 		ls.maybeQueueMessage(m)
 	}
 }
@@ -1336,6 +1356,9 @@ func (s *LocalServer) modeCommand(m irc.Message) {
 			}
 		}
 	}
+
+	// We don't need to tell local clients anything. Only the user who changed
+	// needs to know, and they are remote, so their server told them.
 
 	// Propagate.
 	for _, server := range s.Catbox.LocalServers {
