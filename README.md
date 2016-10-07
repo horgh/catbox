@@ -24,6 +24,8 @@ Features:
   * Global IRC operators.
   * Operators can communicate network wide to other operators with WALLOPS.
   * Private (WHOIS shows no channels, no LIST).
+  * Server to server connections allow server IPs to change without
+    configuration updates (i.e., permitting dynamic server IPs)
 
 Design philosophy:
 
@@ -89,6 +91,7 @@ This is not exhaustive, but some of the differences are:
 
   * Try linking to self
   * Auto try/retry linking to servers if not connected
+  * Reload configuration without restart
 
   * Daemonize
   * Log to file
@@ -112,14 +115,10 @@ This is not exhaustive, but some of the differences are:
   * WHOWAS
   * AWAY
   * Multi line motd
-  * Reload configuration without restart
   * Upgrade in place (is this possible with TLS connections?)
   * Server console.
   * Anti-abuse (throttling etc)
-  * TLS
   * Upgrade without losing connections
-  * Server to server connections allowing server IPs to change without
-    configuration updates (i.e., permitting dynamic server IPs)
   * Some non standard ideas:
     * Inform clients when someone whois's them.
     * Bots could be built into the ircd

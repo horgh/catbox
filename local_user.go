@@ -914,7 +914,7 @@ func (u *LocalUser) whoisCommand(m irc.Message) {
 
 	// It's a local user. Respond ourself.
 
-	msgs := u.Catbox.createWHOISResponse(user, u.User, u.Catbox.Config.ServerName)
+	msgs := u.Catbox.createWHOISResponse(user, u.User, false)
 	for _, msg := range msgs {
 		u.maybeQueueMessage(msg)
 	}

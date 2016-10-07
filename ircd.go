@@ -761,18 +761,30 @@ func (cb *Catbox) issueKill(u *User, reason string) {
 //
 // You should call this only if the user exists.
 //
-// from defines the prefix. For local responses to users we want this to be the
-// server name. When responding to servers it should be the SID.
-func (cb *Catbox) createWHOISResponse(user *User,
-	replyUser *User, from string) []irc.Message {
+// If useIDs is true, then we set the messages to use SID/UID where they would
+// otherwise use server name and nickname.
+// Note this applies to the source server and target user, not the 2nd
+// parameter.
+func (cb *Catbox) createWHOISResponse(user, replyUser *User,
+	useIDs bool) []irc.Message {
 	msgs := []irc.Message{}
+
+	from := cb.Config.ServerName
+	if useIDs {
+		from = string(cb.Config.TS6SID)
+	}
+
+	to := replyUser.DisplayNick
+	if useIDs {
+		to = string(replyUser.UID)
+	}
 
 	// 311 RPL_WHOISUSER
 	msgs = append(msgs, irc.Message{
-		Prefix:  cb.Config.ServerName,
+		Prefix:  from,
 		Command: "311",
 		Params: []string{
-			replyUser.DisplayNick,
+			to,
 			user.DisplayNick,
 			user.Username,
 			user.Hostname,
@@ -786,10 +798,10 @@ func (cb *Catbox) createWHOISResponse(user *User,
 
 	// 312 RPL_WHOISSERVER
 	msgs = append(msgs, irc.Message{
-		Prefix:  cb.Config.ServerName,
+		Prefix:  from,
 		Command: "312",
 		Params: []string{
-			replyUser.DisplayNick,
+			to,
 			user.DisplayNick,
 			cb.Config.ServerName,
 			cb.Config.ServerInfo,
@@ -801,10 +813,10 @@ func (cb *Catbox) createWHOISResponse(user *User,
 	// 313 RPL_WHOISOPERATOR
 	if user.isOperator() {
 		msgs = append(msgs, irc.Message{
-			Prefix:  cb.Config.ServerName,
+			Prefix:  from,
 			Command: "313",
 			Params: []string{
-				replyUser.DisplayNick,
+				to,
 				user.DisplayNick,
 				"is an IRC operator",
 			},
@@ -814,10 +826,10 @@ func (cb *Catbox) createWHOISResponse(user *User,
 	// 671. Non standard. Ratbox uses it.
 	if user.isLocal() && user.LocalUser.isTLS() {
 		msgs = append(msgs, irc.Message{
-			Prefix:  cb.Config.ServerName,
+			Prefix:  from,
 			Command: "671",
 			Params: []string{
-				replyUser.DisplayNick,
+				to,
 				user.DisplayNick,
 				fmt.Sprintf("is using a secure connection (%s) (%s)",
 					tlsVersionToString(user.LocalUser.TLSConnectionState.Version),
@@ -832,10 +844,10 @@ func (cb *Catbox) createWHOISResponse(user *User,
 		idleSeconds := int(idleDuration.Seconds())
 
 		msgs = append(msgs, irc.Message{
-			Prefix:  cb.Config.ServerName,
+			Prefix:  from,
 			Command: "317",
 			Params: []string{
-				replyUser.DisplayNick,
+				to,
 				user.DisplayNick,
 				fmt.Sprintf("%d", idleSeconds),
 				"seconds idle",
@@ -845,10 +857,10 @@ func (cb *Catbox) createWHOISResponse(user *User,
 
 	// 318 RPL_ENDOFWHOIS
 	msgs = append(msgs, irc.Message{
-		Prefix:  cb.Config.ServerName,
+		Prefix:  from,
 		Command: "318",
 		Params: []string{
-			replyUser.DisplayNick,
+			to,
 			user.DisplayNick,
 			"End of WHOIS list",
 		},

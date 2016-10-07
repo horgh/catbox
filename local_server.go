@@ -599,11 +599,17 @@ func (s *LocalServer) uidCommand(m irc.Message) {
 		}
 	}
 
-	if !isValidUser(s.Catbox.Config.MaxNickLength, m.Params[4]) {
+	username := m.Params[4]
+	checkUser := username
+	// Drop ~ from username check. It's to indicate no identd, not really part of
+	// the username. It is set by the server.
+	if checkUser[0] == '~' {
+		checkUser = checkUser[1:]
+	}
+	if !isValidUser(s.Catbox.Config.MaxNickLength, checkUser) {
 		s.quit("Invalid username")
 		return
 	}
-	username := m.Params[4]
 
 	// We could validate hostname
 	hostname := m.Params[5]
@@ -1740,8 +1746,7 @@ func (s *LocalServer) whoisCommand(m irc.Message) {
 
 	// If it's a local user, reply back to the server.
 	if user.isLocal() {
-		msgs := s.Catbox.createWHOISResponse(user, sourceUser,
-			string(s.Catbox.Config.TS6SID))
+		msgs := s.Catbox.createWHOISResponse(user, sourceUser, true)
 		for _, msg := range msgs {
 			sourceUser.ClosestServer.maybeQueueMessage(msg)
 		}
@@ -1779,12 +1784,13 @@ func (s *LocalServer) numericCommand(m irc.Message) {
 
 	// If it's for a local client, then send it to them, and done.
 	if user.isLocal() {
+		// First parameter is the target user. We get it as UID. Turn into NICK.
 		params := []string{user.DisplayNick}
 		if len(m.Params) > 1 {
 			params = append(params, m.Params[1:]...)
 		}
 		user.LocalUser.maybeQueueMessage(irc.Message{
-			Prefix:  string(sourceServer.SID),
+			Prefix:  sourceServer.Name,
 			Command: m.Command,
 			Params:  params,
 		})
