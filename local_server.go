@@ -395,6 +395,11 @@ func (s *LocalServer) handleMessage(m irc.Message) {
 		return
 	}
 
+	// Ignore certain commands we know about but don't handle yet (or ever).
+	if m.Command == "AWAY" || m.Command == "CLICONN" {
+		return
+	}
+
 	// 421 ERR_UNKNOWNCOMMAND
 	s.messageFromServer("421", []string{m.Command, "Unknown command"})
 }
