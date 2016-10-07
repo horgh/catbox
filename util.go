@@ -42,6 +42,10 @@ func isValidNick(maxLen int, n string) bool {
 			continue
 		}
 
+		if char >= 'A' && char <= 'Z' {
+			continue
+		}
+
 		if char >= '0' && char <= '9' {
 			// No digits in first position.
 			if i == 0 {
@@ -69,6 +73,10 @@ func isValidUser(maxLen int, u string) bool {
 	// For now I accept only a-z or 0-9. RFC is more lenient.
 	for _, char := range u {
 		if char >= 'a' && char <= 'z' {
+			continue
+		}
+
+		if char >= 'A' && char <= 'Z' {
 			continue
 		}
 

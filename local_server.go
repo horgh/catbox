@@ -549,7 +549,8 @@ func (s *LocalServer) uidCommand(m irc.Message) {
 
 	// Is this a valid nick?
 	if !isValidNick(s.Catbox.Config.MaxNickLength, m.Params[0]) {
-		s.quit("Invalid NICK!")
+		log.Printf("Invalid nick (%s)", m.Params[0])
+		s.quit(fmt.Sprintf("Invalid NICK! (%s)", m.Params[0]))
 		return
 	}
 	displayNick := m.Params[0]
