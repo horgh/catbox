@@ -289,6 +289,7 @@ func (s *LocalServer) sendBurst() {
 	}
 }
 
+// The server sent us a message. Deal with it.
 func (s *LocalServer) handleMessage(m irc.Message) {
 	// Record that client said something to us just now.
 	s.LastActivityTime = time.Now()

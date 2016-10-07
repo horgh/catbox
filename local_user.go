@@ -358,7 +358,7 @@ func (u *LocalUser) quit(msg string, propagate bool) {
 	}
 }
 
-// handleMessage takes action based on a client's IRC message.
+// The server sent us a message. Deal with it.
 func (u *LocalUser) handleMessage(m irc.Message) {
 	// Record that client said something to us just now.
 	u.LastActivityTime = time.Now()

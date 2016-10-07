@@ -31,8 +31,10 @@ type LocalClient struct {
 	// WriteChan is the channel to send to to write to the client.
 	WriteChan chan irc.Message
 
+	// The time they connected.
 	ConnectionStartTime time.Time
 
+	// A reference to the main server.
 	Catbox *Catbox
 
 	// Track if we overflow our send queue. If we do, we'll kill the client.
@@ -43,23 +45,23 @@ type LocalClient struct {
 
 	// User info
 
-	// NICK
+	// NICK arguments.
 	PreRegDisplayNick string
 
-	// USER
+	// USER arguments.
 	PreRegUser     string
 	PreRegRealName string
 
 	// Server info
 
-	// PASS
+	// PASS arguments.
 	PreRegPass   string
 	PreRegTS6SID string
 
-	// CAPAB
+	// CAPAB arguments.
 	PreRegCapabs map[string]struct{}
 
-	// SERVER
+	// SERVER arguments.
 	PreRegServerName string
 	PreRegServerDesc string
 
@@ -221,6 +223,7 @@ func (c *LocalClient) quit(msg string) {
 	delete(c.Catbox.LocalClients, c.ID)
 }
 
+// Upgrade a LocalClient to a LocalUser.
 func (c *LocalClient) registerUser() {
 	// RFC 2813 specifies messages to send upon registration.
 
@@ -392,6 +395,7 @@ func (c *LocalClient) sendSVINFO() {
 	c.SentSVINFO = true
 }
 
+// Upgrade a LocalClient to a LocalServer.
 func (c *LocalClient) registerServer() {
 	ls := NewLocalServer(c)
 
@@ -468,6 +472,7 @@ func (c *LocalClient) sendServerIntro(pass string) {
 	c.SentSERVER = true
 }
 
+// The client sent us a message. Deal with it.
 func (c *LocalClient) handleMessage(m irc.Message) {
 	// Clients SHOULD NOT (section 2.3) send a prefix.
 	if m.Prefix != "" {

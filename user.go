@@ -7,17 +7,36 @@ import (
 
 // User holds information about a user. It may be remote or local.
 type User struct {
+	// The user's nick. Formatted for display.
 	DisplayNick string
-	HopCount    int
-	NickTS      int64
-	Modes       map[byte]struct{}
-	Username    string
-	Hostname    string
-	IP          string
-	UID         TS6UID
-	RealName    string
 
-	// Channel name (canonicalized) to Channel.
+	// The number of hops away the user is.
+	HopCount int
+
+	// The user's nick's TS. This changes on registration and NICK.
+	NickTS int64
+
+	// The user's modes. Currently +i, +o, +C supported.
+	Modes map[byte]struct{}
+
+	// The user's username.
+	Username string
+
+	// The user's hostname.
+	Hostname string
+
+	// The user's IP. Not always valid (e.g. may be 0 if a spoofed user sent to
+	// us from a different server).
+	IP string
+
+	// Each user has a network wide unique identifier. This is part of TS6.
+	// It is 9 characters. The first 3 are the server it is on's SID.
+	UID TS6UID
+
+	// The user's real name (set with USER command on registration).
+	RealName string
+
+	// Channel name (canonicalized) to Channel. The channels it is in.
 	Channels map[string]*Channel
 
 	// LocalUser set if this is a local user.
@@ -49,6 +68,7 @@ func (u *User) isOperator() bool {
 	return exists
 }
 
+// Is the user on the given channel?
 func (u *User) onChannel(channel *Channel) bool {
 	_, exists := u.Channels[channel.Name]
 	return exists

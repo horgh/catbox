@@ -4,10 +4,17 @@ import "fmt"
 
 // Server holds information about a linked server. Local and remote.
 type Server struct {
-	SID         TS6SID
-	Name        string
+	// Each server has a unique ID. SID. This is part of TS6. 3 characters.
+	SID TS6SID
+
+	// Each server has a unique name. e.g., irc.example.com.
+	Name string
+
+	// Each server has a one line description.
 	Description string
-	HopCount    int
+
+	// Number of hops from us to this server.
+	HopCount int
 
 	// If this server is directly connected to us (local), then LocalServer is
 	// set.

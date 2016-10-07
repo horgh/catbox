@@ -22,12 +22,16 @@ type Catbox struct {
 	Config *Config
 
 	// Next client ID to issue. This turns into TS6 ID which gets concatenated
-	// with our SID to make the TS6 UID.
+	// with our SID to make the TS6 UID. We wrap it in a mutex as different
+	// goroutines must access it.
 	NextClientID     uint64
 	NextClientIDLock sync.Mutex
 
 	// LocalClients are unregistered.
-	// Client id to LocalClient.
+	// Client id (uint64) is the locally unique key.
+	// It is useful to use this instead of TS6UID/TS6SID as we need to look up
+	// all 3 types inside the event handler.
+	// When we upgrade them to LocalUser/LocalServer, we drop them from this.
 	LocalClients map[uint64]*LocalClient
 	// LocalUsers are clients registered as users.
 	LocalUsers map[uint64]*LocalUser
@@ -37,18 +41,19 @@ type Catbox struct {
 	// Users with operator status. They may be local or remote.
 	Opers map[TS6UID]*User
 
-	// Canonicalized nickname to TS6 UID.
+	// Track nicks in use and by which user. Canonicalized nickname to TS6 UID.
 	Nicks map[string]TS6UID
 
-	// TS6 UID to User. Local or remote.
+	// Track users on the network. TS6 UID to User. Local or remote.
 	Users map[TS6UID]*User
 
-	// TS6 SID to Server. Local or remote.
+	// Track servers on the network. TS6 SID to Server. Local or remote.
 	Servers map[TS6SID]*Server
 
-	// Channel name (canonicalized) to Channel.
+	// Track channels on the network. Channel name (canonicalized) to Channel.
 	Channels map[string]*Channel
 
+	// Active K:Lines (bans).
 	KLines []KLine
 
 	// When we close this channel, this indicates that we're shutting down.
@@ -58,9 +63,10 @@ type Catbox struct {
 	// Tell the server something on this channel.
 	ToServerChan chan Event
 
+	// Our TLS configuration.
 	TLSConfig *tls.Config
 
-	// TCP plaintext listener.
+	// TCP plaintext and TLS listeners.
 	Listener    net.Listener
 	TLSListener net.Listener
 
@@ -73,7 +79,8 @@ type KLine struct {
 	// Together we have <usermask>@<hostmask>
 	UserMask string
 	HostMask string
-	Reason   string
+
+	Reason string
 }
 
 // TS6ID is a client's unique identifier. Unique to this server only.
@@ -172,9 +179,12 @@ func newCatbox(configFile string) (*Catbox, error) {
 		Certificates:             []tls.Certificate{cert},
 		PreferServerCipherSuites: true,
 		SessionTicketsDisabled:   true,
-		// Unfortunately it is usual to use self signed certificates with IRC.
+		// Unfortunately it is usual to use self signed certificates with IRC. We
+		// need this to connect to such servers.
 		InsecureSkipVerify: true,
 
+		// It would be nice to be able to be more restrictive on TLS version and
+		// ciphers, but in practice many clients do not support the strictest.
 		//CipherSuites: []uint16{
 		//	tls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
 		//	tls.TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
@@ -372,7 +382,11 @@ func (cb *Catbox) acceptConnections(listener net.Listener) {
 // It creates a Client struct, and sends initial NOTICEs to the client. It also
 // attempts to look up the client's hostname.
 func (cb *Catbox) introduceClient(conn net.Conn) {
+	cb.WG.Add(1)
+
 	go func() {
+		defer cb.WG.Done()
+
 		id := cb.getClientID()
 
 		client := NewLocalClient(cb, id, conn)
