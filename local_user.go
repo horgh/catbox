@@ -1158,6 +1158,12 @@ func (u *LocalUser) whoCommand(m irc.Message) {
 		return
 	}
 
+	// Special case: OPERSPY of a kind. This will let the oper see all users.
+	if m.Params[0] == "!*" {
+		u.operspyWhoCommand(m)
+		return
+	}
+
 	channel, exists := u.Catbox.Channels[canonicalizeChannel(m.Params[0])]
 	if !exists {
 		// 403 ERR_NOSUCHCHANNEL. Used to indicate channel name is invalid.
@@ -1180,24 +1186,79 @@ func (u *LocalUser) whoCommand(m irc.Message) {
 		// ( "H" / "G" > ["*"] [ ( "@" / "+" ) ]
 		// :<hopcount> <real name>"
 		// NOTE: I'm not sure what H/G mean. I think G is away.
-		// Hopcount seems unimportant also.
+
 		mode := "H"
+
 		if member.isOperator() {
 			mode += "*"
 		}
+
+		serverName := u.Catbox.Config.ServerName
+		if member.isRemote() {
+			serverName = member.Server.Name
+		}
+
 		u.messageFromServer("352", []string{
 			channel.Name,
 			member.Username,
-			fmt.Sprintf("%s", member.Hostname),
-			u.Catbox.Config.ServerName,
+			member.Hostname,
+			serverName,
 			member.DisplayNick,
 			mode,
-			"0 " + member.RealName,
+			fmt.Sprintf("%d %s", member.HopCount, member.RealName),
 		})
 	}
 
 	// 315 RPL_ENDOFWHO
 	u.messageFromServer("315", []string{channel.Name, "End of WHO list"})
+}
+
+// This is only available to opers.
+// It is to partially support something like ratbox's WHO !<param> command
+// that lets opers see things regular users cannot.
+// In this case, I want to send the WHO result of all users to the oper.
+func (u *LocalUser) operspyWhoCommand(m irc.Message) {
+	if !u.User.isOperator() {
+		// 481 ERR_NOPRIVILEGES
+		u.messageFromServer("481", []string{"Permission Denied- You're not an IRC operator"})
+		return
+	}
+
+	// Tell them every user.
+	for _, user := range u.Catbox.Users {
+		// 352 RPL_WHOREPLY
+		// "<channel> <user> <host> <server> <nick>
+		// ( "H" / "G" > ["*"] [ ( "@" / "+" ) ]
+		// :<hopcount> <real name>"
+
+		mode := "H"
+
+		if user.isOperator() {
+			mode += "*"
+		}
+
+		serverName := u.Catbox.Config.ServerName
+		if user.isRemote() {
+			serverName = user.Server.Name
+		}
+
+		u.messageFromServer("352", []string{
+			// * for name.
+			"*",
+			user.Username,
+			user.Hostname,
+			serverName,
+			user.DisplayNick,
+			mode,
+			fmt.Sprintf("%d %s", user.HopCount, user.RealName),
+		})
+	}
+
+	// 315 RPL_ENDOFWHO
+	u.messageFromServer("315", []string{"*", "End of WHO list"})
+
+	u.Catbox.noticeOpers(fmt.Sprintf("%s used OPERSPY WHO !*",
+		u.User.DisplayNick))
 }
 
 func (u *LocalUser) topicCommand(m irc.Message) {
