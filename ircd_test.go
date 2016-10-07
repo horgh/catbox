@@ -170,7 +170,7 @@ func TestParseAndResolveUmodeChanges(t *testing.T) {
 			outputSetModes:     map[byte]struct{}{},
 			outputUnsetModes:   map[byte]struct{}{},
 			outputUnknownModes: map[byte]struct{}{},
-			success:            false,
+			success:            true,
 		},
 		{
 			inputCurrentModes:  map[byte]struct{}{'o': struct{}{}},
@@ -215,6 +215,14 @@ func TestParseAndResolveUmodeChanges(t *testing.T) {
 		{
 			inputCurrentModes:  map[byte]struct{}{'o': struct{}{}},
 			inputModes:         "+C1",
+			outputSetModes:     map[byte]struct{}{'C': struct{}{}},
+			outputUnsetModes:   map[byte]struct{}{},
+			outputUnknownModes: map[byte]struct{}{'1': struct{}{}},
+			success:            true,
+		},
+		{
+			inputCurrentModes:  map[byte]struct{}{'o': struct{}{}},
+			inputModes:         "C1",
 			outputSetModes:     map[byte]struct{}{'C': struct{}{}},
 			outputUnsetModes:   map[byte]struct{}{},
 			outputUnknownModes: map[byte]struct{}{'1': struct{}{}},

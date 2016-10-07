@@ -350,8 +350,9 @@ func parseAndResolveUmodeChanges(modes string,
 	requestSetModes := make(map[byte]struct{})
 	requestUnsetModes := make(map[byte]struct{})
 
-	// + / -
-	action := ' '
+	// + / -. Apparently +/- is optional. If we don't see +/- before a mode then
+	// assume +.
+	action := '+'
 
 	// Parse the mode string. Find those requested to be set and unset.
 	for _, char := range modes {
@@ -369,9 +370,6 @@ func parseAndResolveUmodeChanges(modes string,
 			requestUnsetModes[byte(char)] = struct{}{}
 			continue
 		}
-
-		// Malformed. If this is a mode character we should have +/- already.
-		return nil, nil, nil, fmt.Errorf("No +/- found")
 	}
 
 	// Filter out modes we don't support. Track them too.
