@@ -263,7 +263,13 @@ func (cb *Catbox) start() error {
 				log.Printf("Received SIGHUP signal, rehashing")
 				cb.newEvent(Event{Type: RehashEvent})
 			case <-cb.ShutdownChan:
-				log.Printf("Signal listener cleaning up")
+				signal.Stop(signalChan)
+				// After Stop() we're guaranteed we will receive no more on the channel,
+				// so we can close the channel, and then drain it.
+				close(signalChan)
+				for range signalChan {
+				}
+				log.Printf("Signal listener shutting down.")
 				return
 			}
 		}
