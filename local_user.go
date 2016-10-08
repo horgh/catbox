@@ -504,6 +504,11 @@ func (u *LocalUser) handleMessage(m irc.Message) {
 		return
 	}
 
+	if m.Command == "MAP" {
+		u.mapCommand(m)
+		return
+	}
+
 	// Unknown command. We don't handle it yet anyway.
 	// 421 ERR_UNKNOWNCOMMAND
 	u.messageFromServer("421", []string{m.Command, "Unknown command"})
@@ -1698,4 +1703,64 @@ func (u *LocalUser) rehashCommand(m irc.Message) {
 
 	u.Catbox.noticeOpers(fmt.Sprintf("%s rehashed configuration.",
 		u.User.DisplayNick))
+}
+
+// Map is a non standard command. It shows linked servers, and in an ASCII way,
+// which is linked to which. Like a server map. We also show the server SIDs
+// and how many users (and what % of the global count) each has.
+//
+// If we are in a network linked this way:
+// me -> server A
+// me -> server B
+// server A -> server C
+// server B -> server D
+//
+// Then output looks like this
+//
+// me[SID] ----------------- | Users: n (n.n%)
+//   server A[SID] --------- | Users: n (n.n%)
+//     server C[SID] ------- | Users: n (n.n%)
+//   server B[SID] --------- | Users: n (n.n%)
+//     server D[SID] ------- | Users: n (n.n%)
+func (u *LocalUser) mapCommand(m irc.Message) {
+	lines := []string{}
+
+	globalUserCount := len(u.Catbox.Users)
+
+	// Ourself.
+	lines = append(lines, serverToMapLine(u.Catbox.Config.ServerName,
+		u.Catbox.Config.TS6SID, len(u.Catbox.LocalUsers), globalUserCount, 0))
+
+	for _, ls := range u.Catbox.LocalServers {
+		// The local server.
+		lines = append(lines, serverToMapLine(ls.Server.Name, ls.Server.SID,
+			ls.Server.getLocalUserCount(u.Catbox.Users), globalUserCount,
+			ls.Server.HopCount))
+
+		// And all servers it is linked to.
+		linkedServers := ls.Server.getLinkedServers(u.Catbox.Servers)
+		for _, s := range linkedServers {
+			lines = append(lines, serverToMapLine(s.Name, s.SID,
+				s.getLocalUserCount(u.Catbox.Users), globalUserCount, s.HopCount))
+		}
+	}
+
+	msgs := []irc.Message{}
+	for _, line := range lines {
+		msgs = append(msgs, irc.Message{
+			Prefix:  u.Catbox.Config.ServerName,
+			Command: "015",
+			Params:  []string{u.User.DisplayNick, line},
+		})
+	}
+
+	msgs = append(msgs, irc.Message{
+		Prefix:  u.Catbox.Config.ServerName,
+		Command: "017",
+		Params:  []string{u.User.DisplayNick, "End of /MAP"},
+	})
+
+	for _, msg := range msgs {
+		u.maybeQueueMessage(msg)
+	}
 }

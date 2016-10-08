@@ -91,3 +91,14 @@ func (s *Server) getLinkedServers(allServers map[TS6SID]*Server) []*Server {
 
 	return linkedServers
 }
+
+// Count how many users are on this server.
+func (s *Server) getLocalUserCount(users map[TS6UID]*User) int {
+	count := 0
+	for _, u := range users {
+		if u.Server == s {
+			count++
+		}
+	}
+	return count
+}

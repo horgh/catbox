@@ -540,3 +540,43 @@ func sortServersByHopCount(serverMap map[TS6SID]*Server) []*Server {
 
 	return servers
 }
+
+// Create a line for a response in the map command output.
+// Refer to mapCommand() for details.
+func serverToMapLine(name string, sid TS6SID, localUsers, globalUsers,
+	hopCount int) string {
+	// Each line is the same length.
+	lineLen := 74
+
+	// For each hop, add two spaces to indicate it's subordinate.
+	serverName := ""
+	for i := 0; i < hopCount; i++ {
+		serverName += "  "
+	}
+
+	// irc.example.com[000]
+	serverName += fmt.Sprintf("%s[%s] ", name, string(sid))
+
+	// Determine how wide the user count portion should be.
+	// To do that, assume each server has the globalUser count (though this
+	// will usually not be the case). Then use that width.
+	globalCountString := fmt.Sprintf("%d", globalUsers)
+	userCountLenString := fmt.Sprintf("%d", len(globalCountString))
+
+	// Determine percentage of global users are on this server.
+	percent := float64(localUsers) / float64(globalUsers) * 100.0
+
+	// | Users: n (100.0%)
+	users := fmt.Sprintf(" | Users: %"+userCountLenString+"d (%5.1f%%)",
+		localUsers, percent)
+
+	// Pad dashes in between server name and user count.
+	numDashes := lineLen - len(serverName) - len(users)
+	dashes := ""
+	for i := 0; i < numDashes; i++ {
+		dashes += "-"
+	}
+
+	// irc.example.com[000] ---------- | Users: n (100.0%)
+	return serverName + dashes + users
+}

@@ -34,3 +34,5 @@
   * Support sending more remote queries (e.g. STATS to another server)
   * Exchange K:Lines during server burst
   * User spoofs
+  * A command to retrieve TLS/ciphers in use by all clients/servers. Sent
+    remotely so each server can get back to us with their local info.
