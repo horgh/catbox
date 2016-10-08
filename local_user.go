@@ -299,6 +299,7 @@ func (u *LocalUser) quit(msg string, propagate bool) {
 	if !exists {
 		return
 	}
+	log.Printf("Losing user %s", u)
 
 	// Tell all clients the client is in the channel with, and remove the client
 	// from each channel it is in.
@@ -363,6 +364,7 @@ func (u *LocalUser) quit(msg string, propagate bool) {
 	if u.User.isOperator() {
 		delete(u.Catbox.Opers, u.User.UID)
 	}
+	delete(u.Catbox.Users, u.User.UID)
 }
 
 // The user sent us a message. Deal with it.
@@ -1487,13 +1489,21 @@ func (u *LocalUser) killCommand(m irc.Message) {
 	u.Catbox.noticeOpers(fmt.Sprintf("Received KILL message for %s. From %s (%s)",
 		targetUser.DisplayNick, u.User.DisplayNick, reason))
 
+	quitReason := fmt.Sprintf("Killed (%s (%s))", u.User.DisplayNick, reason)
+
 	// If it's a local user, cut them off.
 	if targetUser.isLocal() {
-		targetUser.LocalUser.quit(fmt.Sprintf("Killed (%s (%s))",
-			u.User.DisplayNick, reason), false)
+		// We don't propagate a QUIT. We do it by sending a KILL.
+		targetUser.LocalUser.quit(quitReason, false)
 	}
 
-	// Propagate to all servers.
+	// If it's a remote user, forget them. Show clients in channels with them
+	// a quit message.
+	if targetUser.isRemote() {
+		u.Catbox.quitRemoteUser(targetUser, quitReason)
+	}
+
+	// Propagate KILL to all servers.
 	// For server message, the reason string must look like this:
 	// <source> (<Reason>)
 	// Where source looks like:

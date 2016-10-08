@@ -1384,7 +1384,7 @@ func (s *LocalServer) wallopsCommand(m irc.Message) {
 	}
 }
 
-// QUIT tells us a client is gone.
+// QUIT tells us a remote client is gone.
 func (s *LocalServer) quitCommand(m irc.Message) {
 	// Parameters: <quit comment>
 
@@ -1400,44 +1400,7 @@ func (s *LocalServer) quitCommand(m irc.Message) {
 		message = m.Params[0]
 	}
 
-	// Remove the user from each channel.
-	// Also, tell each local client that is in 1+ channel with the user that this
-	// user quit.
-	informedUsers := make(map[TS6UID]struct{})
-	quitParams := []string{}
-	if len(message) > 0 {
-		quitParams = append(quitParams, message)
-	}
-	for _, channel := range user.Channels {
-		for memberUID := range channel.Members {
-			member := s.Catbox.Users[memberUID]
-			if !member.isLocal() {
-				continue
-			}
-			_, exists := informedUsers[member.UID]
-			if exists {
-				continue
-			}
-			informedUsers[member.UID] = struct{}{}
-			member.LocalUser.maybeQueueMessage(irc.Message{
-				Prefix:  user.nickUhost(),
-				Command: "QUIT",
-				Params:  quitParams,
-			})
-		}
-
-		delete(channel.Members, user.UID)
-		if len(channel.Members) == 0 {
-			delete(s.Catbox.Channels, channel.Name)
-		}
-	}
-
-	// Forget the user.
-	delete(s.Catbox.Users, user.UID)
-	if user.isOperator() {
-		delete(s.Catbox.Opers, user.UID)
-	}
-	delete(s.Catbox.Nicks, canonicalizeNick(user.DisplayNick))
+	s.Catbox.quitRemoteUser(user, message)
 
 	// Propagate to all servers.
 	for _, server := range s.Catbox.LocalServers {
@@ -1619,6 +1582,9 @@ func (s *LocalServer) squitCommand(m irc.Message) {
 		s.Server.Name, from, reason))
 }
 
+// KILL tells us about a client getting disconnected forcefully.
+// The user may be local or remote. Either way, we need to propagate the KILL
+// everywhere.
 func (s *LocalServer) killCommand(m irc.Message) {
 	// Parameters: <target user UID> <reason>
 	// Reason has format:
@@ -1717,6 +1683,7 @@ func (s *LocalServer) killCommand(m irc.Message) {
 				delete(s.Catbox.Channels, channel.Name)
 			}
 		}
+
 		delete(s.Catbox.Users, targetUser.UID)
 		if targetUser.isOperator() {
 			delete(s.Catbox.Opers, targetUser.UID)

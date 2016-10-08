@@ -981,7 +981,9 @@ func (cb *Catbox) createWHOISResponse(user, replyUser *User,
 				to,
 				user.DisplayNick,
 				fmt.Sprintf("%d", idleSeconds),
-				"seconds idle",
+				// Adding a signon time is non standard, but apparently common.
+				fmt.Sprintf("%d", user.LocalUser.ConnectionStartTime.Unix()),
+				"seconds idle, signon time",
 			},
 		})
 	}
@@ -1033,4 +1035,54 @@ func (cb *Catbox) updateCounters(newClient bool) {
 	if newClient {
 		cb.ConnectionCount++
 	}
+}
+
+// We're losing a remote user.
+//
+// Inform local users that it is leaving with a QUIT message.
+//
+// Forget the user from all records.
+func (cb *Catbox) quitRemoteUser(u *User, message string) {
+	// Remove the user from each channel.
+	// Also, tell each local client that is in 1+ channel with the user that this
+	// user quit.
+	informedUsers := make(map[TS6UID]struct{})
+
+	quitParams := []string{}
+	if len(message) > 0 {
+		quitParams = append(quitParams, message)
+	}
+
+	for _, channel := range u.Channels {
+		for memberUID := range channel.Members {
+			member := cb.Users[memberUID]
+			if !member.isLocal() {
+				continue
+			}
+
+			_, exists := informedUsers[member.UID]
+			if exists {
+				continue
+			}
+			informedUsers[member.UID] = struct{}{}
+
+			member.LocalUser.maybeQueueMessage(irc.Message{
+				Prefix:  u.nickUhost(),
+				Command: "QUIT",
+				Params:  quitParams,
+			})
+		}
+
+		delete(channel.Members, u.UID)
+		if len(channel.Members) == 0 {
+			delete(cb.Channels, channel.Name)
+		}
+	}
+
+	// Forget the user.
+	delete(cb.Users, u.UID)
+	if u.isOperator() {
+		delete(cb.Opers, u.UID)
+	}
+	delete(cb.Nicks, canonicalizeNick(u.DisplayNick))
 }

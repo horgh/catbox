@@ -190,7 +190,7 @@ Loop:
 
 			err := c.Conn.WriteMessage(message)
 			if err != nil {
-				log.Printf("Client %s: %s", c, err)
+				log.Printf("Client %s: %s: %s", c, message, err)
 				c.Catbox.newEvent(Event{Type: DeadClientEvent, Client: c})
 				break Loop
 			}
