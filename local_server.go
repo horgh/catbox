@@ -209,12 +209,25 @@ func (s *LocalServer) serverSplitCleanUp(lostServer *Server) {
 func (s *LocalServer) sendBurst() {
 	// Tell it about all servers we know about.
 	// Use the SID command.
+	//
 	// We do tell it about servers even if they are not directly linked to us.
-	// However we need to be sure we set the prefix/source correctly to indicate
-	// what server they are linked to.
+	//
+	// We need to be sure we set the prefix/source correctly to indicate what
+	// server they are linked to.
+	//
 	// Parameters: <server name> <hop count> <SID> <description>
 	// e.g.: :8ZZ SID irc3.example.com 2 9ZQ :My Desc
-	for _, server := range s.Catbox.Servers {
+	//
+	// It's also critical the order we inform the server about other servers.
+	// If we tell it about server B linked to server C (i.e., prefix is server C)
+	// but we haven't told it about server C yet, then it does not have sufficient
+	// information to validate the server. The server could take it on faith that
+	// it will be told about server C shortly, but that is not very good.
+	//
+	// We can accomplish this through telling it about servers ordered by hopcount
+	// ascending.
+	servers := sortServersByHopCount(s.Catbox.Servers)
+	for _, server := range servers {
 		// Don't send it itself.
 		if server.LocalServer == s {
 			continue
@@ -236,6 +249,14 @@ func (s *LocalServer) sendBurst() {
 				string(server.SID),
 				server.Description,
 			},
+		})
+
+		// Tell it about the capabilities of each server too. ratbox does this
+		// during server link.
+		s.maybeQueueMessage(irc.Message{
+			Prefix:  string(server.SID),
+			Command: "ENCAP",
+			Params:  []string{"*", "GCAP", server.capabsString()},
 		})
 	}
 
@@ -800,23 +821,16 @@ func (s *LocalServer) privmsgCommand(m irc.Message) {
 func (s *LocalServer) sidCommand(m irc.Message) {
 	// Parameters: <server name> <hop count> <SID> <description>
 	// e.g.: :8ZZ SID irc3.example.com 2 9ZQ :My Desc
-
-	if !isValidSID(m.Prefix) {
-		s.quit("Invalid origin")
-		return
-	}
-	originSID := TS6SID(m.Prefix)
-
-	// Do I know this origin?
-	linkedToServer, exists := s.Catbox.Servers[originSID]
-	if !exists {
-		s.quit("Unknown origin")
-		return
-	}
-
 	if len(m.Params) < 4 {
 		// 461 ERR_NEEDMOREPARAMS
 		s.messageFromServer("461", []string{"SID", "Not enough parameters"})
+		return
+	}
+
+	// Do I know this origin? (The server it's linked to)
+	linkedToServer, exists := s.Catbox.Servers[TS6SID(m.Prefix)]
+	if !exists {
+		s.quit(fmt.Sprintf("Unknown origin (SID) %s", m.Prefix))
 		return
 	}
 
@@ -1645,6 +1659,13 @@ func (s *LocalServer) encapCommand(m irc.Message) {
 			Params:  subParams,
 		})
 	}
+	if subCommand == "GCAP" {
+		s.gcapCommand(irc.Message{
+			Prefix:  m.Prefix,
+			Command: subCommand,
+			Params:  subParams,
+		})
+	}
 
 	// Propagate everywhere.
 	for _, server := range s.Catbox.LocalServers {
@@ -1710,7 +1731,7 @@ func (s *LocalServer) klineCommand(m irc.Message) {
 	// it was propagated there.
 }
 
-// UNKLINW <user mask> <host mask>
+// UNKLINE <user mask> <host mask>
 func (s *LocalServer) unklineCommand(m irc.Message) {
 	if len(m.Params) < 2 {
 		// 461 ERR_NEEDMOREPARAMS
@@ -1742,6 +1763,51 @@ func (s *LocalServer) unklineCommand(m irc.Message) {
 	s.Catbox.removeKLine(userMask, hostMask, source)
 
 	// We don't need to propagate as UNKLINE comes inside ENCAP.
+}
+
+// Upon link to a server, it tells us about the capabilities of all servers
+// it introduces to us. This comes in this form:
+// :3SN ENCAP * GCAP :QS EX CHW IE GLN KNOCK TB ENCAP SAVE SAVETS_100
+// Where 3SN is the server with these capabilities.
+// We remember this information so we can tell servers we link to in the future.
+func (s *LocalServer) gcapCommand(m irc.Message) {
+	if len(m.Params) == 0 {
+		// We're TS6 only. Servers must have at least QS and ENCAP to be TS6.
+		s.quit(fmt.Sprintf("GCAP from %s with no capabs", m.Prefix))
+		return
+	}
+
+	// Ensure we know the server.
+	server, exists := s.Catbox.Servers[TS6SID(m.Prefix)]
+	if !exists {
+		s.quit(fmt.Sprintf("Unknown server (GCAP): %s", m.Prefix))
+		return
+	}
+
+	capabs := parseCapabsString(m.Params[0])
+
+	// For TS6 we must have QS and ENCAP.
+
+	_, exists = capabs["QS"]
+	if !exists {
+		s.quit(fmt.Sprintf("%s is missing capab QS", server.Name))
+		return
+	}
+
+	_, exists = capabs["ENCAP"]
+	if !exists {
+		s.quit(fmt.Sprintf("%s is missing capab ENCAP", server.Name))
+		return
+	}
+
+	if server.Capabs != nil {
+		s.quit(fmt.Sprintf("Already received GCAP from %s!", server.Name))
+		return
+	}
+
+	server.Capabs = capabs
+
+	// We don't need to propagate. GCAP comes inside ENCAP. Already propagated.
 }
 
 // Params: <uid> <nick>

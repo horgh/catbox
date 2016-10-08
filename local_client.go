@@ -6,7 +6,6 @@ import (
 	"log"
 	"net"
 	"strconv"
-	"strings"
 	"time"
 
 	"summercat.com/irc"
@@ -406,6 +405,7 @@ func (c *LocalClient) registerServer() {
 		Name:        c.PreRegServerName,
 		Description: c.PreRegServerDesc,
 		HopCount:    1,
+		Capabs:      c.PreRegCapabs,
 		LocalServer: ls,
 	}
 
@@ -434,11 +434,20 @@ func (c *LocalClient) registerServer() {
 		if server == ls {
 			continue
 		}
+
 		server.maybeQueueMessage(irc.Message{
+			// It's linked to us, so set prefix to ourself.
 			Prefix:  string(c.Catbox.Config.TS6SID),
 			Command: "SID",
 			Params: []string{s.Name, fmt.Sprintf("%d", s.HopCount+1), string(s.SID),
 				s.Description},
+		})
+
+		// Also tell them about its capabs.
+		server.maybeQueueMessage(irc.Message{
+			Prefix:  string(s.SID),
+			Command: "ENCAP",
+			Params:  []string{"*", "GCAP", s.capabsString()},
 		})
 	}
 }
@@ -732,20 +741,7 @@ func (c *LocalClient) capabCommand(m irc.Message) {
 		return
 	}
 
-	capabs := strings.Split(m.Params[0], " ")
-
-	// No real validation to do on these right now. Just record them.
-
-	for _, cap := range capabs {
-		cap = strings.TrimSpace(cap)
-		if len(cap) == 0 {
-			continue
-		}
-
-		cap = strings.ToUpper(cap)
-
-		c.PreRegCapabs[cap] = struct{}{}
-	}
+	c.PreRegCapabs = parseCapabsString(m.Params[0])
 
 	// For TS6 we must have QS and ENCAP.
 

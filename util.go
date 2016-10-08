@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"regexp"
+	"sort"
 	"strings"
 )
 
@@ -19,6 +20,13 @@ const maxTopicLength = 300
 // It counts ~ in its length.
 // This limit of 10 I do not see in any RFC. However, ratbox has it hardcoded.
 const maxUsernameLength = 10
+
+// ByHopCount is a sort type for sorting *Servers by their hop count
+type ByHopCount []*Server
+
+func (h ByHopCount) Len() int           { return len(h) }
+func (h ByHopCount) Swap(i, j int)      { h[i], h[j] = h[j], h[i] }
+func (h ByHopCount) Less(i, j int) bool { return h[i].HopCount < h[j].HopCount }
 
 // canonicalizeNick converts the given nick to its canonical representation
 // (which must be unique).
@@ -497,4 +505,36 @@ func commaChannelsToChannelNames(s string) []string {
 	}
 
 	return channelNameList
+}
+
+// Take a space separated capabilities string and return a map.
+func parseCapabsString(s string) map[string]struct{} {
+	rawCapabs := strings.Split(s, " ")
+	capabs := make(map[string]struct{})
+
+	for _, cap := range rawCapabs {
+		cap = strings.TrimSpace(cap)
+		if len(cap) == 0 {
+			continue
+		}
+
+		cap = strings.ToUpper(cap)
+
+		capabs[cap] = struct{}{}
+	}
+
+	return capabs
+}
+
+// Sort server maps by hop count, ascending.
+func sortServersByHopCount(serverMap map[TS6SID]*Server) []*Server {
+	servers := []*Server{}
+
+	for _, server := range serverMap {
+		servers = append(servers, server)
+	}
+
+	sort.Sort(ByHopCount(servers))
+
+	return servers
 }

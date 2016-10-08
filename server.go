@@ -16,6 +16,14 @@ type Server struct {
 	// Number of hops from us to this server.
 	HopCount int
 
+	// Capabilities. TS6 servers must support at least QS (quit storm) and
+	// ENCAP. There are several others. ratbox servers offer for example:
+	// QS EX CHW IE GLN KNOCK TB ENCAP SAVE SAVETS_100
+	// Primarily I record this as on link to a server we pass along the capabs
+	// of all known servers to the other side (as part of TS6 burst). This ensures
+	// all servers know each other's capabilities.
+	Capabs map[string]struct{}
+
 	// If this server is directly connected to us (local), then LocalServer is
 	// set.
 	LocalServer *LocalServer
@@ -39,6 +47,19 @@ func (s *Server) isLocal() bool {
 
 func (s *Server) isRemote() bool {
 	return !s.isLocal()
+}
+
+// Turn our capabilities into a single space separated string.
+func (s *Server) capabsString() string {
+	str := ""
+	for capab := range s.Capabs {
+		if len(str) > 0 {
+			str += " " + capab
+		} else {
+			str += capab
+		}
+	}
+	return str
 }
 
 // Find all servers linked to us, directly or not.
