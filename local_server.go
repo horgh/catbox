@@ -405,8 +405,13 @@ func (s *LocalServer) handleMessage(m irc.Message) {
 		return
 	}
 
+	if m.Command == "CLICONN" {
+		s.cliconnCommand(m)
+		return
+	}
+
 	// Ignore certain commands we know about but don't handle yet (or ever).
-	if m.Command == "AWAY" || m.Command == "CLICONN" {
+	if m.Command == "AWAY" {
 		return
 	}
 
@@ -1930,4 +1935,16 @@ func (s *LocalServer) numericCommand(m irc.Message) {
 
 	// It's destined somewhere remote. Pass it on its way.
 	user.ClosestServer.maybeQueueMessage(m)
+}
+
+// This is a custom command I built into ratbox.
+// For more information, refer to where I generate it in registerUser().
+// Do nothing but propagate.
+func (s *LocalServer) cliconnCommand(m irc.Message) {
+	for _, server := range s.Catbox.LocalServers {
+		if server == s {
+			continue
+		}
+		server.maybeQueueMessage(m)
+	}
 }

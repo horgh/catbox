@@ -354,6 +354,20 @@ func (c *LocalClient) registerUser() {
 				u.RealName,
 			},
 		})
+
+		// Send a CLICONN message. This is a custom command I built into ratbox
+		// so that local opers can know about remote connections. For catbox we
+		// don't need to handle this to know about remote connections as I inform
+		// local operators about remote users connecting in the UID command, but to
+		// allow my ratbox servers to know about connections to ratbox, send CLICONN
+		// (for now). If I ever stop running all ratbox servers on my network, this
+		// can be removed.
+		// catbox should propagate this command though.
+		server.maybeQueueMessage(irc.Message{
+			Prefix:  string(u.UID),
+			Command: "CLICONN",
+			Params:  []string{c.Catbox.Config.ServerName, u.IP},
+		})
 	}
 
 	// Tell local operators.
