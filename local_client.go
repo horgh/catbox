@@ -468,7 +468,9 @@ func (c *LocalClient) sendServerIntro(pass string) {
 		// generate the QUITs ourself locally (see client.c in ircd-ratbox).
 		// ENCAP means support for the ENCAP command. See
 		// http://www.leeh.co.uk/ircd/encap.txt
-		Params: []string{"QS ENCAP"},
+		// TB means support for topic burst. We send/receive TB commands during
+		// burst which tells the topics in channels.
+		Params: []string{"QS ENCAP TB"},
 	})
 
 	// SERVER <name> <hopcount> <description>

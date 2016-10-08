@@ -140,6 +140,13 @@ func (u *LocalUser) join(channelName string) {
 	if len(channel.Topic) > 0 {
 		// 332 RPL_TOPIC
 		u.messageFromServer("332", []string{channel.Name, channel.Topic})
+		// 333 tells about who set the topic and topic TS (when set). This is not
+		// standard.
+		u.messageFromServer("333", []string{
+			channel.Name,
+			channel.TopicSetter,
+			fmt.Sprintf("%d", channel.TopicTS),
+		})
 	}
 
 	// Channel flag: = (public), * (private), @ (secret)
@@ -1292,6 +1299,14 @@ func (u *LocalUser) topicCommand(m irc.Message) {
 
 		// 332 RPL_TOPIC
 		u.messageFromServer("332", []string{channel.Name, channel.Topic})
+
+		// 333 tells about who set the topic and topic TS (when set). This is not
+		// standard.
+		u.messageFromServer("333", []string{
+			channel.Name,
+			channel.TopicSetter,
+			fmt.Sprintf("%d", channel.TopicTS),
+		})
 		return
 	}
 
@@ -1305,6 +1320,8 @@ func (u *LocalUser) topicCommand(m irc.Message) {
 	// If we have channel operators then we need additional logic.
 
 	channel.Topic = topic
+	channel.TopicTS = time.Now().Unix()
+	channel.TopicSetter = u.User.nickUhost()
 
 	// Tell all members of the channel, including the client.
 	// Only local clients. We tell remote users by telling all servers.
@@ -1314,7 +1331,6 @@ func (u *LocalUser) topicCommand(m irc.Message) {
 			continue
 		}
 
-		// 332 RPL_TOPIC
 		u.messageUser(member, "TOPIC", []string{channel.Name, channel.Topic})
 	}
 

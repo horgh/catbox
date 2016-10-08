@@ -307,7 +307,23 @@ func (s *LocalServer) sendBurst() {
 				},
 			})
 		}
+
+		// If they support the TB capab then send them TB commands. This tells them
+		// the topic for each channel.
+		if s.Server.hasCapability("TB") && len(channel.Topic) > 0 {
+			s.maybeQueueMessage(irc.Message{
+				Prefix:  string(s.Catbox.Config.TS6SID),
+				Command: "TB",
+				Params: []string{
+					channel.Name,
+					fmt.Sprintf("%d", channel.TopicTS),
+					channel.TopicSetter,
+					channel.Topic,
+				},
+			})
+		}
 	}
+
 }
 
 // The server sent us a message. Deal with it.
@@ -353,6 +369,11 @@ func (s *LocalServer) handleMessage(m irc.Message) {
 
 	if m.Command == "SJOIN" {
 		s.sjoinCommand(m)
+		return
+	}
+
+	if m.Command == "TB" {
+		s.tbCommand(m)
 		return
 	}
 
@@ -977,6 +998,108 @@ func (s *LocalServer) sjoinCommand(m irc.Message) {
 		}
 
 		server.maybeQueueMessage(m)
+	}
+}
+
+// We receive TB commands during burst if the other side supports the TB
+// capability. They tell us about the topic of a channel.
+// Check the TS and potentially update the topic, tell local users, and
+// propagate.
+func (s *LocalServer) tbCommand(m irc.Message) {
+	// Parameters: <channel> <topic TS> [topic setter nick!user@host] <topic>
+	// Setter is optional.
+	if len(m.Params) < 3 {
+		// 461 ERR_NEEDMOREPARAMS
+		s.messageFromServer("461", []string{"TB", "Not enough parameters"})
+		return
+	}
+
+	// Look up the server telling us about this.
+	server, exists := s.Catbox.Servers[TS6SID(m.Prefix)]
+	if !exists {
+		s.quit("Unknown server (TB)")
+		return
+	}
+
+	// Look up the channel. We must know about it already.
+	channel, exists := s.Catbox.Channels[canonicalizeChannel(m.Params[0])]
+	if !exists {
+		s.quit("Unknown channel (TB)")
+		return
+	}
+
+	topicTS, err := strconv.ParseInt(m.Params[1], 10, 64)
+	if err != nil {
+		s.quit("Invalid topic TS (TB)")
+		return
+	}
+
+	// We could validate the format is nick!user@host.
+	// Use server name for setter if setter not present.
+	setter := ""
+	if len(m.Params) >= 4 {
+		setter = m.Params[2]
+	} else {
+		setter = server.Name
+	}
+
+	topic := ""
+	if len(m.Params) >= 4 {
+		topic = m.Params[3]
+	} else {
+		topic = m.Params[2]
+	}
+
+	// If the topic matches what we have, nothing to do.
+	if topic == channel.Topic {
+		return
+	}
+
+	// The topic is different. Should we accept the other side though?
+	acceptTopic := false
+
+	// Accept it if we have none set.
+	if len(channel.Topic) == 0 {
+		acceptTopic = true
+	}
+
+	// Accept it if their topic is older.
+	if topicTS < channel.TopicTS {
+		acceptTopic = true
+	}
+
+	if !acceptTopic {
+		return
+	}
+
+	// We either have no topic, or our topic is set but we're receiving an older
+	// one.
+
+	// Update our records.
+	channel.Topic = topic
+	channel.TopicSetter = setter
+	channel.TopicTS = topicTS
+
+	// Tell our local clients about the topic change.
+	for memberUID := range channel.Members {
+		member := s.Catbox.Users[memberUID]
+		if !member.isLocal() {
+			continue
+		}
+
+		member.LocalUser.maybeQueueMessage(irc.Message{
+			Prefix:  server.Name,
+			Command: "TOPIC",
+			Params:  []string{channel.Name, channel.Topic},
+		})
+	}
+
+	// Propagate to other servers.
+	for _, ls := range s.Catbox.LocalServers {
+		if ls == s {
+			continue
+		}
+		ls.maybeQueueMessage(m)
 	}
 }
 

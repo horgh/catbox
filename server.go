@@ -62,6 +62,12 @@ func (s *Server) capabsString() string {
 	return str
 }
 
+// Check if the server supports a given capability.
+func (s *Server) hasCapability(cap string) bool {
+	_, exists := s.Capabs[cap]
+	return exists
+}
+
 // Find all servers linked to us, directly or not.
 func (s *Server) getLinkedServers(allServers map[TS6SID]*Server) []*Server {
 	linkedServers := []*Server{}
