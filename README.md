@@ -1,20 +1,20 @@
 # catbox
-This is yet another IRC server! I'm creating it because I enjoy working with
-IRC and I thought it would be fun and good practice with Go. Also, I run a
-small IRC network, and it would be nice to have my own server for it. Right now
-I use ircd-ratbox which is great, but I wanted to try building one myself.
+This is yet another IRC server! I created it because I enjoy working with IRC
+and I thought it would be fun and good practice with Go. Also, I run a small
+IRC network, and I thought it would be nice to have my own server for it. Right
+now I use ircd-ratbox which is great, but I wanted to try building one myself.
 
 I call it catbox. I went with the name for a few reasons: My domain name is
 summercat.com so I already have a cat reference, cats love boxes, and because
-of it's similar to ircd-ratbox!
+of its similarity to ircd-ratbox!
 
 Features:
 
   * Client protocol is generally RFC 2812/1459. It does not fully implement the
     protocol and diverges in some cases for simplicity.
-  * Server to server communication using the TS6 protocol. This means it is able
-    to link to TS6 ircds (to a degree), such as ircd-ratbox. It can also link to
-    other instances of itself.
+  * Server to server communication using the TS6 protocol. This means it is
+    able to link to TS6 ircds (in theory), such as ircd-ratbox. It can also
+    link to other instances of itself.
   * Channels, private messages, etc. Most of the basic IRC commands and features
     one expects are present.
   * No channel operators. (Maybe in the future)
@@ -25,19 +25,26 @@ Features:
   * Private (WHOIS shows no channels, no LIST).
   * Server to server connections allow server IPs to change without
     configuration updates (i.e., permitting dynamic server IPs)
+  * Network wide connection notices sent to operators.
 
 Design philosophy:
 
-  * Only a subset of RFC 2812 / 1459 which I personally think makes sense. Only
-    what is critical for a minimal IRC server. As simple as possible. If the
+  * Support only a subset of RFC 2812 / 1459 which I think makes sense. In
+    practice this means what is critical for a minimal IRC server. If the
     RFC suggests something I don't like, and I think clients will be compliant,
-    then I'll probably do something else. I'll try to track differences.
+    then I'll probably do something else. I'll try to track differences. This
+    is also influenced by how the network I run operates (typically no channel
+    operators and well behaved users).
   * Minimal configuration
   * Simple and easily extensible
   * If there are extra parameters to commands, ignore them.
 
 
 # Setup
+Build the daemon:
+
+    go build
+
 The daemon always listens on a plaintext port and a TLS port. This means you
 must have a certificate and key available.
 
@@ -49,13 +56,12 @@ Copy the three configuration files {example,opers-example,servers-example}.conf
 and update their options as you need. Below I make suggestions for what you will
 want to update.
 
-Once you have edited the configuration files, you can start the daemona like so:
+Once you have edited the configuration files, you can start the daemon like so:
 
-    ./ircd -config server.conf
+    ./catbox -config server.conf
 
 
 ## server.conf (example.conf)
-
   * You will probably need to change listen-host
   * You will probably want to change server-name
   * You will probably want to change the opers-config and servers-config paths.
@@ -106,7 +112,7 @@ This is not exhaustive, but some of the differences are:
   * http://ircdocs.horse/
 
 
-# TS6 notes
+## TS6 notes
   * Nick TS changes when: Client connects or when it changes its nick.
   * Channel TS changes when: Channel created
   * Server to server (ircd-ratbox) commands I'm most interested in:
