@@ -661,11 +661,16 @@ func (c *LocalClient) userCommand(m irc.Message) {
 
 	// We could do something with user mode here.
 
-	if !isValidRealName(m.Params[3]) {
+	realName := m.Params[3]
+	if len(realName) > maxRealNameLength {
+		realName = realName[:maxRealNameLength]
+	}
+
+	if !isValidRealName(realName) {
 		c.messageFromServer("ERROR", []string{"Invalid realname"})
 		return
 	}
-	c.PreRegRealName = m.Params[3]
+	c.PreRegRealName = realName
 
 	// If we have a nick, then we're done registration.
 	if len(c.PreRegDisplayNick) > 0 {

@@ -21,6 +21,9 @@ const maxTopicLength = 300
 // This limit of 10 I do not see in any RFC. However, ratbox has it hardcoded.
 const maxUsernameLength = 10
 
+// This matches ratbox's.
+const maxRealNameLength = 50
+
 // ByHopCount is a sort type for sorting *Servers by their hop count
 type ByHopCount []*Server
 
@@ -109,8 +112,7 @@ func isValidUser(u string) bool {
 }
 
 func isValidRealName(s string) bool {
-	// Arbitrary. Length only for now.
-	return len(s) <= 64
+	return len(s) <= maxRealNameLength
 }
 
 // isValidChannel checks a channel name for validity.
