@@ -6,6 +6,7 @@ import (
 	"log"
 	"net"
 	"strconv"
+	"strings"
 	"time"
 
 	"summercat.com/irc"
@@ -133,10 +134,12 @@ func (c *LocalClient) readLoop() {
 
 		buf, err := c.Conn.Read()
 		if err != nil {
-			log.Printf("Client %s: %s", c, err)
+			log.Printf("Client %s: Read problem: %s", c, err)
 			c.Catbox.newEvent(Event{Type: DeadClientEvent, Client: c})
 			break
 		}
+
+		log.Printf("Client %s: Read: %s", c, strings.TrimSuffix(buf, "\r\n"))
 
 		message, err := irc.ParseMessage(buf)
 		if err != nil {
@@ -188,12 +191,22 @@ Loop:
 				break Loop
 			}
 
-			err := c.Conn.WriteMessage(message)
+			buf, err := message.Encode()
 			if err != nil {
-				log.Printf("Client %s: %s: %s", c, message, err)
+				log.Printf("Client %s: Unable to encode message: %s: %s", c, message,
+					err)
+				continue
+			}
+
+			err = c.Conn.Write(buf)
+			if err != nil {
+				log.Printf("Client %s: Write problem: %s: %s", c, buf, err)
 				c.Catbox.newEvent(Event{Type: DeadClientEvent, Client: c})
 				break Loop
 			}
+
+			log.Printf("Client %s: Sent: %s", c, strings.TrimSuffix(buf, "\r\n"))
+
 		case <-c.Catbox.ShutdownChan:
 			break Loop
 		}

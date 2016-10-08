@@ -5,10 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net"
-	"strings"
 	"time"
-
-	"summercat.com/irc"
 )
 
 // Conn is a connection to a client/server
@@ -63,8 +60,6 @@ func (c Conn) Read() (string, error) {
 		return "", err
 	}
 
-	log.Printf("Read: %s", strings.TrimRight(line, "\r\n"))
-
 	return line, nil
 }
 
@@ -90,17 +85,5 @@ func (c Conn) Write(s string) error {
 		return fmt.Errorf("Flush error: %s", err)
 	}
 
-	log.Printf("Sent: %s", strings.TrimRight(s, "\r\n"))
-
 	return nil
-}
-
-// WriteMessage writes an IRC message to the connection.
-func (c Conn) WriteMessage(m irc.Message) error {
-	buf, err := m.Encode()
-	if err != nil {
-		return fmt.Errorf("Unable to encode message: %s", err)
-	}
-
-	return c.Write(buf)
 }
