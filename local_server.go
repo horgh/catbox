@@ -1410,7 +1410,8 @@ func (s *LocalServer) modeCommand(m irc.Message) {
 	}
 
 	// Now look at the mode changes that took place.
-	motion := ' '
+	// Default to + like we do with user MODE command.
+	motion := '+'
 	for _, c := range m.Params[1] {
 		if c == '+' || c == '-' {
 			motion = c
@@ -1421,10 +1422,18 @@ func (s *LocalServer) modeCommand(m irc.Message) {
 		if c == 'i' || c == 'o' {
 			if motion == '+' {
 				user.Modes[byte(c)] = struct{}{}
+				if c == 'o' {
+					s.Catbox.Opers[user.UID] = user
+					s.Catbox.noticeLocalOpers(fmt.Sprintf("%s@%s became an operator.",
+						user.DisplayNick, user.Server.Name))
+				}
 			} else {
 				_, exists := user.Modes[byte(c)]
 				if exists {
 					delete(user.Modes, byte(c))
+					if c == 'o' {
+						delete(s.Catbox.Opers, user.UID)
+					}
 				}
 			}
 		}

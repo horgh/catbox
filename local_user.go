@@ -1011,6 +1011,9 @@ func (u *LocalUser) operCommand(m irc.Message) {
 			Params:  []string{string(u.User.UID), "+o"},
 		})
 	}
+
+	u.Catbox.noticeLocalOpers(fmt.Sprintf("%s@%s became an operator.",
+		u.User.DisplayNick, u.Catbox.Config.ServerName))
 }
 
 // MODE command applies either to nicknames or to channels.
