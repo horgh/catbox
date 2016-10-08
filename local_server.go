@@ -77,6 +77,7 @@ func (s *LocalServer) quit(msg string) {
 
 	// When quitting, you may think we should send SQUIT to all servers.
 	// But we don't. Or ircd-ratbox does not. Do the same.
+	// Just send it to our local servers, they propagate it.
 	s.messageFromServer("ERROR", []string{msg})
 
 	close(s.WriteChan)
@@ -118,6 +119,7 @@ func (s *LocalServer) serverSplitCleanUp(lostServer *Server) {
 	// Include the one we're losing with its links.
 	lostServers = append(lostServers, lostServer)
 
+	// Look for users we are losing.
 	for _, user := range s.Catbox.Users {
 		if user.isLocal() {
 			continue

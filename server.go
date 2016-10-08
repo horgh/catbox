@@ -81,6 +81,10 @@ func (s *Server) getLinkedServers(allServers map[TS6SID]*Server) []*Server {
 			continue
 		}
 
+		// It's linked to us.
+		linkedServers = append(linkedServers, server)
+
+		// Find any servers linked to it. They are linked to us too (indirectly).
 		linkedServers = append(linkedServers,
 			server.getLinkedServers(allServers)...)
 	}

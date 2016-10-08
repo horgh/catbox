@@ -730,17 +730,11 @@ func (cb *Catbox) noticeOpers(msg string) {
 			user.LocalUser.serverNotice(msg)
 			continue
 		}
-	}
 
-	// Send as WALLOPS to each server.
-	for _, server := range cb.LocalServers {
-		if server.Bursting {
-			continue
-		}
-		server.maybeQueueMessage(irc.Message{
+		user.ClosestServer.maybeQueueMessage(irc.Message{
 			Prefix:  string(cb.Config.TS6SID),
-			Command: "WALLOPS",
-			Params:  []string{msg},
+			Command: "NOTICE",
+			Params:  []string{string(user.UID), msg},
 		})
 	}
 }

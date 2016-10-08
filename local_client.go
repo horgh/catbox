@@ -344,6 +344,8 @@ func (c *LocalClient) registerUser() {
 	}
 
 	// Tell local operators.
+	// Remote operators can know as their server will receive a UID command, so
+	// their server can tell them upon receipt of that.
 	for _, oper := range c.Catbox.Opers {
 		if !oper.isLocal() {
 			continue
@@ -415,8 +417,17 @@ func (c *LocalClient) registerServer() {
 	c.Catbox.LocalServers[ls.ID] = ls
 	c.Catbox.Servers[s.SID] = s
 
-	ls.Catbox.noticeOpers(fmt.Sprintf("Established link to %s.",
-		c.PreRegServerName))
+	linkNotice := ""
+	if c.isTLS() {
+		linkNotice = fmt.Sprintf("Established link to %s with %s (%s).",
+			c.PreRegServerName, tlsVersionToString(c.TLSConnectionState.Version),
+			cipherSuiteToString(c.TLSConnectionState.CipherSuite))
+	} else {
+		linkNotice = fmt.Sprintf("Established link to %s (PLAINTEXT).",
+			c.PreRegServerName)
+	}
+
+	ls.Catbox.noticeOpers(linkNotice)
 
 	ls.sendBurst()
 
