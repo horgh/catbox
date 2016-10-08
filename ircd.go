@@ -5,7 +5,10 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"os"
+	"os/signal"
 	"sync"
+	"syscall"
 	"time"
 
 	"summercat.com/irc"
@@ -137,6 +140,9 @@ const (
 
 	// WakeUpEvent means the server should wake up and do bookkeeping.
 	WakeUpEvent
+
+	// RehashEvent tells the server to rehash.
+	RehashEvent
 )
 
 func main() {
@@ -244,6 +250,25 @@ func (cb *Catbox) start() error {
 	cb.WG.Add(1)
 	go cb.alarm()
 
+	// Catch SIGHUP and rehash.
+	signalChan := make(chan os.Signal)
+	signal.Notify(signalChan, syscall.SIGHUP)
+
+	cb.WG.Add(1)
+	go func() {
+		defer cb.WG.Done()
+		for {
+			select {
+			case <-signalChan:
+				log.Printf("Received SIGHUP signal, rehashing")
+				cb.newEvent(Event{Type: RehashEvent})
+			case <-cb.ShutdownChan:
+				log.Printf("Signal listener cleaning up")
+				return
+			}
+		}
+	}()
+
 	cb.eventLoop()
 
 	// We don't need to drain any channels. None close that will have any
@@ -310,6 +335,11 @@ func (cb *Catbox) eventLoop() {
 			if evt.Type == WakeUpEvent {
 				cb.checkAndPingClients()
 				cb.connectToServers()
+				continue
+			}
+
+			if evt.Type == RehashEvent {
+				cb.rehash(nil)
 				continue
 			}
 
@@ -1074,4 +1104,28 @@ func (cb *Catbox) quitRemoteUser(u *User, message string) {
 		delete(cb.Opers, u.UID)
 	}
 	delete(cb.Nicks, canonicalizeNick(u.DisplayNick))
+}
+
+// Rehash reloads our config.
+//
+// Only certain config options can change during rehash.
+//
+// We could close listeners and open new ones. But nah.
+func (cb *Catbox) rehash(byUser *User) {
+	cfg, err := checkAndParseConfig(cb.ConfigFile)
+	if err != nil {
+		cb.noticeOpers(fmt.Sprintf("Rehash: Configuration problem: %s", err))
+		return
+	}
+
+	cb.Config.MOTD = cfg.MOTD
+	cb.Config.Opers = cfg.Opers
+	cb.Config.Servers = cfg.Servers
+
+	if byUser != nil {
+		cb.noticeOpers(fmt.Sprintf("%s rehashed configuration.",
+			byUser.DisplayNick))
+	} else {
+		cb.noticeOpers("Rehashed configuration.")
+	}
 }

@@ -1,6 +1,5 @@
 # TODO
 
-  * HUP should rehash
   * Daemonize
   * Log to file
   * Additional automated testing

@@ -1665,22 +1665,7 @@ func (u *LocalUser) rehashCommand(m irc.Message) {
 		return
 	}
 
-	cfg, err := checkAndParseConfig(u.Catbox.ConfigFile)
-	if err != nil {
-		u.Catbox.noticeOpers(fmt.Sprintf("Rehash: Configuration problem: %s", err))
-		return
-	}
-
-	// Only certain config options can change during rehash.
-
-	// We could close listeners and open new ones. But nah.
-
-	u.Catbox.Config.MOTD = cfg.MOTD
-	u.Catbox.Config.Opers = cfg.Opers
-	u.Catbox.Config.Servers = cfg.Servers
-
-	u.Catbox.noticeOpers(fmt.Sprintf("%s rehashed configuration.",
-		u.User.DisplayNick))
+	u.Catbox.rehash(u.User)
 }
 
 // Map is a non standard command. It shows linked servers, and in an ASCII way,
