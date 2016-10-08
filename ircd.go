@@ -734,7 +734,10 @@ func (cb *Catbox) noticeOpers(msg string) {
 		user.ClosestServer.maybeQueueMessage(irc.Message{
 			Prefix:  string(cb.Config.TS6SID),
 			Command: "NOTICE",
-			Params:  []string{string(user.UID), msg},
+			Params: []string{
+				string(user.UID),
+				fmt.Sprintf("*** Notice --- %s", msg),
+			},
 		})
 	}
 }
@@ -825,66 +828,52 @@ func (cb *Catbox) removeKLine(userMask, hostMask, source string) bool {
 // We tell local users a Quit if they are remote.
 //
 // We forget the user.
-func (cb *Catbox) issueKill(u *User, reason string) {
+//
+// If byUser is nil, then this is a server KILL. Source will be the server
+// name.
+func (cb *Catbox) issueKill(byUser, u *User, message string) {
 	// Parameters: <target user UID> <reason>
 	// Reason has format:
 	// <source> (<reason text>)
 	// Where <source> looks something like:
 	// <killer server name>!<killer user host>!<killer user username>!<killer nick>
 
-	serverReason := fmt.Sprintf("%s (%s)", cb.Config.ServerName, reason)
+	reason := ""
+	killer := ""
+	if byUser == nil {
+		reason = fmt.Sprintf("%s (%s)", cb.Config.ServerName, message)
+		killer = cb.Config.ServerName
+	} else {
+		reason = fmt.Sprintf("%s!%s!%s!%s (%s)", cb.Config.ServerName,
+			byUser.Hostname, byUser.Username, byUser.DisplayNick, message)
+		killer = byUser.DisplayNick
+	}
 
 	// Send to all servers.
 	for _, server := range cb.LocalServers {
 		server.maybeQueueMessage(irc.Message{
 			Prefix:  string(cb.Config.TS6SID),
 			Command: "KILL",
-			Params:  []string{string(u.UID), serverReason},
+			Params:  []string{string(u.UID), reason},
 		})
 	}
 
-	quitReason := fmt.Sprintf("Killed (%s (%s))", cb.Config.ServerName, reason)
+	// Tell all opers about it.
+	cb.noticeOpers(fmt.Sprintf("Received KILL message for %s. From %s (%s)",
+		u.DisplayNick, killer, message))
+
+	quitReason := fmt.Sprintf("Killed (%s (%s))", killer, message)
 
 	// If it's a local user, drop it.
 	if u.isLocal() {
+		// We don't need to propagate a QUIT. We'll be sending a KILL.
 		u.LocalUser.quit(quitReason, false)
 		return
 	}
 
 	// It's a remote user. Tell local users a quit message.
 	// And forget the remote user.
-	informedUsers := make(map[TS6UID]struct{})
-	for _, channel := range u.Channels {
-		for memberUID := range channel.Members {
-			member := cb.Users[memberUID]
-			if !member.isLocal() {
-				continue
-			}
-
-			_, exists := informedUsers[member.UID]
-			if exists {
-				continue
-			}
-			informedUsers[member.UID] = struct{}{}
-
-			member.LocalUser.maybeQueueMessage(irc.Message{
-				Prefix:  u.nickUhost(),
-				Command: "QUIT",
-				Params:  []string{quitReason},
-			})
-		}
-
-		delete(channel.Members, u.UID)
-		if len(channel.Members) == 0 {
-			delete(cb.Channels, channel.Name)
-		}
-	}
-
-	delete(cb.Users, u.UID)
-	if u.isOperator() {
-		delete(cb.Opers, u.UID)
-	}
-	delete(cb.Nicks, canonicalizeNick(u.DisplayNick))
+	cb.quitRemoteUser(u, quitReason)
 }
 
 // Build irc.Messages that make up a WHOIS response. You can then send them to

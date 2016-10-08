@@ -1485,42 +1485,7 @@ func (u *LocalUser) killCommand(m irc.Message) {
 		reason = "<No reason given>"
 	}
 
-	// Tell all opers about it.
-	u.Catbox.noticeOpers(fmt.Sprintf("Received KILL message for %s. From %s (%s)",
-		targetUser.DisplayNick, u.User.DisplayNick, reason))
-
-	quitReason := fmt.Sprintf("Killed (%s (%s))", u.User.DisplayNick, reason)
-
-	// If it's a local user, cut them off.
-	if targetUser.isLocal() {
-		// We don't propagate a QUIT. We do it by sending a KILL.
-		targetUser.LocalUser.quit(quitReason, false)
-	}
-
-	// If it's a remote user, forget them. Show clients in channels with them
-	// a quit message.
-	if targetUser.isRemote() {
-		u.Catbox.quitRemoteUser(targetUser, quitReason)
-	}
-
-	// Propagate KILL to all servers.
-	// For server message, the reason string must look like this:
-	// <source> (<Reason>)
-	// Where source looks like:
-	// <server name>!<user host>!<user>!<nick>
-	serverReason := fmt.Sprintf("%s!%s!%s!%s (%s)",
-		u.Catbox.Config.ServerName,
-		u.User.Hostname,
-		u.User.Username,
-		u.User.DisplayNick,
-		reason)
-	for _, server := range u.Catbox.LocalServers {
-		server.maybeQueueMessage(irc.Message{
-			Prefix:  string(u.User.UID),
-			Command: "KILL",
-			Params:  []string{string(targetUser.UID), serverReason},
-		})
-	}
+	u.Catbox.issueKill(u.User, targetUser, reason)
 }
 
 // Apply a KLine (user ban) locally and cut off any users matching it.
