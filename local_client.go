@@ -40,6 +40,10 @@ type LocalClient struct {
 	// Track if we overflow our send queue. If we do, we'll kill the client.
 	SendQueueExceeded bool
 
+	// Track how many messages we receive in a pre-registered state.
+	// If we hit a defined threshold, kill the connection.
+	PreRegisterMessageCount int
+
 	// Info client may send us before we complete its registration and promote it
 	// to a user or server.
 
@@ -75,6 +79,10 @@ type LocalClient struct {
 	SentSERVER bool
 	SentSVINFO bool
 }
+
+// MaxAllowedPreRegisterMessageCount defines how many messages a client may send
+// us before registration before we consider them abusive and cut them off.
+const MaxAllowedPreRegisterMessageCount = 10
 
 // NewLocalClient creates a LocalClient
 func NewLocalClient(cb *Catbox, id uint64, conn net.Conn) *LocalClient {
@@ -270,6 +278,28 @@ func (c *LocalClient) registerUser() {
 	}
 
 	lu.User = u
+
+	// Apply any user configuration that matches them.
+	// This may flag the user flood exempt.
+	// This may give the user a spoof.
+	for _, userConfig := range c.Catbox.Config.UserConfigs {
+		if !u.matchesMask(userConfig.UserMask, userConfig.HostMask) {
+			continue
+		}
+
+		u.FloodExempt = userConfig.FloodExempt
+		if u.FloodExempt {
+			lu.serverNotice("Congratulations. You're exempt from flood protection.")
+		}
+
+		if len(userConfig.Spoof) > 0 {
+			u.Hostname = userConfig.Spoof
+			lu.serverNotice(fmt.Sprintf("Spoofing your hostname as %s", u.Hostname))
+		}
+
+		// Match the first only.
+		break
+	}
 
 	// Check if they're klined. Don't accept further if so.
 	for _, kline := range c.Catbox.KLines {
@@ -528,6 +558,14 @@ func (c *LocalClient) handleMessage(m irc.Message) {
 	// Clients SHOULD NOT (section 2.3) send a prefix.
 	if m.Prefix != "" {
 		c.quit("No prefix permitted")
+		return
+	}
+
+	// If they send too many messages before registering, assume they are abusive
+	// and kill their connection.
+	c.PreRegisterMessageCount++
+	if c.PreRegisterMessageCount >= MaxAllowedPreRegisterMessageCount {
+		c.quit("Too many messages")
 		return
 	}
 

@@ -145,6 +145,22 @@ const (
 	RehashEvent
 )
 
+// UserMessageLimit defines a cap on how many messages a user may send at once.
+//
+// As part of flood control, each user has a counter that maxes out at this
+// number. Each message we process from them decrements their counter by one.
+// If their counter reaches 0, we queue their message and process it once their
+// counter becomes positive.
+//
+// Each second we raise each user's counter by one (to this maximum).
+//
+// This is similar to ircd-ratbox's flood control. See its packet.c.
+const UserMessageLimit = 10
+
+// ExcessFloodThreshold defines the number of messages a user may have queued
+// before they get disconnected for flooding.
+const ExcessFloodThreshold = 50
+
 func main() {
 	log.SetFlags(0)
 
@@ -350,6 +366,7 @@ func (cb *Catbox) eventLoop() {
 			if evt.Type == WakeUpEvent {
 				cb.checkAndPingClients()
 				cb.connectToServers()
+				cb.floodControl()
 				continue
 			}
 
@@ -527,7 +544,8 @@ func (cb *Catbox) alarm() {
 			break
 		}
 
-		time.Sleep(cb.Config.WakeupTime)
+		// We need to wake up every second for flood control.
+		time.Sleep(time.Second)
 
 		cb.newEvent(Event{Type: WakeUpEvent})
 	}
@@ -679,6 +697,45 @@ func (cb *Catbox) connectToServers() {
 	}
 }
 
+// floodControl updates the message counters for all users, and potentially
+// processes queued messages for any that hit their limit.
+//
+// Each user will have its message counter increased by 1 to a maximum of
+// UserMessageLimit.
+//
+// Each user will have its queued messages processed until their message counter
+// hits zero.
+//
+// If a user has too many queued messages, we cut them off for excess flooding,
+// but that does not happen here. It happens where we add to the queue. This is
+// to try to kill clients that might otherwise overwhelm us.
+//
+// We expect to be called every ~second.
+//
+// Even if a user is flood exempt, continue checking them here. The reason is
+// if they became an operator, we want to make sure we process any queued
+// messages they may have before that.
+func (cb *Catbox) floodControl() {
+	for _, user := range cb.LocalUsers {
+		// Bump up their message counter by one if they are not maxed out.
+		if user.MessageCounter < UserMessageLimit {
+			user.MessageCounter++
+		}
+
+		// Process their queued messages until their message counter hits zero.
+		for user.MessageCounter > 0 && len(user.MessageQueue) > 0 {
+			// Pull a message off the queue.
+			msg := user.MessageQueue[0]
+			user.MessageQueue = user.MessageQueue[1:]
+
+			// Process it.
+			// handleMessage decrements our message counter.
+			user.handleMessage(msg)
+		}
+	}
+}
+
+// Determine if we are linked to a given server.
 func (cb *Catbox) isLinkedToServer(name string) bool {
 	// We're always linked to ourself.
 	if name == cb.Config.ServerName {
@@ -1147,6 +1204,7 @@ func (cb *Catbox) rehash(byUser *User) {
 	cb.Config.MOTD = cfg.MOTD
 	cb.Config.Opers = cfg.Opers
 	cb.Config.Servers = cfg.Servers
+	cb.Config.UserConfigs = cfg.UserConfigs
 
 	if byUser != nil {
 		cb.noticeOpers(fmt.Sprintf("%s rehashed configuration.",

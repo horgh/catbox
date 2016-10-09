@@ -24,9 +24,6 @@ type Config struct {
 
 	MaxNickLength int
 
-	// Period of time to wait before waking server up (maximum).
-	WakeupTime time.Duration
-
 	// Period of time a client can be idle before we send it a PING.
 	PingTime time.Duration
 
@@ -42,6 +39,9 @@ type Config struct {
 	// Server name to its link information.
 	Servers map[string]*ServerDefinition
 
+	// User configuration info.
+	UserConfigs []UserConfig
+
 	// TS6 SID. Must be unique in the network. Format: [0-9][A-Z0-9]{2}
 	TS6SID TS6SID
 }
@@ -54,6 +54,20 @@ type ServerDefinition struct {
 	Pass               string
 	TLS                bool
 	LastConnectAttempt time.Time
+}
+
+// UserConfig defines settings about users. Matched by usermask and hostmask.
+type UserConfig struct {
+	// For this configuration to apply at registration time, the user must match
+	// the UserMask and HostMask.
+	UserMask string
+	HostMask string
+
+	// Whether to grant the usermask/hostmask flood exemption.
+	FloodExempt bool
+
+	// If non-blank, a spoof to set instead of their host.
+	Spoof string
 }
 
 // checkAndParseConfig checks configuration keys are present and in an
@@ -80,12 +94,12 @@ func checkAndParseConfig(file string) (*Config, error) {
 		"created-date",
 		"motd",
 		"max-nick-length",
-		"wakeup-time",
 		"ping-time",
 		"dead-time",
 		"connect-attempt-time",
 		"opers-config",
 		"servers-config",
+		"users-config",
 		"ts6-sid",
 	}
 
@@ -124,11 +138,6 @@ func checkAndParseConfig(file string) (*Config, error) {
 	}
 	c.MaxNickLength = int(nickLen64)
 
-	c.WakeupTime, err = time.ParseDuration(configMap["wakeup-time"])
-	if err != nil {
-		return nil, fmt.Errorf("Wakeup time is in invalid format: %s", err)
-	}
-
 	c.PingTime, err = time.ParseDuration(configMap["ping-time"])
 	if err != nil {
 		return nil, fmt.Errorf("Ping time is in invalid format: %s", err)
@@ -163,6 +172,20 @@ func checkAndParseConfig(file string) (*Config, error) {
 				err)
 		}
 		c.Servers[name] = link
+	}
+
+	usersConfig, err := config.ReadStringMap(configMap["users-config"])
+	if err != nil {
+		return nil, fmt.Errorf("Unable to load users config: %s", err)
+	}
+
+	for name, value := range usersConfig {
+		userConfig, err := parseUserConfig(value)
+		if err != nil {
+			return nil, fmt.Errorf("Unable to parse user config %s: %s: %s", name,
+				value, err)
+		}
+		c.UserConfigs = append(c.UserConfigs, userConfig)
 	}
 
 	if !isValidSID(configMap["ts6-sid"]) {
@@ -204,5 +227,60 @@ func parseLink(name, s string) (*ServerDefinition, error) {
 		Port:     int(port),
 		Pass:     pass,
 		TLS:      pieces[3] == "1",
+	}, nil
+}
+
+// Parse the value part of a user config line.
+// This is a comma separated value.
+// A line looks like so:
+// <name> = <user mask>,<host mask>,<flood exempt = 1|0>,<spoof>
+//
+// This function takes the portion after the equals sign and parses it.
+//
+// <name> is an identifier for readability in the config. We don't use it beyond
+// that.
+//
+// <user mask> and <host mask> define how to match the user's raw user and
+// host. If they both match, the user falls under this config.
+//
+// Spoof may be empty.
+func parseUserConfig(s string) (UserConfig, error) {
+	piecesUntrimmed := strings.Split(s, ",")
+	if len(piecesUntrimmed) != 4 {
+		return UserConfig{}, fmt.Errorf("Unexpected number of fields")
+	}
+
+	pieces := []string{}
+	for _, piece := range piecesUntrimmed {
+		pieces = append(pieces, strings.TrimSpace(piece))
+	}
+
+	if !isValidUserMask(pieces[0]) {
+		return UserConfig{}, fmt.Errorf("Invalid user mask")
+	}
+	userMask := pieces[0]
+
+	if !isValidHostMask(pieces[1]) {
+		return UserConfig{}, fmt.Errorf("Invalid host mask")
+	}
+	hostMask := pieces[1]
+
+	if pieces[2] != "1" && pieces[2] != "0" {
+		return UserConfig{}, fmt.Errorf("Flood exempt flag must be 1 or 0.")
+	}
+	floodExempt := pieces[2] == "1"
+
+	spoof := pieces[3]
+	if len(spoof) > 0 {
+		if !isValidHostname(spoof) {
+			return UserConfig{}, fmt.Errorf("Invalid spoof hostname.")
+		}
+	}
+
+	return UserConfig{
+		UserMask:    userMask,
+		HostMask:    hostMask,
+		FloodExempt: floodExempt,
+		Spoof:       spoof,
 	}, nil
 }

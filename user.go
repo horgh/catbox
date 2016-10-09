@@ -42,6 +42,11 @@ type User struct {
 	// Channel name (canonicalized) to Channel. The channels it is in.
 	Channels map[string]*Channel
 
+	// A user may be flagged as flood exempt. For example, if they match a user
+	// record. They are also flood exempt if they are an operator. To check if
+	// a user is flood exempt, use the isFloodExempt() function.
+	FloodExempt bool
+
 	// LocalUser set if this is a local user.
 	LocalUser *LocalUser
 
@@ -91,6 +96,15 @@ func (u *User) isLocal() bool {
 
 func (u *User) isRemote() bool {
 	return !u.isLocal()
+}
+
+// Is a user flood exempt?
+//
+// If they are an oper, they are.
+//
+// If they are flagged so, they are.
+func (u *User) isFloodExempt() bool {
+	return u.isOperator() || u.FloodExempt
 }
 
 // Determine if our user mask (Username@Hostname) matches the given mask.

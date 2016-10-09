@@ -105,6 +105,22 @@ This is not exhaustive, but some of the differences are:
   * WHOWAS: Always say no such nick.
 
 
+# How flood control works
+  * Each client has a counter that starts out at UserMessageLimit (10)
+  * Every message we process from the client, we decrement it by one.
+  * If the counter is zero, we queue the message.
+  * Each second (woken by our alarm goroutine), we increment the client's
+    counter by 1 to a maximum of UserMessageLimit, and process queued messages
+    until the counter is zero.
+  * If there are too many queued messages, we disconnect the client for
+    flooding (ExcessFloodThreshold).
+
+This is similar to ircd-ratbox's algorithm.
+
+Note as client messages and the alarm events go to same channel, it is still
+possible for client messages to overwhelm us.
+
+
 # External documentation and references
   * https://tools.ietf.org/html/rfc2812
   * https://tools.ietf.org/html/rfc1459

@@ -147,6 +147,40 @@ func isValidChannel(c string) bool {
 	return true
 }
 
+// isValidHostname is a basic check to determine if a host looks valid.
+// Very basic.
+func isValidHostname(s string) bool {
+	matched, err := regexp.MatchString("^[A-Za-z0-9-.]+$", s)
+	if err != nil {
+		return false
+	}
+	return matched
+}
+
+// Check if a string is a valid user mask.
+// This is a pattern with * or ? glob style characters.
+// It matches the user portion of a user@host
+func isValidUserMask(s string) bool {
+	matched, err := regexp.MatchString("^[a-zA-Z0-9*?~]+$", s)
+	if err != nil {
+		return false
+	}
+	return matched
+}
+
+// Check if a string is a valid host mask.
+// This is a pattern with * or ? glob style characters.
+// It matches the host portion of a user@host
+//
+// TODO: Improve the host regex
+func isValidHostMask(s string) bool {
+	matched, err := regexp.MatchString("^[a-zA-Z0-9-.*?]+$", s)
+	if err != nil {
+		return false
+	}
+	return matched
+}
+
 func isNumericCommand(command string) bool {
 	for _, c := range command {
 		if c < 48 || c > 57 {

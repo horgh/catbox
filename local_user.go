@@ -13,8 +13,10 @@ import (
 // LocalUser holds information relevant only to a regular user (non-server)
 // client.
 type LocalUser struct {
+	// Local users are local clients and have the same attributes. Embed the type.
 	*LocalClient
 
+	// A reference to their user information.
 	User *User
 
 	// The last time we heard anything from the client.
@@ -26,6 +28,14 @@ type LocalUser struct {
 	// The last time the client sent a PRIVMSG/NOTICE. We use this to decide
 	// idle time.
 	LastMessageTime time.Time
+
+	// MessageCounter is part of flood control. It tells us how many messages we
+	// have remaining before flood control kicks in. If it's 0, a message gets
+	// queued.
+	MessageCounter int
+
+	// MessageQueue holds queued messages from the client.
+	MessageQueue []irc.Message
 }
 
 // NewLocalUser makes a LocalUser from a LocalClient.
@@ -37,6 +47,8 @@ func NewLocalUser(c *LocalClient) *LocalUser {
 		LastActivityTime: now,
 		LastPingTime:     now,
 		LastMessageTime:  now,
+		MessageCounter:   UserMessageLimit,
+		MessageQueue:     []irc.Message{},
 	}
 
 	return u
@@ -469,6 +481,24 @@ func (u *LocalUser) handleMessage(m irc.Message) {
 	if m.Prefix != "" {
 		u.messageFromServer("ERROR", []string{"Do not send a prefix"})
 		return
+	}
+
+	// Flood protection. If we've used all our available message space for now,
+	// queue it.
+	if !u.User.isFloodExempt() {
+		if u.MessageCounter == 0 {
+			log.Printf("%s is flooding. Queueing their message.", u.User.DisplayNick)
+			u.MessageQueue = append(u.MessageQueue, m)
+
+			// Check for overwhelming their queue and disconnect them if so.
+			if len(u.MessageQueue) >= ExcessFloodThreshold {
+				u.quit("Excess flood", true)
+				return
+			}
+
+			return
+		}
+		u.MessageCounter--
 	}
 
 	// Non-RFC command that appears to be widely supported. Just ignore it for
@@ -1672,16 +1702,22 @@ func (u *LocalUser) klineCommand(m irc.Message) {
 		reason = m.Params[1]
 	}
 
-	// Hostname regex leaves something to be desired.
-	re := regexp.MustCompile("^([a-zA-Z0-9*?]+)@([a-zA-Z0-9.*?]+)$")
-	matches := re.FindStringSubmatch(uhost)
-	if matches == nil {
+	pieces := strings.Split(uhost, "@")
+	if len(pieces) != 2 {
 		// 415 ERR_BADMASK
 		u.messageFromServer("415", []string{uhost, "Bad Server/host mask"})
 		return
 	}
-	userMask := matches[1]
-	hostMask := matches[2]
+
+	if !isValidUserMask(pieces[0]) ||
+		!isValidHostMask(pieces[1]) {
+		// 415 ERR_BADMASK
+		u.messageFromServer("415", []string{uhost, "Bad Server/host mask"})
+		return
+	}
+
+	userMask := pieces[0]
+	hostMask := pieces[1]
 
 	kline := KLine{
 		UserMask: userMask,
@@ -1689,10 +1725,10 @@ func (u *LocalUser) klineCommand(m irc.Message) {
 		Reason:   reason,
 	}
 
-	u.Catbox.addAndApplyKLine(kline, u.User.DisplayNick, reason)
-
 	// Propagate.
 	// In TS6 this must be in ENCAP.
+	// Do this before applying K-Line locally for the hopefully rare scenario
+	// that the user K-Lines himself.
 	for _, server := range u.Catbox.LocalServers {
 		server.maybeQueueMessage(irc.Message{
 			Prefix:  string(u.User.UID),
@@ -1707,6 +1743,8 @@ func (u *LocalUser) klineCommand(m irc.Message) {
 			},
 		})
 	}
+
+	u.Catbox.addAndApplyKLine(kline, u.User.DisplayNick, reason)
 }
 
 func (u *LocalUser) unklineCommand(m irc.Message) {

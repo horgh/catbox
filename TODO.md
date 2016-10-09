@@ -9,9 +9,7 @@
   * KICK
 
 
-## Basics
-  * Anti-abuse (throttling etc)
-
+# Maybe
 
 ## Unimportant
   * NAMES
@@ -30,10 +28,9 @@
   * Upgrade without losing connections
   * Inform clients when someone whois's them.
   * Bots built into the ircd
-  * Exchange K:Lines during server burst
-  * User spoofs
   * A command to retrieve TLS/ciphers in use by all clients/servers. Sent
     remotely so each server can get back to us with their local info.
+  * Exchange K:Lines during server burst
   * Persistent K:Lines (currently they are in memory only)
 
 
