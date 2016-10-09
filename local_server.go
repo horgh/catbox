@@ -259,20 +259,62 @@ func (s *LocalServer) sendBurst() {
 	// Send channels and the users in them with SJOIN commands.
 	// Parameters: <channel TS> <channel name> <modes> [mode params] :<UIDs>
 	// e.g., :8ZZ SJOIN 1475187553 #test2 +sn :@8ZZAAAAAB
+	// Each UID may be prefixed with @ and/or + if voiced/opped.
+
 	for _, channel := range s.Catbox.Channels {
-		// TODO: Combine as many UIDs into a single SJOIN as we can, rather than
-		//   one SJOIN per UID.
+		// We want to combine as many UIDs into a single SJOIN message as possible.
+
+		// First make a message with what is common to all messages so that we can
+		// determine the base length.
+		sjoinMessage := irc.Message{
+			Prefix:  string(s.Catbox.Config.TS6SID),
+			Command: "SJOIN",
+			Params: []string{
+				fmt.Sprintf("%d", channel.TS),
+				channel.Name,
+				// Currently we only support +ns.
+				"+ns",
+				// UIDs go in the last parameter. As it is blank, encoding will turn it
+				// into " :" for us. This is acceptable.
+				"",
+			},
+		}
+
+		sjoinEncoded, err := sjoinMessage.Encode()
+		if err != nil {
+			s.quit(fmt.Sprintf("Unable to create SJOIN message: %s", err))
+			return
+		}
+
+		baseSize := len(sjoinEncoded)
+
+		uids := ""
 		for uid := range channel.Members {
-			s.maybeQueueMessage(irc.Message{
-				Prefix:  string(s.Catbox.Config.TS6SID),
-				Command: "SJOIN",
-				Params: []string{
-					fmt.Sprintf("%d", channel.TS),
-					channel.Name,
-					"+nt",
-					string(uid),
-				},
-			})
+			uidStr := string(uid)
+
+			// Assume the first may fit.
+			if len(uids) == 0 {
+				uids += uidStr
+				continue
+			}
+
+			// If we'll exceed the max protocol message length, fire the message and
+			// start a new list.
+			// +1 to account for a space.
+			if baseSize+len(uids)+1+len(uidStr) > irc.MaxLineLength {
+				sjoinMessage.Params[3] = uids
+				s.maybeQueueMessage(sjoinMessage)
+				uids = "" + uidStr
+				continue
+			}
+
+			// Add it to the list.
+			uids += " " + uidStr
+		}
+
+		if len(uids) > 0 {
+			sjoinMessage.Params[3] = uids
+			s.maybeQueueMessage(sjoinMessage)
 		}
 
 		// If they support the TB capab then send them TB commands. This tells them
