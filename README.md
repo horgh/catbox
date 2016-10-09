@@ -45,8 +45,8 @@ Build the daemon:
 
     go build
 
-The daemon always listens on a plaintext port and a TLS port. This means you
-must have a certificate and key available.
+If you want to listen on a TLS port, you must have a certificate and key
+available.
 
 To generate a self-signed certificate for TLS:
 

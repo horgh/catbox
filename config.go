@@ -96,7 +96,9 @@ func checkAndParseConfig(file string) (*Config, error) {
 			return nil, fmt.Errorf("Missing required key: %s", key)
 		}
 
-		if len(v) == 0 {
+		// All options must be non-blank. Except those listed in this check.
+		if len(v) == 0 && key != "listen-port" && key != "listen-port-tls" &&
+			key != "certificate-file" && key != "key-file" {
 			return nil, fmt.Errorf("Configuration value is blank: %s", key)
 		}
 	}

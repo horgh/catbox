@@ -224,26 +224,35 @@ func newCatbox(configFile string) (*Catbox, error) {
 // channels.
 func (cb *Catbox) start() error {
 	// Plaintext listener.
-	ln, err := net.Listen("tcp", fmt.Sprintf("%s:%s", cb.Config.ListenHost,
-		cb.Config.ListenPort))
-	if err != nil {
-		return fmt.Errorf("Unable to listen: %s", err)
+	if cb.Config.ListenPort != "" {
+		ln, err := net.Listen("tcp", fmt.Sprintf("%s:%s", cb.Config.ListenHost,
+			cb.Config.ListenPort))
+		if err != nil {
+			return fmt.Errorf("Unable to listen: %s", err)
+		}
+		cb.Listener = ln
+
+		cb.WG.Add(1)
+		go cb.acceptConnections(cb.Listener)
 	}
-	cb.Listener = ln
 
 	// TLS listener.
-	tlsLN, err := tls.Listen("tcp", fmt.Sprintf("%s:%s", cb.Config.ListenHost,
-		cb.Config.ListenPortTLS), cb.TLSConfig)
-	if err != nil {
-		return fmt.Errorf("Unable to listen (TLS): %s", err)
-	}
-	cb.TLSListener = tlsLN
+	if cb.Config.ListenPortTLS != "" {
+		tlsLN, err := tls.Listen("tcp", fmt.Sprintf("%s:%s", cb.Config.ListenHost,
+			cb.Config.ListenPortTLS), cb.TLSConfig)
+		if err != nil {
+			return fmt.Errorf("Unable to listen (TLS): %s", err)
+		}
+		cb.TLSListener = tlsLN
 
-	// acceptConnections accepts connections on the TCP listener.
-	cb.WG.Add(1)
-	go cb.acceptConnections(cb.Listener)
-	cb.WG.Add(1)
-	go cb.acceptConnections(cb.TLSListener)
+		cb.WG.Add(1)
+		go cb.acceptConnections(cb.TLSListener)
+	}
+
+	// No ports set? Die!
+	if cb.Config.ListenPort == "" && cb.Config.ListenPortTLS == "" {
+		log.Fatalf("You must set at least one listen port.")
+	}
 
 	// Alarm is a goroutine to wake up this one periodically so we can do things
 	// like ping clients.
