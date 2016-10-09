@@ -623,6 +623,11 @@ func (u *LocalUser) handleMessage(m irc.Message) {
 		return
 	}
 
+	if m.Command == "INVITE" {
+		u.inviteCommand(m)
+		return
+	}
+
 	// Unknown command. We don't handle it yet anyway.
 	// 421 ERR_UNKNOWNCOMMAND
 	u.messageFromServer("421", []string{m.Command, "Unknown command"})
@@ -894,8 +899,7 @@ func (u *LocalUser) privmsgCommand(m irc.Message) {
 			msg})
 	}
 
-	// This isn't standard I think, but ratbox does it. Reply with 301 RPL_AWAY
-	// if they're away.
+	// Reply with 301 RPL_AWAY if they're away.
 	if len(targetUser.AwayMessage) > 0 {
 		u.maybeQueueMessage(irc.Message{
 			Prefix:  u.Catbox.Config.ServerName,
@@ -1940,4 +1944,102 @@ func (u *LocalUser) awayCommand(m irc.Message) {
 	}
 
 	u.setAway(m.Params[0])
+}
+
+// Invite a user to a channel.
+// Parameters: <nick> <channel>
+// You must be on the channel.
+// If the channel is +i, you must have ops. Actually when we have ops, it is
+// probably better to always require ops to invite.
+// If the nick is on the channel, error.
+func (u *LocalUser) inviteCommand(m irc.Message) {
+	if len(m.Params) < 2 {
+		// 461 ERR_NEEDMOREPARAMS
+		u.messageFromServer("461", []string{"INVITE", "Not enough parameters"})
+		return
+	}
+
+	nick := m.Params[0]
+	channelName := m.Params[1]
+
+	// Find the target user.
+	targetUID, exists := u.Catbox.Nicks[canonicalizeNick(nick)]
+	if !exists {
+		// 401 ERR_NOSUCHNICK
+		u.messageFromServer("401", []string{nick, "No such nick/channel"})
+		return
+	}
+
+	targetUser := u.Catbox.Users[targetUID]
+
+	// Find the channel.
+	channel, exists := u.Catbox.Channels[canonicalizeChannel(channelName)]
+	if !exists {
+		// Just say they're not on channel. There's a no such channel reply but
+		// RFC 1459 doesn't include that as valid reply. Maybe for privacy.
+		// 442 ERR_NOTONCHANNEL
+		u.messageFromServer("442", []string{channelName,
+			"You're not on that channel"})
+		return
+	}
+
+	// Channel exists. Check they are on it.
+	_, onChannel := channel.Members[u.User.UID]
+	if !onChannel {
+		// 442 ERR_NOTONCHANNEL
+		u.messageFromServer("442", []string{channelName,
+			"You're not on that channel"})
+	}
+
+	// Is the user already on the channel?
+	_, onChannel = channel.Members[targetUser.UID]
+	if onChannel {
+		// 443 ERR_USERONCHANNEL
+		u.messageFromServer("443", []string{targetUser.DisplayNick, channel.Name,
+			"is already on channel"})
+		return
+	}
+
+	// We may try to invite.
+
+	// When we have channel operators implemented, check if they are operator and
+	// reject if not.
+
+	// Send an invite message.
+	if targetUser.isLocal() {
+		targetUser.LocalUser.maybeQueueMessage(irc.Message{
+			Prefix:  u.User.nickUhost(),
+			Command: "INVITE",
+			Params:  []string{targetUser.DisplayNick, channel.Name},
+		})
+	} else {
+		targetUser.ClosestServer.maybeQueueMessage(irc.Message{
+			Prefix:  string(u.User.UID),
+			Command: "INVITE",
+			Params: []string{
+				string(targetUser.UID),
+				channel.Name,
+				fmt.Sprintf("%d", channel.TS),
+			},
+		})
+	}
+
+	// Reply to the user.
+
+	// First tell them we're inviting the user.
+	// 341 RPL_INVITING
+	u.messageFromServer("341", []string{channel.Name, targetUser.DisplayNick})
+
+	// Second tell them if the user is away.
+	if len(targetUser.AwayMessage) > 0 {
+		u.maybeQueueMessage(irc.Message{
+			Prefix:  u.Catbox.Config.ServerName,
+			Command: "301",
+			Params: []string{
+				u.User.DisplayNick,
+				targetUser.DisplayNick,
+				targetUser.AwayMessage,
+			},
+		})
+	}
 }

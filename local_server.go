@@ -467,6 +467,11 @@ func (s *LocalServer) handleMessage(m irc.Message) {
 		return
 	}
 
+	if m.Command == "INVITE" {
+		s.inviteCommand(m)
+		return
+	}
+
 	// 421 ERR_UNKNOWNCOMMAND
 	s.messageFromServer("421", []string{m.Command, "Unknown command"})
 }
@@ -2038,4 +2043,72 @@ func (s *LocalServer) awayCommand(m irc.Message) {
 		}
 		server.maybeQueueMessage(m)
 	}
+}
+
+// An INVITE command.
+// Source: <user UID>
+// Parameters: <target user UID> <channel> [channel TS]
+// Apparently channel TS is optional, but deprecated to be. However ratbox does
+// not send it, so allow it to not be present.
+// If channel TS indicates newer, ignore it.
+// Propagate it towards the target user if it's not a local user. Otherwise
+// if it's a local user, tell the user.
+func (s *LocalServer) inviteCommand(m irc.Message) {
+	if len(m.Params) < 2 {
+		// 461 ERR_NEEDMOREPARAMS
+		s.messageFromServer("461", []string{"INVITE", "Not enough parameters"})
+		return
+	}
+
+	// Find source user.
+	sourceUser, exists := s.Catbox.Users[TS6UID(m.Prefix)]
+	if !exists {
+		s.quit("Unknown source user (INVITE)")
+		return
+	}
+
+	// Find the target user.
+	targetUser, exists := s.Catbox.Users[TS6UID(m.Params[0])]
+	if !exists {
+		s.quit("Unknown target user (INVITE)")
+		return
+	}
+
+	// Find the channel.
+	channel, exists := s.Catbox.Channels[canonicalizeChannel(m.Params[1])]
+	if !exists {
+		s.quit("Unknown channel (INVITE)")
+		return
+	}
+
+	// Assume the other side checked the invite was valid to proceed.
+
+	// Check channel TS if it's given.
+	if len(m.Params) >= 3 {
+		channelTS, err := strconv.ParseInt(m.Params[3], 10, 64)
+		if err != nil {
+			s.quit(fmt.Sprintf("Invalid channel TS: %s: %s", m.Params[0], err))
+			return
+		}
+
+		// If channel TS indicates the channel is newer than what we know, ignore.
+		if channelTS > channel.TS {
+			s.Catbox.noticeOpers(fmt.Sprintf("INVITE from %s to %s for %s has newer TS",
+				sourceUser.DisplayNick, targetUser.DisplayNick, channel.Name))
+			return
+		}
+	}
+
+	// If it's a local user, tell the user, and that's it.
+	if targetUser.isLocal() {
+		targetUser.LocalUser.maybeQueueMessage(irc.Message{
+			Prefix:  sourceUser.nickUhost(),
+			Command: "INVITE",
+			Params:  []string{targetUser.DisplayNick, channel.Name},
+		})
+		return
+	}
+
+	// If it's a remote user, propagate the message on its way.
+	targetUser.ClosestServer.maybeQueueMessage(m)
 }
