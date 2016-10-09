@@ -405,6 +405,60 @@ func (u *LocalUser) quit(msg string, propagate bool) {
 	delete(u.Catbox.Users, u.User.UID)
 }
 
+// Set the user away. We've been given a non-blank message.
+func (u *LocalUser) setAway(message string) {
+	// Flag him as being away
+	u.User.AwayMessage = message
+
+	// Reply to the user.
+
+	// 306 RPL_NOWAWAY
+	u.maybeQueueMessage(irc.Message{
+		Prefix:  u.Catbox.Config.ServerName,
+		Command: "306",
+		Params:  []string{u.User.DisplayNick, "You have been marked as away"},
+	})
+
+	// Propagate.
+	for _, server := range u.Catbox.LocalServers {
+		server.maybeQueueMessage(irc.Message{
+			Prefix:  string(u.User.UID),
+			Command: "AWAY",
+			Params:  []string{message},
+		})
+	}
+}
+
+// Set the user back from away.
+func (u *LocalUser) setUnaway() {
+	// If they're not away, don't do anything.
+	if u.User.AwayMessage == "" {
+		return
+	}
+
+	// Flag him as back.
+	u.User.AwayMessage = ""
+
+	// 305 RPL_UNAWAY
+	u.maybeQueueMessage(irc.Message{
+		Prefix:  u.Catbox.Config.ServerName,
+		Command: "305",
+		Params: []string{
+			u.User.DisplayNick,
+			"You are no longer been marked as being away",
+		},
+	})
+
+	// Propagate.
+	for _, server := range u.Catbox.LocalServers {
+		server.maybeQueueMessage(irc.Message{
+			Prefix:  string(u.User.UID),
+			Command: "AWAY",
+			Params:  []string{},
+		})
+	}
+}
+
 // The user sent us a message. Deal with it.
 func (u *LocalUser) handleMessage(m irc.Message) {
 	// Record that client said something to us just now.
@@ -561,6 +615,11 @@ func (u *LocalUser) handleMessage(m irc.Message) {
 
 	if m.Command == "WHOWAS" {
 		u.whowasCommand(m)
+		return
+	}
+
+	if m.Command == "AWAY" {
+		u.awayCommand(m)
 		return
 	}
 
@@ -833,6 +892,20 @@ func (u *LocalUser) privmsgCommand(m irc.Message) {
 	} else {
 		u.messageUser(targetUser, m.Command, []string{string(targetUser.UID),
 			msg})
+	}
+
+	// This isn't standard I think, but ratbox does it. Reply with 301 RPL_AWAY
+	// if they're away.
+	if len(targetUser.AwayMessage) > 0 {
+		u.maybeQueueMessage(irc.Message{
+			Prefix:  u.Catbox.Config.ServerName,
+			Command: "301",
+			Params: []string{
+				u.User.DisplayNick,
+				targetUser.DisplayNick,
+				targetUser.AwayMessage,
+			},
+		})
 	}
 }
 
@@ -1255,9 +1328,13 @@ func (u *LocalUser) whoCommand(m irc.Message) {
 		// "<channel> <user> <host> <server> <nick>
 		// ( "H" / "G" > ["*"] [ ( "@" / "+" ) ]
 		// :<hopcount> <real name>"
-		// NOTE: I'm not sure what H/G mean. I think G is away.
+		// Maybe "H" means here, "G" means gone.
 
 		mode := "H"
+		// If away, mode is G.
+		if len(member.AwayMessage) > 0 {
+			mode = "G"
+		}
 
 		if member.isOperator() {
 			mode += "*"
@@ -1302,6 +1379,10 @@ func (u *LocalUser) operspyWhoCommand(m irc.Message) {
 		// :<hopcount> <real name>"
 
 		mode := "H"
+		// If away, mode is G.
+		if len(user.AwayMessage) > 0 {
+			mode = "G"
+		}
 
 		if user.isOperator() {
 			mode += "*"
@@ -1847,4 +1928,16 @@ func (u *LocalUser) whowasCommand(m irc.Message) {
 		Command: "369",
 		Params:  []string{u.User.DisplayNick, nick, "End of WHOWAS"},
 	})
+}
+
+// Set yourself away by including a message.
+// Set yourself not away by not including a message, or having a blank message.
+// Parameters: [message]
+func (u *LocalUser) awayCommand(m irc.Message) {
+	if len(m.Params) == 0 || len(m.Params[0]) == 0 {
+		u.setUnaway()
+		return
+	}
+
+	u.setAway(m.Params[0])
 }

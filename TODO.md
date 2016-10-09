@@ -9,7 +9,6 @@
   * User modes: ?
   * INVITE
   * KICK
-  * AWAY
 
 
 ## Basics

@@ -36,6 +36,9 @@ type User struct {
 	// The user's real name (set with USER command on registration).
 	RealName string
 
+	// Away message. If blank, they're not away.
+	AwayMessage string
+
 	// Channel name (canonicalized) to Channel. The channels it is in.
 	Channels map[string]*Channel
 

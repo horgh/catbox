@@ -254,6 +254,16 @@ func (s *LocalServer) sendBurst() {
 				user.RealName,
 			},
 		})
+
+		// Send AWAY if they are away.
+		if len(user.AwayMessage) == 0 {
+			continue
+		}
+		s.maybeQueueMessage(irc.Message{
+			Prefix:  string(user.UID),
+			Command: "AWAY",
+			Params:  []string{user.AwayMessage},
+		})
 	}
 
 	// Send channels and the users in them with SJOIN commands.
@@ -452,8 +462,8 @@ func (s *LocalServer) handleMessage(m irc.Message) {
 		return
 	}
 
-	// Ignore certain commands we know about but don't handle yet (or ever).
 	if m.Command == "AWAY" {
+		s.awayCommand(m)
 		return
 	}
 
@@ -1985,6 +1995,43 @@ func (s *LocalServer) numericCommand(m irc.Message) {
 // For more information, refer to where I generate it in registerUser().
 // Do nothing but propagate.
 func (s *LocalServer) cliconnCommand(m irc.Message) {
+	for _, server := range s.Catbox.LocalServers {
+		if server == s {
+			continue
+		}
+		server.maybeQueueMessage(m)
+	}
+}
+
+// A user is either set AWAY or set UNAWAY.
+// Parameters: [away reason]
+func (s *LocalServer) awayCommand(m irc.Message) {
+	reason := ""
+	if len(m.Params) > 0 {
+		reason = m.Params[0]
+	}
+
+	// Find the user.
+	user, exists := s.Catbox.Users[TS6UID(m.Prefix)]
+	if !exists {
+		s.quit("Unknown user (AWAY)")
+		return
+	}
+
+	// Flag the user away or not.
+
+	if len(reason) > 0 {
+		user.AwayMessage = reason
+	} else {
+		// If they're not away and this is telling us to set unaway, just ignore it.
+		// Something is wrong.
+		if len(user.AwayMessage) == 0 {
+			return
+		}
+		user.AwayMessage = ""
+	}
+
+	// Propagate.
 	for _, server := range s.Catbox.LocalServers {
 		if server == s {
 			continue

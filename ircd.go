@@ -973,7 +973,18 @@ func (cb *Catbox) createWHOISResponse(user, replyUser *User,
 		},
 	})
 
-	// 301 RPL_AWAY. When we have AWAY.
+	// 301 RPL_AWAY.
+	if len(user.AwayMessage) > 0 {
+		msgs = append(msgs, irc.Message{
+			Prefix:  from,
+			Command: "301",
+			Params: []string{
+				to,
+				user.DisplayNick,
+				user.AwayMessage,
+			},
+		})
+	}
 
 	// 313 RPL_WHOISOPERATOR
 	if user.isOperator() {
