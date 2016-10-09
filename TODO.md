@@ -9,9 +9,6 @@
   * User modes: ?
   * INVITE
   * KICK
-  * ADMIN
-  * INFO
-  * WHOWAS
   * AWAY
 
 
@@ -23,6 +20,8 @@
   * NAMES
   * LIST
   * STATS (more flags)
+  * ADMIN
+  * INFO
   * Multi line motd
   * Respond to remote STATS requests
   * Support sending more remote queries (e.g. STATS to another server)

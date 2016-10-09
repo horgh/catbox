@@ -559,6 +559,11 @@ func (u *LocalUser) handleMessage(m irc.Message) {
 		return
 	}
 
+	if m.Command == "WHOWAS" {
+		u.whowasCommand(m)
+		return
+	}
+
 	// Unknown command. We don't handle it yet anyway.
 	// 421 ERR_UNKNOWNCOMMAND
 	u.messageFromServer("421", []string{m.Command, "Unknown command"})
@@ -1815,5 +1820,31 @@ func (u *LocalUser) timeCommand(m irc.Message) {
 			u.Catbox.Config.ServerName,
 			time.Now().Format(time.RFC1123),
 		},
+	})
+}
+
+// WHOWAS is to look up previously used nick information.
+// I choose to not really implement it. Instead we always reply in the negative.
+func (u *LocalUser) whowasCommand(m irc.Message) {
+	if len(m.Params) == 0 {
+		// 461 ERR_NEEDMOREPARAMS
+		u.messageFromServer("461", []string{"WHOWAS", "Not enough parameters"})
+		return
+	}
+
+	nick := m.Params[0]
+
+	// 406 ERR_WASNOSUCHNICK
+	u.maybeQueueMessage(irc.Message{
+		Prefix:  u.Catbox.Config.ServerName,
+		Command: "406",
+		Params:  []string{u.User.DisplayNick, nick, "There was no such nickname"},
+	})
+
+	// 369 RPL_ENDOFWHOWAS
+	u.maybeQueueMessage(irc.Message{
+		Prefix:  u.Catbox.Config.ServerName,
+		Command: "369",
+		Params:  []string{u.User.DisplayNick, nick, "End of WHOWAS"},
 	})
 }

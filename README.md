@@ -102,6 +102,7 @@ This is not exhaustive, but some of the differences are:
   * LUSERS: Include +s channels in channel count.
   * VERSION: No parameter used.
   * TIME: No parameter used.
+  * WHOWAS: Always say no such nick.
 
 
 # External documentation and references
