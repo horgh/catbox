@@ -1198,12 +1198,10 @@ func (s *LocalServer) nickCommand(m irc.Message) {
 		}
 	}
 
-	// Update their nick and nick TS.
-	user.DisplayNick = nick
-	user.NickTS = nickTS
-
 	// Tell our local clients who are in a channel with this user.
 	// Tell each user only once.
+	// Do this prior to updating the user record as it needs to come from the
+	// old nick!user@host.
 	toldUsers := make(map[TS6UID]struct{})
 	for _, channel := range user.Channels {
 		for memberUID := range channel.Members {
@@ -1221,10 +1219,14 @@ func (s *LocalServer) nickCommand(m irc.Message) {
 			member.LocalUser.maybeQueueMessage(irc.Message{
 				Prefix:  user.nickUhost(),
 				Command: "NICK",
-				Params:  []string{user.DisplayNick},
+				Params:  []string{nick},
 			})
 		}
 	}
+
+	// Update their nick and nick TS.
+	user.DisplayNick = nick
+	user.NickTS = nickTS
 
 	// Propagate to other servers.
 	for _, server := range s.Catbox.LocalServers {
