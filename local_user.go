@@ -149,25 +149,63 @@ func (u *LocalUser) join(channelName string) {
 		})
 	}
 
+	// 353 RPL_NAMREPLY: This tells the client about who is in the channel
+	// (including itself).
+	// Format: :<server> 353 <targetNick> <channel flag> <#channel> :<nicks>
+	// <nicks> is a list of nicknames in the channel. Each is prefixed with @
+	// or + to indicate opped/voiced). Apparently only one or the other.
+
 	// Channel flag: = (public), * (private), @ (secret)
 	// When we have more chan modes (-s / +p) this needs to vary
 	channelFlag := "@"
 
-	// RPL_NAMREPLY: This tells the client about who is in the channel
-	// (including itself).
-	// It ends with RPL_ENDOFNAMES.
+	// We put as many nicks per line as possible.
+
+	// First build the portion that is common to every NAMREPLY so we can get
+	// its length.
+	namMessage := irc.Message{
+		Prefix:  string(u.Catbox.Config.ServerName),
+		Command: "353",
+		// Last parameter is where nicks go. We'll have " :" since it's blank
+		// right now (when we encode to determine base size).
+		Params: []string{u.User.DisplayNick, channelFlag, channel.Name, ""},
+	}
+	messageBuf, err := namMessage.Encode()
+	if err != nil {
+		log.Printf("Unable to generate RPL_NAMREPLY: %s", err)
+		return
+	}
+	baseSize := len(messageBuf)
+
+	nicks := ""
 	for memberUID := range channel.Members {
 		member := u.Catbox.Users[memberUID]
-		// 353 RPL_NAMREPLY
-		u.messageFromServer("353", []string{
-			// We need to include @ / + for each nick opped/voiced (when we have
-			// ops/voices).
-			// TODO: Multiple nicks per RPL_NAMREPLY.
-			channelFlag, channel.Name, member.DisplayNick,
-		})
+
+		// Assume 1 nick will always be okay to send.
+		if len(nicks) == 0 {
+			nicks += member.DisplayNick
+			continue
+		}
+
+		// If we add another nick, will we be above our line length? If so, fire off
+		// the message and start with the nick in a new list.
+		// +1 for " "
+		if baseSize+len(nicks)+1+len(member.DisplayNick) > irc.MaxLineLength {
+			namMessage.Params[3] = nicks
+			u.maybeQueueMessage(namMessage)
+			nicks = "" + member.DisplayNick
+			continue
+		}
+
+		nicks += " " + member.DisplayNick
 	}
 
-	// 366 RPL_ENDOFNAMES
+	if len(nicks) > 0 {
+		namMessage.Params[3] = nicks
+		u.maybeQueueMessage(namMessage)
+	}
+
+	// 366 RPL_ENDOFNAMES: Ends NAMES list.
 	u.messageFromServer("366", []string{channel.Name, "End of NAMES list"})
 
 	// Tell each member in the channel about the client.
