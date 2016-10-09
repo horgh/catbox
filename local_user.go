@@ -127,6 +127,7 @@ func (u *LocalUser) join(channelName string) {
 		channel = &Channel{
 			Name:    channelName,
 			Members: make(map[TS6UID]struct{}),
+			Ops:     make(map[TS6UID]*User),
 			TS:      time.Now().Unix(),
 		}
 		u.Catbox.Channels[channelName] = channel
@@ -326,8 +327,7 @@ func (u *LocalUser) part(channelName, message string) {
 	}
 
 	// Remove the client from the channel.
-	delete(channel.Members, u.User.UID)
-	delete(u.User.Channels, channel.Name)
+	channel.removeUser(u.User)
 
 	// If they are the last member, then drop the channel completely.
 	if len(channel.Members) == 0 {
@@ -382,7 +382,7 @@ func (u *LocalUser) quit(msg string, propagate bool) {
 
 		}
 
-		delete(channel.Members, u.User.UID)
+		channel.removeUser(u.User)
 		if len(channel.Members) == 0 {
 			delete(u.Catbox.Channels, channel.Name)
 		}

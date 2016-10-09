@@ -82,6 +82,7 @@ func (u *User) onChannel(channel *Channel) bool {
 	return exists
 }
 
+// Make a string of their user modes. + if no modes.
 func (u *User) modesString() string {
 	s := "+"
 	for m := range u.Modes {

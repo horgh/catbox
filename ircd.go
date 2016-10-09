@@ -1175,7 +1175,7 @@ func (cb *Catbox) quitRemoteUser(u *User, message string) {
 			})
 		}
 
-		delete(channel.Members, u.UID)
+		channel.removeUser(u)
 		if len(channel.Members) == 0 {
 			delete(cb.Channels, channel.Name)
 		}

@@ -967,6 +967,7 @@ func (s *LocalServer) sjoinCommand(m irc.Message) {
 		channel = &Channel{
 			Name:    canonicalizeChannel(chanName),
 			Members: make(map[TS6UID]struct{}),
+			Ops:     make(map[TS6UID]*User),
 			TS:      channelTS,
 		}
 		s.Catbox.Channels[channel.Name] = channel
@@ -1172,6 +1173,7 @@ func (s *LocalServer) joinCommand(m irc.Message) {
 		channel = &Channel{
 			Name:    chanName,
 			Members: make(map[TS6UID]struct{}),
+			Ops:     make(map[TS6UID]*User),
 			TS:      channelTS,
 		}
 		s.Catbox.Channels[channel.Name] = channel
@@ -1326,17 +1328,7 @@ func (s *LocalServer) partCommand(m irc.Message) {
 
 	// Remove them from the channel.
 
-	// While we expect these map keys to be set, check just to be safe.
-
-	_, exists = sourceUser.Channels[chanName]
-	if exists {
-		delete(sourceUser.Channels, chanName)
-	}
-
-	_, exists = channel.Members[sourceUser.UID]
-	if exists {
-		delete(channel.Members, sourceUser.UID)
-	}
+	channel.removeUser(sourceUser)
 
 	if len(channel.Members) == 0 {
 		delete(s.Catbox.Channels, channel.Name)
