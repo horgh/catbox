@@ -1190,7 +1190,7 @@ func (u *LocalUser) modeCommand(m irc.Message) {
 }
 
 // Modes we support at this time:
-// +i (but not changing) (invisible)
+// +i/-i (invisible, actually doesn't change anything for this server, but)
 // +o/-o (operator)
 // +C/-C (must be +o to alter) (client connection notices)
 func (u *LocalUser) userModeCommand(targetUser *User, modes string) {

@@ -427,11 +427,6 @@ func parseAndResolveUmodeChanges(modes string,
 	unsetModes := make(map[byte]struct{})
 
 	for mode := range requestUnsetModes {
-		// We do not permit changing i.
-		if mode == 'i' {
-			continue
-		}
-
 		// Don't have it? Nothing to change.
 		_, exists := currentModes[mode]
 		if !exists {
@@ -444,11 +439,6 @@ func parseAndResolveUmodeChanges(modes string,
 	}
 
 	for mode := range requestSetModes {
-		// We do not permit changing i.
-		if mode == 'i' {
-			continue
-		}
-
 		// Have it already? Nothing to change.
 		_, exists := currentModes[mode]
 		if exists {
@@ -468,6 +458,12 @@ func parseAndResolveUmodeChanges(modes string,
 				currentModes[mode] = struct{}{}
 				setModes[mode] = struct{}{}
 			}
+		}
+
+		if mode == 'i' {
+			currentModes[mode] = struct{}{}
+			setModes[mode] = struct{}{}
+			continue
 		}
 	}
 

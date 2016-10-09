@@ -691,8 +691,7 @@ func (s *LocalServer) uidCommand(m irc.Message) {
 			continue
 		}
 
-		// I only support +i and +o right now.
-		if umode == 'i' || umode == 'o' {
+		if umode == 'i' || umode == 'o' || umode == 'C' {
 			umodes[byte(umode)] = struct{}{}
 			continue
 		}
@@ -1482,8 +1481,7 @@ func (s *LocalServer) modeCommand(m irc.Message) {
 			continue
 		}
 
-		// I only track +i and +o right now.
-		if c == 'i' || c == 'o' {
+		if c == 'i' || c == 'o' || c == 'C' {
 			if motion == '+' {
 				user.Modes[byte(c)] = struct{}{}
 				if c == 'o' {
