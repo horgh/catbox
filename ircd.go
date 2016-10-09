@@ -1213,3 +1213,13 @@ func (cb *Catbox) rehash(byUser *User) {
 		cb.noticeOpers("Rehashed configuration.")
 	}
 }
+
+// Look up a server by its name. e.g., irc.example.com
+func (cb *Catbox) getServerByName(name string) *Server {
+	for _, server := range cb.Servers {
+		if server.Name == name {
+			return server
+		}
+	}
+	return nil
+}

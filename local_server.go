@@ -1385,9 +1385,18 @@ func (s *LocalServer) wallopsCommand(m irc.Message) {
 	if exists {
 		origin = user.nickUhost()
 	}
-	server, exists := s.Catbox.Servers[TS6SID(m.Prefix)]
-	if exists {
-		origin = server.Name
+	if origin == "" {
+		server, exists := s.Catbox.Servers[TS6SID(m.Prefix)]
+		if exists {
+			origin = server.Name
+		}
+	}
+	if origin == "" {
+		// We can receive origin as a server name. e.g., WALLOPS.
+		server := s.Catbox.getServerByName(m.Prefix)
+		if server != nil {
+			origin = server.Name
+		}
 	}
 
 	if len(origin) == 0 {
