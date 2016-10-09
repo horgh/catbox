@@ -9,7 +9,6 @@
   * User modes: ?
   * INVITE
   * KICK
-  * TIME
   * ADMIN
   * INFO
   * WHOWAS

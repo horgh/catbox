@@ -554,6 +554,11 @@ func (u *LocalUser) handleMessage(m irc.Message) {
 		return
 	}
 
+	if m.Command == "TIME" {
+		u.timeCommand(m)
+		return
+	}
+
 	// Unknown command. We don't handle it yet anyway.
 	// 421 ERR_UNKNOWNCOMMAND
 	u.messageFromServer("421", []string{m.Command, "Unknown command"})
@@ -1787,13 +1792,28 @@ func (u *LocalUser) versionCommand(m irc.Message) {
 	comments := fmt.Sprintf("HM TS6o %s", string(u.Catbox.Config.TS6SID))
 
 	u.maybeQueueMessage(irc.Message{
-		Prefix:  string(u.Catbox.Config.ServerName),
+		Prefix:  u.Catbox.Config.ServerName,
 		Command: "351",
 		Params: []string{
 			u.User.DisplayNick,
 			version,
 			u.Catbox.Config.ServerName,
 			comments,
+		},
+	})
+}
+
+// Send back current time.
+// No parameter supported.
+func (u *LocalUser) timeCommand(m irc.Message) {
+	// 391 RPL_TIME
+	u.maybeQueueMessage(irc.Message{
+		Prefix:  u.Catbox.Config.ServerName,
+		Command: "391",
+		Params: []string{
+			u.User.DisplayNick,
+			u.Catbox.Config.ServerName,
+			time.Now().Format(time.RFC1123),
 		},
 	})
 }

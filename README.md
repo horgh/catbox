@@ -101,6 +101,7 @@ This is not exhaustive, but some of the differences are:
   * LINKS: No parameters supported.
   * LUSERS: Include +s channels in channel count.
   * VERSION: No parameter used.
+  * TIME: No parameter used.
 
 
 # External documentation and references
