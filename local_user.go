@@ -549,6 +549,11 @@ func (u *LocalUser) handleMessage(m irc.Message) {
 		return
 	}
 
+	if m.Command == "VERSION" {
+		u.versionCommand(m)
+		return
+	}
+
 	// Unknown command. We don't handle it yet anyway.
 	// 421 ERR_UNKNOWNCOMMAND
 	u.messageFromServer("421", []string{m.Command, "Unknown command"})
@@ -1764,4 +1769,31 @@ func (u *LocalUser) mapCommand(m irc.Message) {
 	for _, msg := range msgs {
 		u.maybeQueueMessage(msg)
 	}
+}
+
+// Reply with version information.
+// Parameters: None (that I accept, RFC specifies you can query remote server).
+func (u *LocalUser) versionCommand(m irc.Message) {
+	// 351 RPL_VERSION
+	// <version>.<debuglevel> <server name> :<comments>
+	// Apparently <debuglevel> to be blank if not debug.
+	// Comments are free form. But I use similar to what ratbox does. See its doc
+	// server-version-info.
+
+	version := fmt.Sprintf("catbox-%s(%s).", u.Catbox.Config.Version,
+		u.Catbox.Config.CreatedDate)
+
+	// H HUB, M IDLE_FROM_MSG, TS supports TS, 6 TS6, o TS only
+	comments := fmt.Sprintf("HM TS6o %s", string(u.Catbox.Config.TS6SID))
+
+	u.maybeQueueMessage(irc.Message{
+		Prefix:  string(u.Catbox.Config.ServerName),
+		Command: "351",
+		Params: []string{
+			u.User.DisplayNick,
+			version,
+			u.Catbox.Config.ServerName,
+			comments,
+		},
+	})
 }

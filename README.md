@@ -100,6 +100,7 @@ This is not exhaustive, but some of the differences are:
   * CONNECT: Single parameter only.
   * LINKS: No parameters supported.
   * LUSERS: Include +s channels in channel count.
+  * VERSION: No parameter used.
 
 
 # External documentation and references
