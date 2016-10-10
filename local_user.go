@@ -1224,7 +1224,11 @@ func (u *LocalUser) modeCommand(m irc.Message) {
 	// Is it a channel?
 	targetChannel, exists := u.Catbox.Channels[canonicalizeChannel(target)]
 	if exists {
-		u.channelModeCommand(targetChannel, modes, m.Params[2:])
+		params := []string{}
+		if len(m.Params) > 2 {
+			params = append(params, m.Params[2:]...)
+		}
+		u.channelModeCommand(targetChannel, modes, params)
 		return
 	}
 
