@@ -1227,3 +1227,16 @@ func (cb *Catbox) getServerByName(name string) *Server {
 	}
 	return nil
 }
+
+// Send a message to all local users in a channel.
+func (cb *Catbox) messageLocalUsersOnChannel(channel *Channel, m irc.Message) {
+	for memberUID := range channel.Members {
+		member := cb.Users[memberUID]
+
+		if !member.isLocal() {
+			continue
+		}
+
+		member.LocalUser.maybeQueueMessage(m)
+	}
+}

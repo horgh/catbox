@@ -138,3 +138,5 @@ possible for client messages to overwhelm us.
     * Burst: SID, UID, SJOIN, ERROR, PING, PONG
     * Post-burst: INVITE, JOIN, KILL, NICK, NOTICE, PART, PRIVMSG, QUIT, SID,
       SJOIN, TOPIC, UID, SQUIT, ERROR, PING, PONG, MODE (user)
+  * I believe "simple modes" are things like +ntisk. As opposed to status modes
+    such as +o/+v.

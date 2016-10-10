@@ -128,10 +128,13 @@ func (u *LocalUser) join(channelName string) {
 			Name:    channelName,
 			Members: make(map[TS6UID]struct{}),
 			Ops:     make(map[TS6UID]*User),
+			Modes:   make(map[byte]struct{}),
 			TS:      time.Now().Unix(),
 		}
 		u.Catbox.Channels[channelName] = channel
 		channel.grantOps(u.User)
+		channel.Modes['n'] = struct{}{}
+		channel.Modes['s'] = struct{}{}
 	}
 
 	// Add them to the channel.

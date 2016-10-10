@@ -980,21 +980,67 @@ func (s *LocalServer) sjoinCommand(m irc.Message) {
 			Name:    canonicalizeChannel(chanName),
 			Members: make(map[TS6UID]struct{}),
 			Ops:     make(map[TS6UID]*User),
+			Modes:   make(map[byte]struct{}),
 			TS:      channelTS,
 		}
 		s.Catbox.Channels[channel.Name] = channel
+		// No modes set yet.
 	}
 
-	// Update channel TS if needed. To oldest.
+	// Depending on the channel TS, we behave differently.
+	// If the TS indicates their side is newer, we accept their users but ignore
+	// their modes.
+	// If the TS indicates our side is newer, we clear our modes. We update our TS
+	// to match theirs.
+	// Differences from the TS6 spec:
+	// - The spec says to kick users if they key differs or there is +i. Currently
+	//   we don't do this. This does not seem critical to me right now.
+	// - The spec says to update the message with the newer TS (presumably if we
+	//   decide it is newer) and to send modes/statuses only if we apply them. We
+	//   currently don't modify the message prior to propagating it. I expect
+	//   other servers in the network will be able to apply the same logic we do.
+
+	acceptModes := true
+	clearModes := false
+
+	if channelTS > channel.TS {
+		acceptModes = false
+	}
+
 	if channelTS < channel.TS {
+		clearModes = true
 		channel.TS = channelTS
 	}
 
-	// If we had mode parameters, then user list is bumped up one.
-	userList := m.Params[3]
-	if len(m.Params) > 4 {
-		userList = m.Params[4]
+	if clearModes {
+		// Improvement: Only clear modes the other side does not have.
+		// e.g., if both sides have +n, leave it.
+		channel.clearModes(s.Catbox)
 	}
+
+	modes := m.Params[2]
+
+	// Apply the simple (+ntski type) modes now.
+	if acceptModes {
+		modeStr := ""
+		for _, mode := range modes {
+			if mode == 'n' || mode == 's' {
+				channel.Modes[byte(mode)] = struct{}{}
+				modeStr += string(mode)
+			}
+		}
+		if len(modeStr) > 0 {
+			s.Catbox.messageLocalUsersOnChannel(channel, irc.Message{
+				Prefix:  sourceServer.Name,
+				Command: "MODE",
+				Params:  []string{channel.Name, "+" + modeStr},
+			})
+		}
+	}
+
+	// The user list is always the last parameter. It's possible we had one more
+	// more mode parameters.
+	userList := m.Params[len(m.Params)-1]
 
 	// Look at each of the members we were told about.
 	uidsRaw := strings.Split(userList, " ")
@@ -1003,15 +1049,17 @@ func (s *LocalServer) sjoinCommand(m irc.Message) {
 		opped := false
 		//voiced := false
 
-		if uidRaw[0] == '@' {
-			opped = true
-			//if uidRaw[1] == '+' {
+		if acceptModes {
+			if uidRaw[0] == '@' {
+				opped = true
+				//if uidRaw[1] == '+' {
+				//	voiced = true
+				//}
+			}
+			//if uidRaw[0] == '+' {
 			//	voiced = true
 			//}
 		}
-		//if uidRaw[0] == '+' {
-		//	voiced = true
-		//}
 
 		// Done with prefix.
 		uidRaw = strings.TrimLeft(uidRaw, "@+")
@@ -1211,9 +1259,11 @@ func (s *LocalServer) joinCommand(m irc.Message) {
 			Name:    chanName,
 			Members: make(map[TS6UID]struct{}),
 			Ops:     make(map[TS6UID]*User),
+			Modes:   make(map[byte]struct{}),
 			TS:      channelTS,
 		}
 		s.Catbox.Channels[channel.Name] = channel
+		// No modes set yet.
 	}
 
 	// Update channel TS if needed. To oldest.
