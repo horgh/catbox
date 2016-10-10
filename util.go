@@ -373,7 +373,7 @@ func cipherSuiteToString(suite uint16) string {
 	}
 }
 
-// Take a request set of mode changes and parse them and apply the changes.
+// Take a request set of user mode changes and parse them and apply the changes.
 //
 // We check each for whether it is valid to apply.
 //

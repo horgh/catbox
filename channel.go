@@ -49,3 +49,16 @@ func (c Channel) removeUser(u *User) {
 		delete(u.Channels, c.Name)
 	}
 }
+
+// Grant a user ops.
+func (c Channel) grantOps(u *User) {
+	c.Ops[u.UID] = u
+}
+
+// Remove ops from a user
+func (c Channel) removeOps(u *User) {
+	_, exists := c.Ops[u.UID]
+	if exists {
+		delete(c.Ops, u.UID)
+	}
+}

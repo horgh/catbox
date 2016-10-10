@@ -354,7 +354,7 @@ func (c *LocalClient) registerUser() {
 		// User modes we support.
 		"ioC",
 		// Channel modes we support.
-		"ns",
+		"nos",
 	})
 
 	c.Catbox.updateCounters(false)

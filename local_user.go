@@ -122,8 +122,8 @@ func (u *LocalUser) join(channelName string) {
 	}
 
 	// Look up the channel. Create it if necessary.
-	channel, exists := u.Catbox.Channels[channelName]
-	if !exists {
+	channel, channelExists := u.Catbox.Channels[channelName]
+	if !channelExists {
 		channel = &Channel{
 			Name:    channelName,
 			Members: make(map[TS6UID]struct{}),
@@ -131,6 +131,7 @@ func (u *LocalUser) join(channelName string) {
 			TS:      time.Now().Unix(),
 		}
 		u.Catbox.Channels[channelName] = channel
+		channel.grantOps(u.User)
 	}
 
 	// Add them to the channel.
@@ -144,7 +145,7 @@ func (u *LocalUser) join(channelName string) {
 	u.messageUser(u.User, "JOIN", []string{channel.Name})
 
 	// If this is a new channel, send them the modes we set by default.
-	if !exists {
+	if !channelExists {
 		u.messageFromServer("MODE", []string{channel.Name, "+ns"})
 	}
 
@@ -194,9 +195,15 @@ func (u *LocalUser) join(channelName string) {
 	for memberUID := range channel.Members {
 		member := u.Catbox.Users[memberUID]
 
+		// We send the nick with its mode prefix.
+		sendNick := member.DisplayNick
+		if channel.userHasOps(member) {
+			sendNick = "@" + sendNick
+		}
+
 		// Assume 1 nick will always be okay to send.
 		if len(nicks) == 0 {
-			nicks += member.DisplayNick
+			nicks += sendNick
 			continue
 		}
 
@@ -206,11 +213,11 @@ func (u *LocalUser) join(channelName string) {
 		if baseSize+len(nicks)+1+len(member.DisplayNick) > irc.MaxLineLength {
 			namMessage.Params[3] = nicks
 			u.maybeQueueMessage(namMessage)
-			nicks = "" + member.DisplayNick
+			nicks = "" + sendNick
 			continue
 		}
 
-		nicks += " " + member.DisplayNick
+		nicks += " " + sendNick
 	}
 
 	if len(nicks) > 0 {
@@ -241,7 +248,7 @@ func (u *LocalUser) join(channelName string) {
 	// Tell servers about this.
 	// If it's a new channel, then use SJOIN. Otherwise JOIN.
 	for _, server := range u.Catbox.LocalServers {
-		if !exists {
+		if !channelExists {
 			server.maybeQueueMessage(irc.Message{
 				Prefix:  string(u.Catbox.Config.TS6SID),
 				Command: "SJOIN",
@@ -249,7 +256,7 @@ func (u *LocalUser) join(channelName string) {
 					fmt.Sprintf("%d", channel.TS),
 					channel.Name,
 					"+ns",
-					string(u.User.UID),
+					"@" + string(u.User.UID),
 				},
 			})
 		} else {
@@ -1209,7 +1216,7 @@ func (u *LocalUser) modeCommand(m irc.Message) {
 	// Is it a channel?
 	targetChannel, exists := u.Catbox.Channels[canonicalizeChannel(target)]
 	if exists {
-		u.channelModeCommand(targetChannel, modes)
+		u.channelModeCommand(targetChannel, modes, m.Params[2:])
 		return
 	}
 
@@ -1298,10 +1305,13 @@ func (u *LocalUser) userModeCommand(targetUser *User, modes string) {
 	}
 }
 
-func (u *LocalUser) channelModeCommand(channel *Channel, modes string) {
+// We've found a MODE message is about a channel.
+func (u *LocalUser) channelModeCommand(channel *Channel, modes string,
+	params []string) {
 	if !u.User.onChannel(channel) {
 		// 442 ERR_NOTONCHANNEL
-		u.messageFromServer("442", []string{channel.Name, "You're not on that channel"})
+		u.messageFromServer("442", []string{channel.Name,
+			"You're not on that channel"})
 		return
 	}
 
@@ -1313,18 +1323,153 @@ func (u *LocalUser) channelModeCommand(channel *Channel, modes string) {
 		return
 	}
 
-	// Listing bans. I don't support bans at this time, but say that there are
-	// none.
+	// Listing bans. I don't support bans at this time. Say that there are none.
 	if modes == "b" || modes == "+b" {
 		// 368 RPL_ENDOFBANLIST
-		u.messageFromServer("368", []string{channel.Name, "End of channel ban list"})
+		u.messageFromServer("368", []string{channel.Name,
+			"End of channel ban list"})
 		return
 	}
 
-	// Since we don't have channel operators implemented, any attempt to alter
-	// mode is an error.
-	// 482 ERR_CHANOPRIVSNEEDED
-	u.messageFromServer("482", []string{channel.Name, "You're not channel operator"})
+	// This is a channel mode change.
+	// They must be channel operator.
+	if !channel.userHasOps(u.User) {
+		// 482 ERR_CHANOPRIVSNEEDED
+		u.messageFromServer("482", []string{channel.Name,
+			"You're not channel operator"})
+		return
+	}
+
+	// Apply mode changes we support.
+	// Currently I support:
+	// - +o/-o
+	// Also generate the information we need to send to our local users and to
+	// servers.
+
+	// +/-
+	action := '+'
+
+	// Count how many modes we apply.
+	// We support only a limited number per command.
+	modesApplied := 0
+
+	// Track the mode string of the modes we actually apply.
+	appliedModes := ""
+
+	// Track the current action in our applied modes string.
+	appliedModesAction := ' '
+
+	// Track the parameters of the modes we actually apply.
+	appliedParamsUser := []string{}
+	appliedParamsServer := []string{}
+
+	// Track what parameter we're on (of those presented).
+	// i.e., if we had "+oo u1 u2", then we start out at index 0 pointing
+	// to u1, then index 1 indicating u2.
+	paramIndex := 0
+
+	for _, char := range modes {
+		if modesApplied >= ChanModesPerCommand {
+			break
+		}
+
+		if char == '+' || char == '-' {
+			action = char
+			continue
+		}
+
+		if char != 'o' {
+			continue
+		}
+
+		// +o/-o
+
+		// Must have a parameter. A nick.
+		if paramIndex >= len(params) {
+			break
+		}
+
+		// Consume the parameter.
+		targetNick := params[paramIndex]
+		paramIndex++
+
+		// Resolve the nick to a user.
+		targetUID, exists := u.Catbox.Nicks[canonicalizeNick(targetNick)]
+		if !exists {
+			break
+		}
+		targetUser := u.Catbox.Users[targetUID]
+
+		if !targetUser.onChannel(channel) {
+			break
+		}
+
+		// Looks okay to do this.
+
+		if action == '+' {
+			if channel.userHasOps(targetUser) {
+				break
+			}
+			channel.grantOps(targetUser)
+		} else {
+			if !channel.userHasOps(targetUser) {
+				break
+			}
+			channel.removeOps(targetUser)
+		}
+
+		if appliedModesAction != action {
+			appliedModesAction = action
+			appliedModes += string(appliedModesAction)
+		}
+
+		appliedModes += string(char)
+		appliedParamsUser = append(appliedParamsUser, targetUser.DisplayNick)
+		appliedParamsServer = append(appliedParamsServer, string(targetUser.UID))
+
+		modesApplied++
+	}
+
+	// If we didn't apply any changes, then we're done.
+	if modesApplied == 0 {
+		return
+	}
+
+	// Tell all local users in the channel about the mode changes.
+
+	userModeParams := []string{channel.Name, appliedModes}
+	userModeParams = append(userModeParams, appliedParamsUser...)
+
+	for memberUID := range channel.Members {
+		member := u.Catbox.Users[memberUID]
+
+		if !member.isLocal() {
+			continue
+		}
+
+		member.LocalUser.maybeQueueMessage(irc.Message{
+			Prefix:  u.User.nickUhost(),
+			Command: "MODE",
+			Params:  userModeParams,
+		})
+	}
+
+	// Propagate mode changes everywhere.
+
+	serverModeParams := []string{
+		fmt.Sprintf("%d", channel.TS),
+		channel.Name,
+		appliedModes,
+	}
+	serverModeParams = append(serverModeParams, appliedParamsServer...)
+
+	for _, ls := range u.Catbox.LocalServers {
+		ls.maybeQueueMessage(irc.Message{
+			Prefix:  string(u.User.UID),
+			Command: "TMODE",
+			Params:  serverModeParams,
+		})
+	}
 }
 
 func (u *LocalUser) whoCommand(m irc.Message) {
@@ -1365,6 +1510,7 @@ func (u *LocalUser) whoCommand(m irc.Message) {
 		// Maybe "H" means here, "G" means gone.
 
 		mode := "H"
+
 		// If away, mode is G.
 		if len(member.AwayMessage) > 0 {
 			mode = "G"
@@ -1372,6 +1518,10 @@ func (u *LocalUser) whoCommand(m irc.Message) {
 
 		if member.isOperator() {
 			mode += "*"
+		}
+
+		if channel.userHasOps(member) {
+			mode += "@"
 		}
 
 		serverName := u.Catbox.Config.ServerName
@@ -2021,7 +2171,7 @@ func (u *LocalUser) inviteCommand(m irc.Message) {
 		return
 	}
 
-	// Channel exists. Check they are on it.
+	// Channel exists. Check the person doing the inviting is in it.
 	_, onChannel := channel.Members[u.User.UID]
 	if !onChannel {
 		// 442 ERR_NOTONCHANNEL
@@ -2029,7 +2179,7 @@ func (u *LocalUser) inviteCommand(m irc.Message) {
 			"You're not on that channel"})
 	}
 
-	// Is the user already on the channel?
+	// Is the user we wish to invite already in the channel?
 	_, onChannel = channel.Members[targetUser.UID]
 	if onChannel {
 		// 443 ERR_USERONCHANNEL
@@ -2040,8 +2190,13 @@ func (u *LocalUser) inviteCommand(m irc.Message) {
 
 	// We may try to invite.
 
-	// When we have channel operators implemented, check if they are operator and
-	// reject if not.
+	// They must have ops to do this.
+	if !channel.userHasOps(u.User) {
+		// 482 ERR_CHANOPRIVSNEEDED
+		u.messageFromServer("482", []string{channel.Name,
+			"You're not channel operator"})
+		return
+	}
 
 	// Send an invite message.
 	if targetUser.isLocal() {

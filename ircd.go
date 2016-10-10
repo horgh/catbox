@@ -161,6 +161,10 @@ const UserMessageLimit = 10
 // before they get disconnected for flooding.
 const ExcessFloodThreshold = 50
 
+// ChanModesPerCommand tells how many channel modes we accept per MODE command
+// from a user.
+const ChanModesPerCommand = 4
+
 func main() {
 	log.SetFlags(0)
 

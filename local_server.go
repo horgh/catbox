@@ -300,7 +300,14 @@ func (s *LocalServer) sendBurst() {
 
 		uids := ""
 		for uid := range channel.Members {
+			member := s.Catbox.Users[uid]
+
 			uidStr := string(uid)
+
+			// Send with ops and/or voice prefix.
+			if channel.userHasOps(member) {
+				uidStr = "@" + uidStr
+			}
 
 			// Assume the first may fit.
 			if len(uids) == 0 {
@@ -469,6 +476,11 @@ func (s *LocalServer) handleMessage(m irc.Message) {
 
 	if m.Command == "INVITE" {
 		s.inviteCommand(m)
+		return
+	}
+
+	if m.Command == "TMODE" {
+		s.tmodeCommand(m)
 		return
 	}
 
@@ -939,9 +951,9 @@ func (s *LocalServer) sjoinCommand(m irc.Message) {
 	// e.g., :8ZZ SJOIN 1475187553 #test2 +sn :@8ZZAAAAAB
 
 	// Do we know this server?
-	_, exists := s.Catbox.Servers[TS6SID(m.Prefix)]
+	sourceServer, exists := s.Catbox.Servers[TS6SID(m.Prefix)]
 	if !exists {
-		s.quit("Unknown server")
+		s.quit("Unknown server (SJOIN)")
 		return
 	}
 
@@ -988,7 +1000,20 @@ func (s *LocalServer) sjoinCommand(m irc.Message) {
 	uidsRaw := strings.Split(userList, " ")
 	for _, uidRaw := range uidsRaw {
 		// May have op/voice prefix.
-		// Cut it off for now. I currently don't support op/voice.
+		opped := false
+		//voiced := false
+
+		if uidRaw[0] == '@' {
+			opped = true
+			//if uidRaw[1] == '+' {
+			//	voiced = true
+			//}
+		}
+		//if uidRaw[0] == '+' {
+		//	voiced = true
+		//}
+
+		// Done with prefix.
 		uidRaw = strings.TrimLeft(uidRaw, "@+")
 
 		user, exists := s.Catbox.Users[TS6UID(uidRaw)]
@@ -1008,6 +1033,10 @@ func (s *LocalServer) sjoinCommand(m irc.Message) {
 		channel.Members[user.UID] = struct{}{}
 		user.Channels[channel.Name] = channel
 
+		if opped {
+			channel.grantOps(user)
+		}
+
 		// Tell our local users who are in the channel.
 		for memberUID := range channel.Members {
 			member := s.Catbox.Users[memberUID]
@@ -1020,6 +1049,14 @@ func (s *LocalServer) sjoinCommand(m irc.Message) {
 				Command: "JOIN",
 				Params:  []string{channel.Name},
 			})
+
+			if opped {
+				member.LocalUser.maybeQueueMessage(irc.Message{
+					Prefix:  sourceServer.Name,
+					Command: "MODE",
+					Params:  []string{channel.Name, "+o", user.DisplayNick},
+				})
+			}
 		}
 	}
 
@@ -2110,4 +2147,156 @@ func (s *LocalServer) inviteCommand(m irc.Message) {
 
 	// If it's a remote user, propagate the message on its way.
 	targetUser.ClosestServer.maybeQueueMessage(m)
+}
+
+// TMODE propagates a channel mode change.
+// Source: user or server
+// Parameters: <channel TS> <channel> <mode changes> [parameters]
+func (s *LocalServer) tmodeCommand(m irc.Message) {
+	if len(m.Params) < 3 {
+		// 461 ERR_NEEDMOREPARAMS
+		s.messageFromServer("461", []string{"TMODE", "Not enough parameters"})
+		return
+	}
+
+	origin := ""
+	sourceUser, exists := s.Catbox.Users[TS6UID(m.Prefix)]
+	if exists {
+		origin = sourceUser.nickUhost()
+	}
+	if origin == "" {
+		sourceServer, exists := s.Catbox.Servers[TS6SID(m.Prefix)]
+		if exists {
+			origin = sourceServer.Name
+		}
+	}
+
+	if origin == "" {
+		s.quit("Unknown origin (TMODE)")
+		return
+	}
+
+	channelTS, err := strconv.ParseInt(m.Params[0], 10, 64)
+	if err != nil {
+		s.quit(fmt.Sprintf("Invalid channel TS: %s: %s", m.Params[0], err))
+		return
+	}
+
+	channel, exists := s.Catbox.Channels[canonicalizeChannel(m.Params[1])]
+	if !exists {
+		s.quit("Unknown channel (TMODE)")
+		return
+	}
+
+	// Ignore if the TS is newer
+	if channelTS > channel.TS {
+		log.Printf("TMODE for channel %s has newer TS, ignoring", channel.Name)
+		return
+	}
+
+	// We expect the remote server checked whether applying the mode is valid.
+	// (i.e., that source user is allowed to make the change). We only do minimal
+	// checks in that regard.
+
+	// Look at the modes and apply each of them that we understand.
+	// At the same time, generate what we need to tell our local clients.
+
+	// Point to where we expect parameters for modes to start.
+	paramIndex := 3
+
+	// Track modes we apply so we can tell our local users.
+	appliedModes := ""
+	appliedModesAction := ' '
+	appliedModesParams := []string{}
+
+	action := '+'
+
+	for _, char := range m.Params[2] {
+		if char == '+' || char == '-' {
+			action = char
+			continue
+		}
+
+		if char != 'o' {
+			continue
+		}
+
+		// +o/-o
+
+		// Must have a parameter.
+
+		if paramIndex >= len(m.Params) {
+			break
+		}
+
+		// Consume the parameter.
+		uidRaw := m.Params[paramIndex]
+		paramIndex++
+
+		// Look the user up.
+		targetUser, exists := s.Catbox.Users[TS6UID(uidRaw)]
+		if !exists {
+			break
+		}
+
+		if !targetUser.onChannel(channel) {
+			break
+		}
+
+		if action == '+' {
+			if channel.userHasOps(targetUser) {
+				continue
+			}
+			channel.grantOps(targetUser)
+		} else {
+			if !channel.userHasOps(targetUser) {
+				continue
+			}
+			channel.removeOps(targetUser)
+		}
+
+		if appliedModesAction != action {
+			appliedModesAction = action
+			appliedModes += string(appliedModesAction)
+		}
+
+		appliedModes += string(char)
+		appliedModesParams = append(appliedModesParams, targetUser.DisplayNick)
+	}
+
+	// It's possible we have more than ChanModesPerCommand to send to the client
+	// now (as TMODE can exceed the limit). We could break it up into separate
+	// MODE commands.
+
+	// Tell our local users who are in the channel.
+
+	// But only if there is something to tell.
+
+	if len(appliedModes) > 0 {
+		userModeParams := []string{channel.Name, appliedModes}
+		userModeParams = append(userModeParams, appliedModesParams...)
+		log.Printf("%v %v", appliedModes, appliedModesParams)
+
+		for memberUID := range channel.Members {
+			member := s.Catbox.Users[memberUID]
+
+			if !member.isLocal() {
+				continue
+			}
+
+			member.LocalUser.maybeQueueMessage(irc.Message{
+				Prefix:  origin,
+				Command: "MODE",
+				Params:  userModeParams,
+			})
+		}
+	}
+
+	// Propagate
+	for _, ls := range s.Catbox.LocalServers {
+		if ls == s {
+			continue
+		}
+		ls.maybeQueueMessage(m)
+	}
 }
