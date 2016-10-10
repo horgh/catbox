@@ -665,6 +665,11 @@ func (u *LocalUser) handleMessage(m irc.Message) {
 		return
 	}
 
+	if m.Command == "OPME" {
+		u.opmeCommand(m)
+		return
+	}
+
 	// Unknown command. We don't handle it yet anyway.
 	// 421 ERR_UNKNOWNCOMMAND
 	u.messageFromServer("421", []string{m.Command, "Unknown command"})
@@ -2235,4 +2240,66 @@ func (u *LocalUser) inviteCommand(m irc.Message) {
 			},
 		})
 	}
+}
+
+// OPME is an operator command to grant them ops in a channel.
+// Params: <channel>
+func (u *LocalUser) opmeCommand(m irc.Message) {
+	if len(m.Params) == 0 {
+		// 461 ERR_NEEDMOREPARAMS
+		u.messageFromServer("461", []string{"OPME", "Not enough parameters"})
+		return
+	}
+
+	if !u.User.isOperator() {
+		// 481 ERR_NOPRIVILEGES
+		u.messageFromServer("481", []string{"Permission Denied- You're not an IRC operator"})
+		return
+	}
+
+	channel, exists := u.Catbox.Channels[canonicalizeChannel(m.Params[0])]
+	if !exists {
+		// 403 ERR_NOSUCHCHANNEL.
+		u.messageFromServer("403", []string{m.Params[0], "Invalid channel name"})
+		return
+	}
+
+	if channel.userHasOps(u.User) {
+		return
+	}
+
+	channel.grantOps(u.User)
+
+	// Tell local users in the channel.
+	for memberUID := range channel.Members {
+		member := u.Catbox.Users[memberUID]
+
+		if !member.isLocal() {
+			continue
+		}
+
+		member.LocalUser.maybeQueueMessage(irc.Message{
+			Prefix:  u.Catbox.Config.ServerName,
+			Command: "MODE",
+			Params:  []string{channel.Name, "+o", u.User.DisplayNick},
+		})
+	}
+
+	// Propagate to servers.
+	for _, ls := range u.Catbox.LocalServers {
+		ls.maybeQueueMessage(irc.Message{
+			Prefix:  string(u.Catbox.Config.TS6SID),
+			Command: "TMODE",
+			Params: []string{
+				fmt.Sprintf("%d", channel.TS),
+				channel.Name,
+				"+o",
+				string(u.User.UID),
+			},
+		})
+	}
+
+	// Tell operators.
+	u.Catbox.noticeOpers(fmt.Sprintf("%s used OPME in %s", u.User.DisplayNick,
+		channel.Name))
 }

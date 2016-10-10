@@ -17,7 +17,7 @@ Features:
     link to other instances of itself.
   * Channels, private messages, etc. Most of the basic IRC commands and features
     one expects are present.
-  * No channel operators. (Maybe in the future)
+  * Channel operators.
   * No channel modes beyond +ns which is always set. (Maybe more in the future)
   * No user modes beyond +i and +o. (Maybe more in the future)
   * Global IRC operators.
@@ -94,8 +94,8 @@ This is not exhaustive, but some of the differences are:
   * WHOIS command: Currently not going to show any channels.
   * WHOIS command: Always send to remote server if remote user.
   * User modes: Only +oiC
-  * Channel modes: Only +ns
-  * No channel ops or voices.
+  * Channel modes: Only +nos
+  * No voices yet.
   * WHO: Support only 'WHO #channel'. And shows all nicks on that channel.
   * CONNECT: Single parameter only.
   * LINKS: No parameters supported.

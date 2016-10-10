@@ -5,7 +5,7 @@
 
 
 ## RFC
-  * Channel modes: +o/+v/+b/+i/+k/etc
+  * Channel modes: +v/+b/+i/+k/etc
   * KICK
 
 
