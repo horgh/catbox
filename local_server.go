@@ -1370,6 +1370,10 @@ func (s *LocalServer) nickCommand(m irc.Message) {
 	}
 
 	// Update their nick and nick TS.
+
+	delete(s.Catbox.Nicks, canonicalizeNick(user.DisplayNick))
+	s.Catbox.Nicks[canonicalizeNick(nick)] = user.UID
+
 	user.DisplayNick = nick
 	user.NickTS = nickTS
 

@@ -9,6 +9,7 @@
   * Limit on number of modes applied only important for modes with parameters?
     Or only user status modes?
   * +v/-v
+  * Make sure can change from lowercase of nick to uppercase of it
 
 
 ## RFC
