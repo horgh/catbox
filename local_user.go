@@ -980,7 +980,7 @@ func (u *LocalUser) lusersCommand() {
 			len(u.Catbox.Users),
 			0,
 			// +1 to count ourself.
-			len(u.Catbox.Users)+1),
+			len(u.Catbox.Servers)+1),
 	})
 
 	// 252 RPL_LUSEROP
