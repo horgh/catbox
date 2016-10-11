@@ -689,6 +689,8 @@ func (u *LocalUser) nickCommand(m irc.Message) {
 	}
 	nick := m.Params[0]
 
+	// Truncate and validate the nick.
+
 	if len(nick) > u.Catbox.Config.MaxNickLength {
 		nick = nick[0:u.Catbox.Config.MaxNickLength]
 	}
@@ -699,23 +701,33 @@ func (u *LocalUser) nickCommand(m irc.Message) {
 		return
 	}
 
-	nickCanon := canonicalizeNick(nick)
-
-	// Nick must be unique.
-	_, exists := u.Catbox.Nicks[nickCanon]
-	if exists {
-		// 433 ERR_NICKNAMEINUSE
-		u.messageFromServer("433", []string{nick, "Nickname is already in use"})
+	// Ignore the command if it's the exact same as the current nick.
+	// This is a case sensitive comparison.
+	if nick == u.User.DisplayNick {
 		return
 	}
 
-	// Flag the nick as taken by this client.
-	u.Catbox.Nicks[nickCanon] = u.User.UID
-	oldDisplayNick := u.User.DisplayNick
+	newNickCanon := canonicalizeNick(nick)
+	oldNickCanon := canonicalizeNick(u.User.DisplayNick)
+
+	// Nick must be unique. However, allow them to change their nick to a
+	// different case. e.g. "user" may change to "User", but no one else may.
+	if newNickCanon != oldNickCanon {
+		_, exists := u.Catbox.Nicks[newNickCanon]
+		if exists {
+			// 433 ERR_NICKNAMEINUSE
+			u.messageFromServer("433", []string{nick, "Nickname is already in use"})
+			return
+		}
+	}
 
 	// Free the old nick.
-	delete(u.Catbox.Nicks, canonicalizeNick(oldDisplayNick))
+	delete(u.Catbox.Nicks, oldNickCanon)
 
+	// Flag the nick as taken by this client.
+	u.Catbox.Nicks[newNickCanon] = u.User.UID
+
+	// Nick TS changes when nick is set.
 	u.User.NickTS = time.Now().Unix()
 
 	// We need to inform other clients about the nick change.
@@ -743,13 +755,13 @@ func (u *LocalUser) nickCommand(m irc.Message) {
 
 	// Reply to the client. We should have above, but if they were not on any
 	// channels then we did not.
-	_, exists = informedClients[u.User.UID]
+	_, exists := informedClients[u.User.UID]
 	if !exists {
 		u.messageUser(u.User, "NICK", []string{nick})
 	}
 
-	// Finally, make the update. Do this last as we need to ensure we act
-	// as the old nick when crafting messages.
+	// Finally, make the update. Do this last as we need to ensure we act as the
+	// old nick when crafting messages.
 	u.User.DisplayNick = nick
 
 	// Propagate to servers.

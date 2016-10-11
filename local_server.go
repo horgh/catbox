@@ -1308,7 +1308,7 @@ func (s *LocalServer) nickCommand(m irc.Message) {
 		return
 	}
 
-	// Find the user.
+	// Find the user who changed their nick.
 	user, exists := s.Catbox.Users[TS6UID(m.Prefix)]
 	if !exists {
 		s.quit("Unknown user (NICK)")
@@ -1329,7 +1329,10 @@ func (s *LocalServer) nickCommand(m irc.Message) {
 	// Collision. The TS6 protocol defines more detailed rules. I simply kill the
 	// one with the newer Nick TS without caring about user@host. I also tell
 	// every server rather than limiting the extent of the KILL message.
-	if exists {
+
+	// Careful. They could have changed their nick to a different case. e.g.,
+	// "user" to "User". Check who we collided with that it is a different user.
+	if collidedUID != user.UID && exists {
 		collidedUser := s.Catbox.Users[collidedUID]
 		if nickTS < collidedUser.NickTS {
 			s.Catbox.issueKill(nil, collidedUser, "Nick collision, newer killed")
@@ -1369,7 +1372,7 @@ func (s *LocalServer) nickCommand(m irc.Message) {
 		}
 	}
 
-	// Update their nick and nick TS.
+	// Update our records, their nick, and their nick TS.
 
 	delete(s.Catbox.Nicks, canonicalizeNick(user.DisplayNick))
 	s.Catbox.Nicks[canonicalizeNick(nick)] = user.UID
