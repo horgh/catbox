@@ -3,11 +3,10 @@
   * Log to file
   * Additional automated testing
 
-  * JOIN TS logic
-  * Check all commands that have optional parameters. May have treated it as
-    always a single optional parameter whereas there could be multiple.
+  * Support JOIN 0 from server
   * Limit on number of modes applied only important for modes with parameters?
     Or only user status modes?
+  * JOIN TS logic
   * +v/-v
 
 

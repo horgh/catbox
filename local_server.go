@@ -1391,7 +1391,6 @@ func (s *LocalServer) nickCommand(m irc.Message) {
 
 func (s *LocalServer) partCommand(m irc.Message) {
 	// Params: <comma separated list of channels> <message>
-	// NOTE: I don't support comma separating channels.
 
 	if len(m.Params) < 1 {
 		// 461 ERR_NEEDMOREPARAMS
@@ -1399,51 +1398,51 @@ func (s *LocalServer) partCommand(m irc.Message) {
 		return
 	}
 
-	chanName := canonicalizeChannel(m.Params[0])
-
 	msg := ""
 	if len(m.Params) > 1 {
 		msg = m.Params[1]
 	}
 
-	// Look up the source user.
+	// Look up the source user. This is the user parting.
 	sourceUser, exists := s.Catbox.Users[TS6UID(m.Prefix)]
 	if !exists {
 		s.quit("Unknown user (PART)")
 		return
 	}
 
-	// Look up the channel.
-	channel, exists := s.Catbox.Channels[chanName]
-	if !exists {
-		s.quit("Unknown channel (PART)")
-		return
-	}
+	// Channel(s).
+	channelNames := commaChannelsToChannelNames(m.Params[0])
 
-	// Remove them from the channel.
-
-	channel.removeUser(sourceUser)
-
-	if len(channel.Members) == 0 {
-		delete(s.Catbox.Channels, channel.Name)
-	}
-
-	// Tell local users about the part.
-	params := []string{channel.Name}
-	if len(msg) > 0 {
-		params = append(params, msg)
-	}
-	for memberUID := range channel.Members {
-		member := s.Catbox.Users[memberUID]
-		if !member.isLocal() {
-			continue
+	// Part each.
+	for _, channelName := range channelNames {
+		channel, exists := s.Catbox.Channels[channelName]
+		if !exists {
+			s.quit("Unknown channel (PART)")
+			return
 		}
 
-		member.LocalUser.maybeQueueMessage(irc.Message{
+		// Remove them from the channel.
+
+		channel.removeUser(sourceUser)
+
+		if len(channel.Members) == 0 {
+			delete(s.Catbox.Channels, channel.Name)
+		}
+
+		// Tell local users about the part.
+
+		params := []string{channel.Name}
+		if len(msg) > 0 {
+			params = append(params, msg)
+		}
+
+		msg := irc.Message{
 			Prefix:  sourceUser.nickUhost(),
 			Command: "PART",
 			Params:  params,
-		})
+		}
+
+		s.Catbox.messageLocalUsersOnChannel(channel, msg)
 	}
 
 	// Propagate to all other servers.
@@ -1538,9 +1537,7 @@ func (s *LocalServer) quitCommand(m irc.Message) {
 	}
 }
 
-// MODE tells us about either channel or user changes.
-// Right now I don't really support channel modes, so ignore those all together.
-// For user modes, I track only +i and +o. Ignore the rest.
+// MODE tells us about or user changes.
 func (s *LocalServer) modeCommand(m irc.Message) {
 	// User mode message parameters: <client UID> <umode changes>
 	if len(m.Params) < 2 {
