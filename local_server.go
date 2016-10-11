@@ -349,7 +349,34 @@ func (s *LocalServer) sendBurst() {
 			})
 		}
 	}
+}
 
+// Part a user from a channel.
+// This updates our records and informs our local users of the part.
+// It does not send any messages to remote servers.
+func (s *LocalServer) partUser(user *User, channel *Channel, partMessage string) {
+	// Remove them from the channel.
+
+	channel.removeUser(user)
+
+	if len(channel.Members) == 0 {
+		delete(s.Catbox.Channels, channel.Name)
+	}
+
+	// Tell local users about the part.
+
+	params := []string{channel.Name}
+	if len(partMessage) > 0 {
+		params = append(params, partMessage)
+	}
+
+	msg := irc.Message{
+		Prefix:  user.nickUhost(),
+		Command: "PART",
+		Params:  params,
+	}
+
+	s.Catbox.messageLocalUsersOnChannel(channel, msg)
 }
 
 // The server sent us a message. Deal with it.
@@ -1223,11 +1250,9 @@ func (s *LocalServer) tbCommand(m irc.Message) {
 
 func (s *LocalServer) joinCommand(m irc.Message) {
 	// Parameters: <channel TS> <channel> +
-	// Prefix is UID.
+	//   OR: 0 (to part all channels)
 
-	// No support for JOIN 0.
-
-	if len(m.Params) < 3 {
+	if len(m.Params) < 1 {
 		// 461 ERR_NEEDMOREPARAMS
 		s.messageFromServer("461", []string{"JOIN", "Not enough parameters"})
 		return
@@ -1240,6 +1265,31 @@ func (s *LocalServer) joinCommand(m irc.Message) {
 		return
 	}
 
+	// JOIN 0 means part all channels they are in.
+	if m.Params[0] == "0" {
+		for _, channel := range user.Channels {
+			s.partUser(user, channel, "")
+		}
+
+		// Propagate.
+		for _, ls := range s.Catbox.LocalServers {
+			if ls == s {
+				continue
+			}
+			ls.maybeQueueMessage(m)
+		}
+
+		// Done.
+		return
+	}
+
+	// We must have 3 parameters in this case.
+	if len(m.Params) < 3 {
+		// 461 ERR_NEEDMOREPARAMS
+		s.messageFromServer("461", []string{"JOIN", "Not enough parameters"})
+		return
+	}
+
 	channelTS, err := strconv.ParseInt(m.Params[0], 10, 64)
 	if err != nil {
 		s.quit("Invalid TS (JOIN)")
@@ -1249,6 +1299,11 @@ func (s *LocalServer) joinCommand(m irc.Message) {
 	chanName := canonicalizeChannel(m.Params[1])
 	if !isValidChannel(chanName) {
 		s.quit("Invalid channel name")
+		return
+	}
+
+	if m.Params[2] != "+" {
+		s.quit("Invalid JOIN command. No +")
 		return
 	}
 
@@ -1392,6 +1447,7 @@ func (s *LocalServer) nickCommand(m irc.Message) {
 func (s *LocalServer) partCommand(m irc.Message) {
 	// Params: <comma separated list of channels> <message>
 
+	// Let message be optional. But it appears it should always be there.
 	if len(m.Params) < 1 {
 		// 461 ERR_NEEDMOREPARAMS
 		s.messageFromServer("461", []string{"PART", "Not enough parameters"})
@@ -1421,28 +1477,7 @@ func (s *LocalServer) partCommand(m irc.Message) {
 			return
 		}
 
-		// Remove them from the channel.
-
-		channel.removeUser(sourceUser)
-
-		if len(channel.Members) == 0 {
-			delete(s.Catbox.Channels, channel.Name)
-		}
-
-		// Tell local users about the part.
-
-		params := []string{channel.Name}
-		if len(msg) > 0 {
-			params = append(params, msg)
-		}
-
-		msg := irc.Message{
-			Prefix:  sourceUser.nickUhost(),
-			Command: "PART",
-			Params:  params,
-		}
-
-		s.Catbox.messageLocalUsersOnChannel(channel, msg)
+		s.partUser(sourceUser, channel, msg)
 	}
 
 	// Propagate to all other servers.

@@ -3,7 +3,6 @@
   * Log to file
   * Additional automated testing
 
-  * Support JOIN 0 from server
   * Limit on number of modes applied only important for modes with parameters?
     Or only user status modes?
   * JOIN TS logic
