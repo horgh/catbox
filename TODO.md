@@ -5,7 +5,6 @@
 
   * Limit on number of modes applied only important for modes with parameters?
     Or only user status modes?
-  * JOIN TS logic
   * +v/-v
 
 

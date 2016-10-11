@@ -1308,8 +1308,8 @@ func (s *LocalServer) joinCommand(m irc.Message) {
 	}
 
 	// Create the channel if necessary.
-	channel, exists := s.Catbox.Channels[chanName]
-	if !exists {
+	channel, channelExists := s.Catbox.Channels[chanName]
+	if !channelExists {
 		channel = &Channel{
 			Name:    chanName,
 			Members: make(map[TS6UID]struct{}),
@@ -1321,8 +1321,12 @@ func (s *LocalServer) joinCommand(m irc.Message) {
 		// No modes set yet.
 	}
 
-	// Update channel TS if needed. To oldest.
+	// If the TS indicates the other side's channel is older (by TS), then we
+	// wipe all modes and statuses and tell our local users about this. We don't
+	// tell servers. They can figure it out. Also accept the older TS.
+
 	if channelTS < channel.TS {
+		channel.clearModes(s.Catbox)
 		channel.TS = channelTS
 	}
 
@@ -1330,19 +1334,14 @@ func (s *LocalServer) joinCommand(m irc.Message) {
 	channel.Members[user.UID] = struct{}{}
 	user.Channels[channel.Name] = channel
 
-	// Tell our local users who are in the channel.
-	for memberUID := range channel.Members {
-		member := s.Catbox.Users[memberUID]
-		if !member.isLocal() {
-			continue
-		}
-
-		member.LocalUser.maybeQueueMessage(irc.Message{
-			Prefix:  user.nickUhost(),
-			Command: "JOIN",
-			Params:  []string{channel.Name},
-		})
+	// Tell our local users who are in the channel about the new member.
+	msg := irc.Message{
+		Prefix:  user.nickUhost(),
+		Command: "JOIN",
+		Params:  []string{channel.Name},
 	}
+
+	s.Catbox.messageLocalUsersOnChannel(channel, msg)
 
 	// Propagate.
 	for _, server := range s.Catbox.LocalServers {

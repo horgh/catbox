@@ -139,4 +139,4 @@ possible for client messages to overwhelm us.
     * Post-burst: INVITE, JOIN, KILL, NICK, NOTICE, PART, PRIVMSG, QUIT, SID,
       SJOIN, TOPIC, UID, SQUIT, ERROR, PING, PONG, MODE (user)
   * I believe "simple modes" are things like +ntisk. As opposed to status modes
-    such as +o/+v.
+    such as +o/+v. Ban/exemption type modes are not simple either.

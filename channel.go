@@ -71,9 +71,6 @@ func (c *Channel) removeOps(u *User) {
 // Remove all modes from the channel, and all ops/voices.
 //
 // This informs local users about the mode changes, but no one else.
-//
-// The by parameter should indicate who is clearing the modes and be suitable
-// for the prefix of a message.
 func (c *Channel) clearModes(cb *Catbox) {
 	// Build all the messages we need prior to sending.
 	msgs := []irc.Message{}
