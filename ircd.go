@@ -618,7 +618,6 @@ func (cb *Catbox) checkAndPingClients() {
 
 		client.messageFromServer("PING", []string{cb.Config.ServerName})
 		client.LastPingTime = now
-		continue
 	}
 
 	for _, server := range cb.LocalServers {
@@ -667,7 +666,6 @@ func (cb *Catbox) checkAndPingClients() {
 		// PING origin is our SID for servers.
 		server.messageFromServer("PING", []string{string(cb.Config.TS6SID)})
 		server.LastPingTime = now
-		continue
 	}
 }
 
