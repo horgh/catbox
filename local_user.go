@@ -1751,7 +1751,7 @@ func (u *LocalUser) linksCommand(m irc.Message) {
 		// 364 RPL_LINKS
 		// <mask> <server> :<hopcount> <server info>
 		u.messageFromServer("364", []string{
-			s.Name,
+			"*",
 			s.Name,
 			fmt.Sprintf("%d %s", s.HopCount, s.Description),
 		})
