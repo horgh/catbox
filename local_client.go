@@ -457,22 +457,22 @@ func (c *LocalClient) sendSVINFO() {
 
 // Upgrade a LocalClient to a LocalServer.
 func (c *LocalClient) registerServer() {
-	ls := NewLocalServer(c)
+	newLS := NewLocalServer(c)
 
-	s := &Server{
+	newServer := &Server{
 		SID:         TS6SID(c.PreRegTS6SID),
 		Name:        c.PreRegServerName,
 		Description: c.PreRegServerDesc,
 		HopCount:    1,
 		Capabs:      c.PreRegCapabs,
-		LocalServer: ls,
+		LocalServer: newLS,
 	}
 
-	ls.Server = s
+	newLS.Server = newServer
 
 	delete(c.Catbox.LocalClients, c.ID)
-	c.Catbox.LocalServers[ls.ID] = ls
-	c.Catbox.Servers[s.SID] = s
+	c.Catbox.LocalServers[newLS.ID] = newLS
+	c.Catbox.Servers[newServer.SID] = newServer
 
 	linkNotice := ""
 	if c.isTLS() {
@@ -484,38 +484,42 @@ func (c *LocalClient) registerServer() {
 			c.PreRegServerName)
 	}
 
-	ls.Catbox.noticeOpers(linkNotice)
+	newLS.Catbox.noticeOpers(linkNotice)
 
-	ls.sendBurst()
+	newLS.sendBurst()
 
 	// PING <My SID>
-	ls.maybeQueueMessage(irc.Message{
+	newLS.maybeQueueMessage(irc.Message{
 		Command: "PING",
-		Params:  []string{string(ls.Catbox.Config.TS6SID)},
+		Params:  []string{string(c.Catbox.Config.TS6SID)},
 	})
 
 	// Tell connected servers about the new server.
 	// :<my SID> SID <server name> <hop count> <SID> <description>
 	// e.g.: :8ZZ SID irc3.example.com 2 9ZQ :My Desc
-	for _, server := range c.Catbox.LocalServers {
+	for _, ls := range c.Catbox.LocalServers {
 		// We don't have to tell the server about itself.
-		if server == ls {
+		if ls == newLS {
 			continue
 		}
 
-		server.maybeQueueMessage(irc.Message{
+		ls.maybeQueueMessage(irc.Message{
 			// It's linked to us, so set prefix to ourself.
 			Prefix:  string(c.Catbox.Config.TS6SID),
 			Command: "SID",
-			Params: []string{s.Name, fmt.Sprintf("%d", s.HopCount+1), string(s.SID),
-				s.Description},
+			Params: []string{
+				newServer.Name,
+				fmt.Sprintf("%d", newServer.HopCount+1),
+				string(newServer.SID),
+				newServer.Description,
+			},
 		})
 
 		// Also tell them about its capabs.
-		server.maybeQueueMessage(irc.Message{
-			Prefix:  string(s.SID),
+		ls.maybeQueueMessage(irc.Message{
+			Prefix:  string(newServer.SID),
 			Command: "ENCAP",
-			Params:  []string{"*", "GCAP", s.capabsString()},
+			Params:  []string{"*", "GCAP", newServer.capabsString()},
 		})
 	}
 }

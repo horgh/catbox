@@ -16,8 +16,6 @@ type LocalServer struct {
 
 	Server *Server
 
-	Capabs map[string]struct{}
-
 	// The last time we heard anything from it.
 	LastActivityTime time.Time
 
@@ -36,7 +34,6 @@ func NewLocalServer(c *LocalClient) *LocalServer {
 
 	s := &LocalServer{
 		LocalClient:      c,
-		Capabs:           c.PreRegCapabs,
 		LastActivityTime: now,
 		LastPingTime:     now,
 		GotPING:          false,

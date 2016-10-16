@@ -5,7 +5,6 @@
 
   * Remove alarm goroutine. Instead there is a time package method to replace
     it.
-  * Both LocalServer and Server do not need a capabs field
   * Limit on number of modes applied only important for modes with parameters?
     Or only user status modes?
   * +v/-v
