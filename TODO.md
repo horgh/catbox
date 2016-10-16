@@ -3,6 +3,10 @@
   * Log to file
   * Additional automated testing
 
+  * A command (NSA) to retrieve TLS/ciphers in use by all clients/servers. Sent
+    remotely so each server can get back to us with their local info. It will
+    require a parameter, channel name or mask. So we can see all relevant
+    info for a channel or user, or if an operator, for all users.
   * Limit on number of modes applied only important for modes with parameters?
     Or only user status modes?
   * +v/-v
@@ -33,8 +37,6 @@
   * Upgrade without losing connections
   * Inform clients when someone whois's them.
   * Bots built into the ircd
-  * A command to retrieve TLS/ciphers in use by all clients/servers. Sent
-    remotely so each server can get back to us with their local info.
   * Exchange K:Lines during server burst
   * Persistent K:Lines (currently they are in memory only)
 
