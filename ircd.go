@@ -577,6 +577,13 @@ func (cb *Catbox) isShuttingDown() bool {
 
 // Alarm sends a message to the server goroutine to wake it up.
 // It sleeps and then repeats.
+//
+// NOTE: You might be tempted to replace this goroutine with time.After().
+//   However we want to try to always wake up every second. time.After() will
+//   start a new timer every time through the event loop. So for example if
+//   we keep receiving messages with delay under a second then we'll never
+//   receive from the time.After() channel. I think using this separate
+//   goroutine with its own channel is more reliable.
 func (cb *Catbox) alarm() {
 	defer cb.WG.Done()
 

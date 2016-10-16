@@ -3,8 +3,6 @@
   * Log to file
   * Additional automated testing
 
-  * Remove alarm goroutine. Instead there is a time package method to replace
-    it.
   * Limit on number of modes applied only important for modes with parameters?
     Or only user status modes?
   * +v/-v
