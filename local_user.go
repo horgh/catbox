@@ -573,6 +573,11 @@ func (u *LocalUser) handleMessage(m irc.Message) {
 		return
 	}
 
+	if m.Command == "RESTART" {
+		u.restartCommand(m)
+		return
+	}
+
 	if m.Command == "WHOIS" {
 		u.whoisCommand(m)
 		return
@@ -1111,6 +1116,16 @@ func (u *LocalUser) dieCommand(m irc.Message) {
 
 	// die is not an RFC command. I use it to shut down the server.
 	u.Catbox.shutdown()
+}
+
+func (u *LocalUser) restartCommand(m irc.Message) {
+	if !u.User.isOperator() {
+		// 481 ERR_NOPRIVILEGES
+		u.messageFromServer("481", []string{"Permission Denied- You're not an IRC operator"})
+		return
+	}
+
+	u.Catbox.restart(u.User)
 }
 
 func (u *LocalUser) whoisCommand(m irc.Message) {

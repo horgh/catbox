@@ -17,8 +17,11 @@ type Config struct {
 	CertificateFile string
 	KeyFile         string
 	ServerName      string
-	ServerInfo      string
-	MOTD            string
+
+	// Description of server. This shows in WHOIS, etc.
+	ServerInfo string
+
+	MOTD string
 
 	MaxNickLength int
 

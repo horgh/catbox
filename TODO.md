@@ -6,7 +6,6 @@
   * Remove alarm goroutine. Instead there is a time package method to replace
     it.
   * Both LocalServer and Server do not need a capabs field
-  * Verify null event is what gets set if event is not populated.
   * Limit on number of modes applied only important for modes with parameters?
     Or only user status modes?
   * +v/-v
@@ -31,7 +30,8 @@
 
 
 ## Non-standard
-  * Upgrade in place (is this possible with TLS connections? or at all?)
+  * Upgrade in place (is this possible with TLS connections without
+    disconnecting them?)
   * Server console.
   * Upgrade without losing connections
   * Inform clients when someone whois's them.

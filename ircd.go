@@ -6,6 +6,7 @@ import (
 	"log"
 	"net"
 	"os"
+	"os/exec"
 	"os/signal"
 	"sync"
 	"syscall"
@@ -91,6 +92,10 @@ type Catbox struct {
 
 	// WaitGroup to ensure all goroutines clean up before we end.
 	WG sync.WaitGroup
+
+	// Whether we should restart after we cleanly complete shutdown.
+	// This will always be false unless someone triggered a restart.
+	Restart bool
 }
 
 // KLine holds a kline (a ban).
@@ -143,6 +148,9 @@ const (
 
 	// RehashEvent tells the server to rehash.
 	RehashEvent
+
+	// RestartEvent tells the server to rehash.
+	RestartEvent
 )
 
 // UserMessageLimit defines a cap on how many messages a user may send at once.
@@ -166,7 +174,8 @@ const ExcessFloodThreshold = 50
 const ChanModesPerCommand = 4
 
 func main() {
-	log.SetFlags(0)
+	log.SetFlags(log.Ldate | log.Ltime)
+	log.SetOutput(os.Stdout)
 
 	args, err := getArgs()
 	if err != nil {
@@ -181,6 +190,18 @@ func main() {
 	err = cb.start()
 	if err != nil {
 		log.Fatal(err)
+	}
+
+	if cb.Restart {
+		log.Printf("Shutdown completed. Restarting...")
+		cmd := exec.Command(os.Args[0], "-config", cb.ConfigFile)
+		cmd.Stdout = os.Stdout
+		err := cmd.Start()
+		if err != nil {
+			log.Fatalf("Restart failed: %s", err)
+		}
+		log.Printf("New process started!")
+		return
 	}
 
 	log.Printf("Server shutdown cleanly.")
@@ -280,17 +301,28 @@ func (cb *Catbox) start() error {
 	go cb.alarm()
 
 	// Catch SIGHUP and rehash.
+	// Catch SIGUSR1 and restart.
 	signalChan := make(chan os.Signal)
 	signal.Notify(signalChan, syscall.SIGHUP)
+	signal.Notify(signalChan, syscall.SIGUSR1)
 
 	cb.WG.Add(1)
 	go func() {
 		defer cb.WG.Done()
 		for {
 			select {
-			case <-signalChan:
-				log.Printf("Received SIGHUP signal, rehashing")
-				cb.newEvent(Event{Type: RehashEvent})
+			case sig := <-signalChan:
+				if sig == syscall.SIGHUP {
+					log.Printf("Received SIGHUP signal, rehashing")
+					cb.newEvent(Event{Type: RehashEvent})
+					break
+				}
+				if sig == syscall.SIGUSR1 {
+					log.Printf("Received SIGUSR1 signal, restarting")
+					cb.newEvent(Event{Type: RestartEvent})
+					break
+				}
+				log.Printf("Received unknown signal!")
 			case <-cb.ShutdownChan:
 				signal.Stop(signalChan)
 				// After Stop() we're guaranteed we will receive no more on the channel,
@@ -376,6 +408,11 @@ func (cb *Catbox) eventLoop() {
 
 			if evt.Type == RehashEvent {
 				cb.rehash(nil)
+				continue
+			}
+
+			if evt.Type == RestartEvent {
+				cb.restart(nil)
 				continue
 			}
 
@@ -1214,6 +1251,20 @@ func (cb *Catbox) rehash(byUser *User) {
 	} else {
 		cb.noticeOpers("Rehashed configuration.")
 	}
+}
+
+// Restart initiates shutdown and flags us so we restart our process.
+func (cb *Catbox) restart(byUser *User) {
+	if byUser != nil {
+		cb.noticeOpers(fmt.Sprintf("%s issued restart.", byUser.DisplayNick))
+	} else {
+		cb.noticeOpers("Restarting.")
+	}
+
+	// We shutdown everything, then flag to restart. This means when we exit our
+	// main loop we'll start a new process.
+	cb.shutdown()
+	cb.Restart = true
 }
 
 // Look up a server by its name. e.g., irc.example.com
