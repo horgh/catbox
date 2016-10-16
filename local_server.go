@@ -212,6 +212,7 @@ func (s *LocalServer) sendBurst() {
 			Command: "SID",
 			Params: []string{
 				server.Name,
+				// All servers we know are an additional 1 hop away for it.
 				fmt.Sprintf("%d", server.HopCount+1),
 				string(server.SID),
 				server.Description,
@@ -243,7 +244,7 @@ func (s *LocalServer) sendBurst() {
 			Command: "UID",
 			Params: []string{
 				user.DisplayNick,
-				// Hop count increases for them.
+				// Hop count increases for them by one.
 				fmt.Sprintf("%d", user.HopCount+1),
 				fmt.Sprintf("%d", user.NickTS),
 				user.modesString(),
@@ -782,11 +783,16 @@ func (s *LocalServer) uidCommand(m irc.Message) {
 	// No reply needed I think.
 
 	// Tell our other servers.
+	// However, we need to alter the message a bit. The hop count is +1 for them.
+	// The message comes in saying the hop count to *us*. We need to tell our
+	// servers the hop count to them.
+	newMsg := m
+	newMsg.Params[1] = fmt.Sprintf("%d", hopCount+1)
 	for _, server := range s.Catbox.LocalServers {
 		if server == s {
 			continue
 		}
-		server.maybeQueueMessage(m)
+		server.maybeQueueMessage(newMsg)
 	}
 
 	// Tell local operators.
@@ -954,13 +960,17 @@ func (s *LocalServer) sidCommand(m irc.Message) {
 	s.Catbox.Servers[sid] = newServer
 
 	// Propagate to our connected servers.
+	// However, we need to alter the message a bit. The hop count is +1 for them.
+	// The message comes in saying the hop count to *us*. We need to tell our
+	// servers the hop count to them.
+	newMsg := m
+	newMsg.Params[1] = fmt.Sprintf("%d", hopCount+1)
 	for _, server := range s.Catbox.LocalServers {
 		// Don't tell the server we just heard it from.
 		if server == s {
 			continue
 		}
-
-		server.maybeQueueMessage(m)
+		server.maybeQueueMessage(newMsg)
 	}
 
 	// We don't need to tell the new server about the servers we are connected to.
