@@ -3,8 +3,6 @@
   * Log to file
   * Additional automated testing
 
-  * Add build date automatically, remove config option
-  * Add version automatically, remove config option
   * Remove alarm goroutine. Instead there is a time package method to replace
     it.
   * Both LocalServer and Server do not need a capabs field

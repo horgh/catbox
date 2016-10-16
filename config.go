@@ -18,8 +18,6 @@ type Config struct {
 	KeyFile         string
 	ServerName      string
 	ServerInfo      string
-	Version         string
-	CreatedDate     string
 	MOTD            string
 
 	MaxNickLength int
@@ -90,8 +88,6 @@ func checkAndParseConfig(file string) (*Config, error) {
 		"key-file",
 		"server-name",
 		"server-info",
-		"version",
-		"created-date",
 		"motd",
 		"max-nick-length",
 		"ping-time",
@@ -128,8 +124,6 @@ func checkAndParseConfig(file string) (*Config, error) {
 	c.KeyFile = configMap["key-file"]
 	c.ServerName = configMap["server-name"]
 	c.ServerInfo = configMap["server-info"]
-	c.Version = configMap["version"]
-	c.CreatedDate = configMap["created-date"]
 	c.MOTD = configMap["motd"]
 
 	nickLen64, err := strconv.ParseInt(configMap["max-nick-length"], 10, 8)
