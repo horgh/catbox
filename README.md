@@ -43,7 +43,7 @@ Design philosophy:
 # Setup
 Build the daemon:
 
-    go build
+    make
 
 If you want to listen on a TLS port, you must have a certificate and key
 available.
@@ -117,8 +117,9 @@ This is not exhaustive, but some of the differences are:
 
 This is similar to ircd-ratbox's algorithm.
 
-Note as client messages and the alarm events go to same channel, it is still
-possible for client messages to overwhelm us.
+While client message events and alarm events go to the same channel, if a client
+sends a large number of messages, they will trigger an excess flood. This means
+the daemon should not be overwhelmed by a single client.
 
 
 # External documentation and references
