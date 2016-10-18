@@ -516,18 +516,16 @@ func (cb *Catbox) introduceClient(conn net.Conn) {
 				cb.Config.ServerName),
 		}
 
-		tlsConn, ok := conn.(*tls.Conn)
-		if ok {
-			// Call Handshake as we may not have completed handshake yet. If not, we
-			// are not able to have any useful connection state, so we can't tell them
-			// their version and cipher.
-			err := tlsConn.Handshake()
+		if client.isTLS() {
+			tlsVersion, tlsCipherSuite, err := client.getTLSState()
 			if err != nil {
+				log.Printf("Client %s: %s", client, err)
+				_ = conn.Close()
+				return
 			}
-			client.TLSConnectionState = tlsConn.ConnectionState()
-			msgs = append(msgs, fmt.Sprintf("*** Connected with %s (%s)",
-				tlsVersionToString(client.TLSConnectionState.Version),
-				cipherSuiteToString(client.TLSConnectionState.CipherSuite)))
+
+			msgs = append(msgs, fmt.Sprintf("*** Connected with %s (%s)", tlsVersion,
+				tlsCipherSuite))
 		}
 
 		msgs = append(msgs, "*** Looking up your hostname...")
@@ -815,8 +813,7 @@ func (cb *Catbox) connectToServer(linkInfo *ServerDefinition) {
 				Timeout: cb.Config.DeadTime,
 			}
 			conn, err = tls.DialWithDialer(dialer, "tcp",
-				fmt.Sprintf("%s:%d", linkInfo.Hostname, linkInfo.Port),
-				cb.TLSConfig)
+				fmt.Sprintf("%s:%d", linkInfo.Hostname, linkInfo.Port), cb.TLSConfig)
 		} else {
 			cb.noticeOpers(fmt.Sprintf("Connecting to %s without TLS...",
 				linkInfo.Name))
@@ -834,6 +831,17 @@ func (cb *Catbox) connectToServer(linkInfo *ServerDefinition) {
 		id := cb.getClientID()
 
 		client := NewLocalClient(cb, id, conn)
+
+		if linkInfo.TLS {
+			tlsVersion, tlsCipherSuite, err := client.getTLSState()
+			if err != nil {
+				log.Printf("Disconnecting from server %s: %s", linkInfo.Name, err)
+				_ = conn.Close()
+				return
+			}
+			log.Printf("Connected to %s with %s (%s)", linkInfo.Name, tlsVersion,
+				tlsCipherSuite)
+		}
 
 		// Make sure we send to the client's write channel before telling the server
 		// about the client. It is possible otherwise that the server (if shutting
@@ -1104,17 +1112,22 @@ func (cb *Catbox) createWHOISResponse(user, replyUser *User,
 
 	// 671. Non standard. Ratbox uses it.
 	if user.isLocal() && user.LocalUser.isTLS() {
-		msgs = append(msgs, irc.Message{
-			Prefix:  from,
-			Command: "671",
-			Params: []string{
-				to,
-				user.DisplayNick,
-				fmt.Sprintf("is using a secure connection (%s) (%s)",
-					tlsVersionToString(user.LocalUser.TLSConnectionState.Version),
-					cipherSuiteToString(user.LocalUser.TLSConnectionState.CipherSuite)),
-			},
-		})
+		tlsVersion, tlsCipherSuite, err := user.LocalUser.getTLSState()
+		if err != nil {
+			log.Printf("Client %s: Unable to determine TLS state: %s", user.LocalUser,
+				err)
+		} else {
+			msgs = append(msgs, irc.Message{
+				Prefix:  from,
+				Command: "671",
+				Params: []string{
+					to,
+					user.DisplayNick,
+					fmt.Sprintf("is using a secure connection (%s) (%s)", tlsVersion,
+						tlsCipherSuite),
+				},
+			})
+		}
 	}
 
 	// 317 RPL_WHOISIDLE. Only if local.

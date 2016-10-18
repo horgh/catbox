@@ -22,9 +22,6 @@ type LocalClient struct {
 	// Their hostname. May be blank if we can't look it up.
 	Hostname string
 
-	// Set if they are connected via TLS.
-	TLSConnectionState tls.ConnectionState
-
 	// Locally unique identifier.
 	ID uint64
 
@@ -105,8 +102,31 @@ func (c *LocalClient) String() string {
 	return fmt.Sprintf("%d %s", c.ID, c.Conn.RemoteAddr())
 }
 
+// Determine if the client is using a TLS connection or not.
 func (c *LocalClient) isTLS() bool {
-	return c.TLSConnectionState.Version != 0
+	_, ok := c.Conn.conn.(*tls.Conn)
+	return ok
+}
+
+// If the client is using a TLS connection, then this function gets its TLS
+// version and ciphersuite as human readable strings.
+//
+// We run the client/server handshake if it has not been run yet.
+func (c *LocalClient) getTLSState() (string, string, error) {
+	tlsConn, ok := c.Conn.conn.(*tls.Conn)
+	if !ok {
+		return "", "", fmt.Errorf("Client is not connected with TLS")
+	}
+
+	err := tlsConn.Handshake()
+	if err != nil {
+		return "", "", fmt.Errorf("TLS handshake failed: %s", err)
+	}
+
+	state := tlsConn.ConnectionState()
+
+	return tlsVersionToString(state.Version),
+		cipherSuiteToString(state.CipherSuite), nil
 }
 
 // Send a message to the client. We send it to its write channel, which in turn
@@ -476,9 +496,14 @@ func (c *LocalClient) registerServer() {
 
 	linkNotice := ""
 	if c.isTLS() {
+		tlsVersion, tlsCipherSuite, err := c.getTLSState()
+		if err != nil {
+			c.quit(fmt.Sprintf("Unable to determine TLS information: %s", err))
+			return
+		}
+
 		linkNotice = fmt.Sprintf("Established link to %s with %s (%s).",
-			c.PreRegServerName, tlsVersionToString(c.TLSConnectionState.Version),
-			cipherSuiteToString(c.TLSConnectionState.CipherSuite))
+			c.PreRegServerName, tlsVersion, tlsCipherSuite)
 	} else {
 		linkNotice = fmt.Sprintf("Established link to %s (PLAINTEXT).",
 			c.PreRegServerName)
