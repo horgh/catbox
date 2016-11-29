@@ -1699,6 +1699,7 @@ func (s *LocalServer) topicCommand(m irc.Message) {
 }
 
 // SQUIT tells us there is a server departing.
+//
 // This can tell us either a server remote from us is going, or that the local
 // server is delinking. In practice, if the local server is delinking we will
 // be told with an ERROR message, and not see any SQUIT.
@@ -1752,7 +1753,7 @@ func (s *LocalServer) squitCommand(m irc.Message) {
 	}
 
 	s.Catbox.noticeLocalOpers(fmt.Sprintf("Server %s delinked from %s: %s",
-		s.Server.Name, from, reason))
+		targetServer.Name, from, reason))
 }
 
 // KILL tells us about a client getting disconnected forcefully.
