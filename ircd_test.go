@@ -160,7 +160,7 @@ func TestParseAndResolveUmodeChanges(t *testing.T) {
 			inputCurrentModes:  map[byte]struct{}{'i': struct{}{}},
 			inputModes:         "-i",
 			outputSetModes:     map[byte]struct{}{},
-			outputUnsetModes:   map[byte]struct{}{},
+			outputUnsetModes:   map[byte]struct{}{'i': struct{}{}},
 			outputUnknownModes: map[byte]struct{}{},
 			success:            true,
 		},
@@ -316,4 +316,65 @@ func modesAreEqual(mode0 map[byte]struct{}, mode1 map[byte]struct{}) bool {
 		}
 	}
 	return true
+}
+
+func TestIsValidUser(t *testing.T) {
+	tests := []struct {
+		Input string
+		Valid bool
+	}{
+		{"hi", true},
+
+		// We don't let user end with .
+		{"hi.", false},
+
+		// _ can't be in first position.
+		{"_hi", false},
+
+		{"hi_there", true},
+	}
+
+	for _, test := range tests {
+		if !isValidUser(test.Input) {
+			if !test.Valid {
+				continue
+			}
+
+			t.Errorf("isValidUser(%s) invalid, wanted valid", test.Input)
+			continue
+		}
+	}
+}
+
+func TestIsValidNick(t *testing.T) {
+	tests := []struct {
+		Input string
+		Valid bool
+	}{
+		{"hi", true},
+
+		// - can't be in first position.
+		{"-hi", false},
+
+		// Digits can't be in first position.
+		{"0hi", false},
+		{"9hi", false},
+
+		{"hi_there", true},
+		{"hi_there19", true},
+
+		{"[HiThere]", true},
+		{"hi`", true},
+	}
+
+	for _, test := range tests {
+		if !isValidNick(25, test.Input) {
+			if !test.Valid {
+				continue
+			}
+
+			t.Errorf("isValidNick(%s) invalid, wanted valid", test.Input)
+			continue
+		}
+	}
 }

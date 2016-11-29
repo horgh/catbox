@@ -48,14 +48,36 @@ func canonicalizeChannel(c string) string {
 }
 
 // isValidNick checks if a nickname is valid.
+//
+// To be compatible with ratbox, I try to accept the same characters and apply
+// similar restrictions as it does. See its m_nick.c clean_nick() function for
+// its validation.
 func isValidNick(maxLen int, n string) bool {
 	if len(n) == 0 || len(n) > maxLen {
 		return false
 	}
 
-	// For now I accept only a-z, 0-9, or _. RFC is more lenient.
+	// First character may not be - or 0-9.
+
+	// Afterwards we permit these characters:
+	// -0-9A-Z[\]^_`a-z{|}
+
 	for i, char := range n {
-		if char >= 'a' && char <= 'z' {
+		if i == 0 {
+			if char == '-' {
+				return false
+			}
+
+			if char >= '0' && char <= '9' {
+				return false
+			}
+		}
+
+		if char == '-' {
+			continue
+		}
+
+		if char >= '0' && char <= '9' {
 			continue
 		}
 
@@ -63,15 +85,16 @@ func isValidNick(maxLen int, n string) bool {
 			continue
 		}
 
-		if char >= '0' && char <= '9' {
-			// No digits in first position.
-			if i == 0 {
-				return false
-			}
+		if char == '[' || char == '\\' || char == ']' || char == '^' ||
+			char == '_' || char == '`' {
 			continue
 		}
 
-		if char == '_' {
+		if char >= 'a' && char <= 'z' {
+			continue
+		}
+
+		if char == '{' || char == '|' || char == '}' {
 			continue
 		}
 
@@ -82,18 +105,67 @@ func isValidNick(maxLen int, n string) bool {
 }
 
 // isValidUser checks if a user (USER command) is valid
+//
+// See valid_username() in ratbox's match.c to see what ratbox accepts. This
+// function accepts the same characters as ratbox and enforces similar
+// restrictions. This is still more restrictive than RFC 1459.
 func isValidUser(u string) bool {
 	if len(u) == 0 || len(u) > maxUsernameLength {
 		return false
 	}
 
-	// For now I accept only a-z or 0-9. RFC is more lenient.
+	// How many dots we permit in the username.
+	// They are never permitted as the final character.
+	const dotsAllowed = 2
+
+	if u[len(u)-1] == '.' {
+		return false
+	}
+
+	dots := 0
+
+	// First character is more restricted:
+	// 0-9A-Za-z[\]^{|}~
+
+	// After the first character, we permit additional chars. These are // the
+	// permitted characters:
+	//
+	// . is permitted (up to a limit)
+	//
+	// 0-9A-Za-z$-[\]^_`{|}~
 	for i, char := range u {
-		if char == '~' && i == 0 {
+		if i == 0 {
+			if char >= '0' && char <= '9' {
+				continue
+			}
+
+			if char >= 'A' && char <= 'Z' {
+				continue
+			}
+
+			if char >= 'a' && char <= 'z' {
+				continue
+			}
+
+			if char == '[' || char == '\\' || char == ']' || char == '^' ||
+				char == '{' || char == '|' || char == '}' || char == '~' {
+				continue
+			}
+
+			return false
+		}
+
+		if char == '.' {
+			dots++
+
+			if dots > dotsAllowed {
+				return false
+			}
+
 			continue
 		}
 
-		if char >= 'a' && char <= 'z' {
+		if char >= '0' && char <= '9' {
 			continue
 		}
 
@@ -101,7 +173,14 @@ func isValidUser(u string) bool {
 			continue
 		}
 
-		if char >= '0' && char <= '9' {
+		if char >= 'a' && char <= 'z' {
+			continue
+		}
+
+		if char == '$' || char == '-' ||
+			char == '[' || char == '\\' || char == ']' || char == '^' ||
+			char == '_' || char == '`' ||
+			char == '{' || char == '|' || char == '}' || char == '~' {
 			continue
 		}
 
