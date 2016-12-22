@@ -2,6 +2,7 @@
   * Daemonize
   * Log to file
   * Additional automated testing
+  * Easy updating
 
   * MODE command on channel should return when channel was created
   * A command (NSA) to retrieve TLS/ciphers in use by all clients/servers. Sent
@@ -29,6 +30,7 @@
   * Multi line motd
   * Respond to remote STATS requests
   * Support sending more remote queries (e.g. STATS to another server)
+  * Retain channel creation times and topics through restarts
 
 
 ## Non-standard
