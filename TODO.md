@@ -1,4 +1,5 @@
 # TODO
+  * Long lines can get lost. Not sent to servers, etc.
   * Daemonize
   * Log to file
   * Additional automated testing
