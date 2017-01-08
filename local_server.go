@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"summercat.com/irc"
+	"github.com/horgh/irc"
 )
 
 // LocalServer means the client registered as a server. This holds its info.

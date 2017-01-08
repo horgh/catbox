@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"summercat.com/irc"
+	"github.com/horgh/irc"
 )
 
 // LocalClient holds state about a local connection.

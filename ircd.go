@@ -12,7 +12,7 @@ import (
 	"syscall"
 	"time"
 
-	"summercat.com/irc"
+	"github.com/horgh/irc"
 )
 
 // Catbox holds the state for this local server.

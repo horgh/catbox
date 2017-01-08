@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"summercat.com/config"
+	"github.com/horgh/config"
 )
 
 // Config holds a server's configuration.

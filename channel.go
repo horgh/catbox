@@ -1,6 +1,6 @@
 package main
 
-import "summercat.com/irc"
+import "github.com/horgh/irc"
 
 // Channel holds everything to do with a channel.
 type Channel struct {

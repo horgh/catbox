@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"summercat.com/irc"
+	"github.com/horgh/irc"
 )
 
 // LocalUser holds information relevant only to a regular user (non-server)
