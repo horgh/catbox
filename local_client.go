@@ -115,7 +115,7 @@ func (c *LocalClient) isTLS() bool {
 func (c *LocalClient) getTLSState() (string, string, error) {
 	tlsConn, ok := c.Conn.conn.(*tls.Conn)
 	if !ok {
-		return "", "", fmt.Errorf("Client is not connected with TLS")
+		return "", "", fmt.Errorf("client is not connected with TLS")
 	}
 
 	err := tlsConn.Handshake()

@@ -17,7 +17,7 @@ func getArgs() (Args, error) {
 
 	if len(*configFile) == 0 {
 		flag.PrintDefaults()
-		return Args{}, fmt.Errorf("You must provie a configuration file.")
+		return Args{}, fmt.Errorf("you must provie a configuration file")
 	}
 
 	return Args{ConfigFile: *configFile}, nil

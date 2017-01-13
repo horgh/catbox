@@ -106,13 +106,13 @@ func checkAndParseConfig(file string) (*Config, error) {
 	for _, key := range requiredKeys {
 		v, exists := configMap[key]
 		if !exists {
-			return nil, fmt.Errorf("Missing required key: %s", key)
+			return nil, fmt.Errorf("missing required key: %s", key)
 		}
 
 		// All options must be non-blank. Except those listed in this check.
 		if len(v) == 0 && key != "listen-port" && key != "listen-port-tls" &&
 			key != "certificate-file" && key != "key-file" {
-			return nil, fmt.Errorf("Configuration value is blank: %s", key)
+			return nil, fmt.Errorf("configuration value is blank: %s", key)
 		}
 	}
 
@@ -131,41 +131,41 @@ func checkAndParseConfig(file string) (*Config, error) {
 
 	nickLen64, err := strconv.ParseInt(configMap["max-nick-length"], 10, 8)
 	if err != nil {
-		return nil, fmt.Errorf("Max nick length is not valid: %s", err)
+		return nil, fmt.Errorf("max nick length is not valid: %s", err)
 	}
 	c.MaxNickLength = int(nickLen64)
 
 	c.PingTime, err = time.ParseDuration(configMap["ping-time"])
 	if err != nil {
-		return nil, fmt.Errorf("Ping time is in invalid format: %s", err)
+		return nil, fmt.Errorf("ping time is in invalid format: %s", err)
 	}
 
 	c.DeadTime, err = time.ParseDuration(configMap["dead-time"])
 	if err != nil {
-		return nil, fmt.Errorf("Dead time is in invalid format: %s", err)
+		return nil, fmt.Errorf("dead time is in invalid format: %s", err)
 	}
 
 	c.ConnectAttemptTime, err = time.ParseDuration(configMap["connect-attempt-time"])
 	if err != nil {
-		return nil, fmt.Errorf("Connect attempt time is in invalid format: %s", err)
+		return nil, fmt.Errorf("connect attempt time is in invalid format: %s", err)
 	}
 
 	opers, err := config.ReadStringMap(configMap["opers-config"])
 	if err != nil {
-		return nil, fmt.Errorf("Unable to load opers config: %s", err)
+		return nil, fmt.Errorf("unable to load opers config: %s", err)
 	}
 	c.Opers = opers
 
 	c.Servers = make(map[string]*ServerDefinition)
 	servers, err := config.ReadStringMap(configMap["servers-config"])
 	if err != nil {
-		return nil, fmt.Errorf("Unable to load servers config: %s", err)
+		return nil, fmt.Errorf("unable to load servers config: %s", err)
 	}
 
 	for name, v := range servers {
 		link, err := parseLink(name, v)
 		if err != nil {
-			return nil, fmt.Errorf("Malformed server link information: %s: %s", name,
+			return nil, fmt.Errorf("malformed server link information: %s: %s", name,
 				err)
 		}
 		c.Servers[name] = link
@@ -173,20 +173,20 @@ func checkAndParseConfig(file string) (*Config, error) {
 
 	usersConfig, err := config.ReadStringMap(configMap["users-config"])
 	if err != nil {
-		return nil, fmt.Errorf("Unable to load users config: %s", err)
+		return nil, fmt.Errorf("unable to load users config: %s", err)
 	}
 
 	for name, value := range usersConfig {
 		userConfig, err := parseUserConfig(value)
 		if err != nil {
-			return nil, fmt.Errorf("Unable to parse user config %s: %s: %s", name,
+			return nil, fmt.Errorf("unable to parse user config %s: %s: %s", name,
 				value, err)
 		}
 		c.UserConfigs = append(c.UserConfigs, userConfig)
 	}
 
 	if !isValidSID(configMap["ts6-sid"]) {
-		return nil, fmt.Errorf("Invalid TS6 SID")
+		return nil, fmt.Errorf("invalid TS6 SID")
 	}
 	c.TS6SID = TS6SID(configMap["ts6-sid"])
 
@@ -199,23 +199,23 @@ func checkAndParseConfig(file string) (*Config, error) {
 func parseLink(name, s string) (*ServerDefinition, error) {
 	pieces := strings.Split(s, ",")
 	if len(pieces) != 4 {
-		return nil, fmt.Errorf("Unexpected number of fields")
+		return nil, fmt.Errorf("unexpected number of fields")
 	}
 
 	hostname := strings.TrimSpace(pieces[0])
 	if len(hostname) == 0 {
-		return nil, fmt.Errorf("You must specify a hostname")
+		return nil, fmt.Errorf("you must specify a hostname")
 	}
 	// We could format check hostname. But when we try to listen we'll fail.
 
 	port, err := strconv.ParseInt(strings.TrimSpace(pieces[1]), 10, 32)
 	if err != nil {
-		return nil, fmt.Errorf("Invalid port: %s: %s", pieces[1], err)
+		return nil, fmt.Errorf("invalid port: %s: %s", pieces[1], err)
 	}
 
 	pass := strings.TrimSpace(pieces[2])
 	if len(pass) == 0 {
-		return nil, fmt.Errorf("You must specify a password")
+		return nil, fmt.Errorf("you must specify a password")
 	}
 
 	return &ServerDefinition{
@@ -244,7 +244,7 @@ func parseLink(name, s string) (*ServerDefinition, error) {
 func parseUserConfig(s string) (UserConfig, error) {
 	piecesUntrimmed := strings.Split(s, ",")
 	if len(piecesUntrimmed) != 4 {
-		return UserConfig{}, fmt.Errorf("Unexpected number of fields")
+		return UserConfig{}, fmt.Errorf("unexpected number of fields")
 	}
 
 	pieces := []string{}
@@ -253,24 +253,24 @@ func parseUserConfig(s string) (UserConfig, error) {
 	}
 
 	if !isValidUserMask(pieces[0]) {
-		return UserConfig{}, fmt.Errorf("Invalid user mask")
+		return UserConfig{}, fmt.Errorf("invalid user mask")
 	}
 	userMask := pieces[0]
 
 	if !isValidHostMask(pieces[1]) {
-		return UserConfig{}, fmt.Errorf("Invalid host mask")
+		return UserConfig{}, fmt.Errorf("invalid host mask")
 	}
 	hostMask := pieces[1]
 
 	if pieces[2] != "1" && pieces[2] != "0" {
-		return UserConfig{}, fmt.Errorf("Flood exempt flag must be 1 or 0.")
+		return UserConfig{}, fmt.Errorf("flood exempt flag must be 1 or 0")
 	}
 	floodExempt := pieces[2] == "1"
 
 	spoof := pieces[3]
 	if len(spoof) > 0 {
 		if !isValidHostname(spoof) {
-			return UserConfig{}, fmt.Errorf("Invalid spoof hostname.")
+			return UserConfig{}, fmt.Errorf("invalid spoof hostname")
 		}
 	}
 

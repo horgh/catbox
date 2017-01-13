@@ -52,7 +52,7 @@ func (c Conn) Read() (string, error) {
 	// Deadline so we will eventually give up.
 	err := c.conn.SetDeadline(time.Now().Add(c.ioWait))
 	if err != nil {
-		return "", fmt.Errorf("Unable to set deadline: %s", err)
+		return "", fmt.Errorf("unable to set deadline: %s", err)
 	}
 
 	line, err := c.rw.ReadString('\n')
@@ -68,7 +68,7 @@ func (c Conn) Write(s string) error {
 	// Deadline so we will eventually give up.
 	err := c.conn.SetDeadline(time.Now().Add(c.ioWait))
 	if err != nil {
-		return fmt.Errorf("Unable to set deadline: %s", err)
+		return fmt.Errorf("unable to set deadline: %s", err)
 	}
 
 	sz, err := c.rw.WriteString(s)
@@ -77,12 +77,12 @@ func (c Conn) Write(s string) error {
 	}
 
 	if sz != len(s) {
-		return fmt.Errorf("Short write")
+		return fmt.Errorf("short write")
 	}
 
 	err = c.rw.Flush()
 	if err != nil {
-		return fmt.Errorf("Flush error: %s", err)
+		return fmt.Errorf("flush error: %s", err)
 	}
 
 	return nil
