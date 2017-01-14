@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"path/filepath"
 	"sync"
 	"syscall"
 	"time"
@@ -149,7 +150,7 @@ const (
 	// RehashEvent tells the server to rehash.
 	RehashEvent
 
-	// RestartEvent tells the server to rehash.
+	// RestartEvent tells the server to restart.
 	RestartEvent
 )
 
@@ -182,6 +183,12 @@ func main() {
 		log.Fatal(err)
 	}
 
+	binPath, err := filepath.Abs(os.Args[0])
+	if err != nil {
+		log.Fatalf("Unable to determine absolute path to binary: %s: %s",
+			os.Args[0], err)
+	}
+
 	cb, err := newCatbox(args.ConfigFile)
 	if err != nil {
 		log.Fatal(err)
@@ -194,12 +201,17 @@ func main() {
 
 	if cb.Restart {
 		log.Printf("Shutdown completed. Restarting...")
-		cmd := exec.Command(os.Args[0], "-config", cb.ConfigFile)
+
+		cmd := exec.Command(binPath, "-config", cb.ConfigFile)
+
 		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+
 		err := cmd.Start()
 		if err != nil {
 			log.Fatalf("Restart failed: %s", err)
 		}
+
 		log.Printf("New process started!")
 		return
 	}

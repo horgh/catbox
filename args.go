@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"path/filepath"
 )
 
 // Args are command line arguments.
@@ -17,8 +18,14 @@ func getArgs() (Args, error) {
 
 	if len(*configFile) == 0 {
 		flag.PrintDefaults()
-		return Args{}, fmt.Errorf("you must provie a configuration file")
+		return Args{}, fmt.Errorf("you must provide a configuration file")
 	}
 
-	return Args{ConfigFile: *configFile}, nil
+	configPath, err := filepath.Abs(*configFile)
+	if err != nil {
+		return Args{}, fmt.Errorf("unable to determine absolute path to config file: %s: %s",
+			*configFile, err)
+	}
+
+	return Args{ConfigFile: configPath}, nil
 }
