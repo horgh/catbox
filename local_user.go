@@ -187,11 +187,15 @@ func (u *LocalUser) join(channelName string) {
 		// right now (when we encode to determine base size).
 		Params: []string{u.User.DisplayNick, channelFlag, channel.Name, ""},
 	}
+
+	// If encoding the message truncates before we add any nicks, then there is no
+	// point continuing.
 	messageBuf, err := namMessage.Encode()
 	if err != nil {
 		log.Printf("Unable to generate RPL_NAMREPLY: %s", err)
 		return
 	}
+
 	baseSize := len(messageBuf)
 
 	nicks := ""

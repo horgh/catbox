@@ -221,9 +221,13 @@ Loop:
 
 			buf, err := message.Encode()
 			if err != nil {
-				log.Printf("Client %s: Unable to encode message: %s: %s", c, message,
-					err)
-				continue
+				if err != irc.ErrTruncated {
+					log.Printf("Client %s: Unable to encode message: %s: %s", c, message,
+						err)
+					continue
+				}
+
+				log.Printf("Client %s: Warning: Message truncated: %s", c, message)
 			}
 
 			err = c.Conn.Write(buf)

@@ -288,6 +288,9 @@ func (s *LocalServer) sendBurst() {
 			},
 		}
 
+		// If encoding the prefix truncates then we have a big problem. We won't be
+		// able to include any UIDs. Killing the connection is perhaps extreme but
+		// we cannot fully synchronize in this case.
 		sjoinEncoded, err := sjoinMessage.Encode()
 		if err != nil {
 			s.quit(fmt.Sprintf("Unable to create SJOIN message: %s", err))
