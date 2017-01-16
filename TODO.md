@@ -1,5 +1,7 @@
 # TODO
-  * Long lines can get lost. Not sent to servers, etc.
+  * Casemapping for {}| not implemented (see canonicalizeNick())
+  * Consider combining cleanup user logic in server's killCommand() with
+    cleanupKilledUser()
   * Daemonize
   * Log to file
   * Additional automated testing

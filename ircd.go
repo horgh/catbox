@@ -723,11 +723,14 @@ func (cb *Catbox) checkAndPingClients() {
 	}
 }
 
-// connectToServers looks at our defined server links. If we are not connected
-// to any, it attempts to initiate a connection.
+// connectToServers tries to connect outwards to any servers configured but not
+// currently connected to.
 //
-// It tries each server only once per configured period. i.e., if you call this
-// function repeatedly, it may not try to connect to a server twice if it failed
+// Each call to this function will trigger at most one connection attempt, even
+// if there are multiple servers we are not connected to. This is to avoid the
+// situation where we try to join the same network twice at two links. While
+// joining twice will not succeed, race conditions can lead to us issuing kills
+// for duplicate nicks.
 func (cb *Catbox) connectToServers() {
 	now := time.Now()
 
@@ -808,7 +811,7 @@ func (cb *Catbox) isLinkedToServer(name string) bool {
 
 // Initiate a connection to a server.
 //
-// Does this in a goroutine to avoid blocking server goroutine.
+// Do this in a goroutine to avoid blocking the main server goroutine.
 func (cb *Catbox) connectToServer(linkInfo *ServerDefinition) {
 	cb.WG.Add(1)
 
@@ -993,55 +996,89 @@ func (cb *Catbox) removeKLine(userMask, hostMask, source string) bool {
 //
 // We cut the user off if they are local.
 //
-// We tell local users a Quit if they are remote.
+// We tell local users a Quit if the user is remote.
 //
 // We forget the user.
 //
-// If byUser is nil, then this is a server KILL. Source will be the server
-// name.
-func (cb *Catbox) issueKill(byUser, u *User, message string) {
+// If killer is nil, then this is a server KILL.
+func (cb *Catbox) issueKill(killer, killee *User, message string) {
+	cb.issueKillToAllServers(killer, killee, message)
+	cb.cleanupKilledUser(killer, killee, message)
+}
+
+// Send a KILL command to all connected servers.
+//
+// We send KILL commands to all servers, but do nothing else.
+//
+// If killer is nil, then the killer is the server.
+func (cb *Catbox) issueKillToAllServers(killer, killee *User, message string) {
+	for _, ls := range cb.LocalServers {
+		cb.issueKillToServer(ls, killer, killee, message)
+	}
+}
+
+// Send a KILL command to the given server. Nothing else.
+//
+// If killer is nil, then the killer is the server.
+func (cb *Catbox) issueKillToServer(ls *LocalServer, killer, killee *User,
+	message string) {
 	// Parameters: <target user UID> <reason>
+
 	// Reason has format:
 	// <source> (<reason text>)
-	// Where <source> looks something like:
+	//
+	// Where <source> looks something like (if killer is a user):
 	// <killer server name>!<killer user host>!<killer user username>!<killer nick>
+	// Or the server name (if killer is a server).
 
 	reason := ""
-	killer := ""
-	if byUser == nil {
+	killerName := ""
+
+	if killer == nil {
 		reason = fmt.Sprintf("%s (%s)", cb.Config.ServerName, message)
-		killer = cb.Config.ServerName
+		killerName = cb.Config.ServerName
 	} else {
 		reason = fmt.Sprintf("%s!%s!%s!%s (%s)", cb.Config.ServerName,
-			byUser.Hostname, byUser.Username, byUser.DisplayNick, message)
-		killer = byUser.DisplayNick
+			killer.Hostname, killer.Username, killer.DisplayNick, message)
+		killerName = killer.DisplayNick
 	}
 
-	// Send to all servers.
-	for _, server := range cb.LocalServers {
-		server.maybeQueueMessage(irc.Message{
-			Prefix:  string(cb.Config.TS6SID),
-			Command: "KILL",
-			Params:  []string{string(u.UID), reason},
-		})
+	cb.noticeOpers(fmt.Sprintf("Sending KILL message to %s for %s. From %s (%s)",
+		ls.Server.Name, killee.DisplayNick, killerName, message))
+
+	ls.maybeQueueMessage(irc.Message{
+		Prefix:  string(cb.Config.TS6SID),
+		Command: "KILL",
+		Params:  []string{string(killee.UID), reason},
+	})
+}
+
+// The user was killed. Clean them up.
+//
+// We have to forget about the user. We also need to tell local users this
+// happened if they share any channels with the killed.
+//
+// If killer is nil, then this is a server KILL.
+func (cb *Catbox) cleanupKilledUser(killer, killee *User, message string) {
+	killerName := ""
+	if killer == nil {
+		killerName = cb.Config.ServerName
+	} else {
+		killerName = killer.DisplayNick
 	}
 
-	// Tell all opers about it.
-	cb.noticeOpers(fmt.Sprintf("Received KILL message for %s. From %s (%s)",
-		u.DisplayNick, killer, message))
-
-	quitReason := fmt.Sprintf("Killed (%s (%s))", killer, message)
+	quitReason := fmt.Sprintf("Killed (%s (%s))", killerName, message)
 
 	// If it's a local user, drop it.
-	if u.isLocal() {
-		// We don't need to propagate a QUIT. We'll be sending a KILL.
-		u.LocalUser.quit(quitReason, false)
+	if killee.isLocal() {
+		// We don't need to propagate a QUIT. We propagated KILL.
+		killee.LocalUser.quit(quitReason, false)
 		return
 	}
 
 	// It's a remote user. Tell local users a quit message.
 	// And forget the remote user.
-	cb.quitRemoteUser(u, quitReason)
+	cb.quitRemoteUser(killee, quitReason)
 }
 
 // Build irc.Messages that make up a WHOIS response. You can then send them to
@@ -1320,4 +1357,127 @@ func (cb *Catbox) messageLocalUsersOnChannel(channel *Channel, m irc.Message) {
 
 		member.LocalUser.maybeQueueMessage(m)
 	}
+}
+
+// Determine if there is a collision for the given nick.
+//
+// If there is, issue the appropriate kills.
+//
+// When will this happen? If we're told by a server about a new user (UID
+// command), or if we're told by a server about a user changing nick (NICK
+// command).
+//
+// The command causing the collision changes behaviour slightly. If it is UID,
+// then other servers have not heard of the new client, so when we kill the
+// new user, we can follow the TS6 collision rules and only send a KILL for the
+// new user to the server that sent us UID. If it is a NICK however, then we
+// need to tell all servers about the KILL of the "new" user, because they know
+// about this user.
+//
+// Return true if we accept the user/change. This means there either was no
+// collision, or there was and we dealt with it by only killing a different
+// user. If we killed a different (existing) user, then we accept the new
+// user/its change. If we return true, such as when processing a UID command,
+// then we should accept the user and propagate the message. If we return false,
+// do not accept the user and do not propagate.
+func (cb *Catbox) handleCollision(fromServer *LocalServer, newUID TS6UID,
+	newNick, newUsername, newHostname string, newNickTS int64,
+	command string) bool {
+	// There is a collision if the nick is taken already.
+	existingUID, exists := cb.Nicks[canonicalizeNick(newNick)]
+	if !exists {
+		return true
+	}
+
+	// Collision.
+
+	// The TS6 protocol defines the rules, including when we issue two KILLs
+	// (existing user and new user), and to what servers we send the KILL message.
+
+	// Note the nick collision rules state that when we collide only the existing
+	// user we should issue a KILL to all except the one sending us data. It goes
+	// on to say that if the sender supports TS6, also send a KILL to it. Since I
+	// only support TS6 connections, this means we can send KILL to all servers in
+	// this case.
+
+	// Note it's possible to have two KILL messages. One generated by us, and one
+	// from the other side. We'll see an unknown user message for the second
+	// processed.
+
+	existingUser := cb.Users[existingUID]
+
+	// If this is a UID command then we do not yet have a User record yet for the
+	// new user. We're in the process of creating it.
+	var newUser *User
+	if command == "UID" {
+		newUser = &User{DisplayNick: newNick, UID: newUID}
+	} else {
+		newUser = cb.Users[newUID]
+	}
+
+	// Is the received TS is lower than that of the existing user?
+	if newNickTS < existingUser.NickTS {
+		// Two cases. If the user@host differs, collide the existing user. If they
+		// are the same, collide the new user.
+
+		if newUsername != existingUser.Username ||
+			newHostname != existingUser.Hostname {
+			// Since we require TS6, send to all servers.
+			message := "Nick collision, newer killed (received TS is lower)"
+			cb.issueKillToAllServers(nil, existingUser, message)
+			cb.cleanupKilledUser(nil, existingUser, message)
+			return true
+		}
+
+		message := "Nick collision, older killed (received TS is lower)"
+		if command == "UID" {
+			cb.issueKillToServer(fromServer, nil, newUser, message)
+		} else {
+			cb.issueKillToAllServers(nil, newUser, message)
+			cb.cleanupKilledUser(nil, newUser, message)
+		}
+		return false
+	}
+
+	// Is the received TS the same as that of the existing user?
+	if newNickTS == existingUser.NickTS {
+		// Both collide. Issue KILL to all servers for the existing user. Issue KILL
+		// to server who sent us the new user (unless it's NICK, then to all).
+		message := "Nick collision, both killed"
+
+		cb.issueKillToAllServers(nil, existingUser, message)
+		cb.cleanupKilledUser(nil, existingUser, message)
+
+		if command == "UID" {
+			cb.issueKillToServer(fromServer, nil, newUser, message)
+		} else {
+			cb.issueKillToAllServers(nil, newUser, message)
+			cb.cleanupKilledUser(nil, newUser, message)
+		}
+
+		return false
+	}
+
+	// The received TS is higher than that of the existing user.
+
+	// Two cases again. If the user@hosts are identical, collide the existing
+	// user. If they are different, collide the new user.
+
+	if newUsername == existingUser.Username &&
+		newHostname == existingUser.Hostname {
+		// Since we require TS6, send to all servers.
+		message := "Nick collision, older killed (received TS is higher)"
+		cb.issueKillToAllServers(nil, existingUser, message)
+		cb.cleanupKilledUser(nil, existingUser, message)
+		return true
+	}
+
+	message := "Nick collision, newer killed (received TS is higher)"
+	if command == "UID" {
+		cb.issueKillToServer(fromServer, nil, newUser, message)
+	} else {
+		cb.issueKillToAllServers(nil, newUser, message)
+		cb.cleanupKilledUser(nil, newUser, message)
+	}
+	return false
 }

@@ -35,6 +35,9 @@ func (h ByHopCount) Less(i, j int) bool { return h[i].HopCount < h[j].HopCount }
 // (which must be unique).
 //
 // Note: We don't check validity or strip whitespace.
+//
+// TODO: This does not implement the oddities surrounding IRC's case
+//   mapping ({}| being lowercase of []\)
 func canonicalizeNick(n string) string {
 	return strings.ToLower(n)
 }
