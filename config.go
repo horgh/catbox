@@ -49,12 +49,11 @@ type Config struct {
 
 // ServerDefinition defines how to link to a server.
 type ServerDefinition struct {
-	Name               string
-	Hostname           string
-	Port               int
-	Pass               string
-	TLS                bool
-	LastConnectAttempt time.Time
+	Name     string
+	Hostname string
+	Port     int
+	Pass     string
+	TLS      bool
 }
 
 // UserConfig defines settings about users. Matched by usermask and hostmask.

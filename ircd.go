@@ -97,6 +97,14 @@ type Catbox struct {
 	// Whether we should restart after we cleanly complete shutdown.
 	// This will always be false unless someone triggered a restart.
 	Restart bool
+
+	// Track the time we last tried to connect to any server.
+	LastConnectAttempt time.Time
+
+	// Track what servers to try to connect to in a queue. This is because we try
+	// one at a time, and we don't want to favour those that happen to be appear
+	// first in the config.
+	LinkQueue []*ServerDefinition
 }
 
 // KLine holds a kline (a ban).
@@ -365,7 +373,7 @@ func (cb *Catbox) eventLoop() {
 	for {
 		select {
 		// Careful about using the Client we get back in events. It may have been
-		// promoted to a different client type (UserClient, ServerClient).
+		// promoted to a different client type (LocalUser, LocalServer).
 		case evt := <-cb.ToServerChan:
 			if evt.Type == NewClientEvent {
 				log.Printf("New client connection: %s", evt.Client)
@@ -726,33 +734,76 @@ func (cb *Catbox) checkAndPingClients() {
 // connectToServers tries to connect outwards to any servers configured but not
 // currently connected to.
 //
-// Each call to this function will trigger at most one connection attempt, even
-// if there are multiple servers we are not connected to. This is to avoid the
-// situation where we try to join the same network twice at two links. While
-// joining twice will not succeed, race conditions can lead to us issuing kills
-// for duplicate nicks.
+// We delay a connection attempt to a server until at least ConnectAttemptTime
+// elapsed.
+//
+// Try to link to at most one server per call. Use a queue so we give each
+// server a chance rather than favouring those that appear earlier in the
+// config. This is also to try to address the race condition where we link with
+// two servers in the same network at the "same" time. Such a condition will
+// lead to a split, but it can cause noise and collisions. Note this is a best
+// effort approach. It is still possible for us to connect out to multiple
+// servers through repeated calls to this function. As well, there is no limit
+// on inbound linking. My intention is to reduce the likelihood of the race
+// happening rather than make it impossible. Mainly because I am not sure a
+// simple way to make it impossible.
 func (cb *Catbox) connectToServers() {
 	now := time.Now()
 
-	for _, linkInfo := range cb.Config.Servers {
-		// It does not make sense to try to connect to ourself. Even if we're in the
-		// config.
-		if linkInfo.Name == cb.Config.ServerName {
-			continue
+	// Delay between any connection attempt. This means we try to connect to at
+	// most one server, and then wait ConnectAttemptTime before trying any others.
+	timeSinceLastAttempt := now.Sub(cb.LastConnectAttempt)
+	if timeSinceLastAttempt < cb.Config.ConnectAttemptTime {
+		return
+	}
+
+	// Queue up servers to try to connect to if there are any we're not connected
+	// to.
+	if len(cb.LinkQueue) == 0 {
+		for _, linkInfo := range cb.Config.Servers {
+			// It does not make sense to try to connect to ourself. Even if we're in
+			// the config.
+			if linkInfo.Name == cb.Config.ServerName {
+				continue
+			}
+
+			if cb.isLinkedToServer(linkInfo.Name) {
+				continue
+			}
+
+			cb.LinkQueue = append(cb.LinkQueue, linkInfo)
+		}
+	}
+
+	if len(cb.LinkQueue) == 0 {
+		// We're connected to all servers.
+		return
+	}
+
+	// Try to connect to one.
+	for {
+		if len(cb.LinkQueue) == 0 {
+			// None left to try.
+			break
 		}
 
+		// Take first server we're not connected to, and try it.
+		linkInfo := cb.LinkQueue[0]
+		if len(cb.LinkQueue) == 1 {
+			cb.LinkQueue = []*ServerDefinition{}
+		} else {
+			cb.LinkQueue = cb.LinkQueue[1:]
+		}
+
+		// Did we link to it since we queued it for an attempt? If so, pick another.
 		if cb.isLinkedToServer(linkInfo.Name) {
 			continue
 		}
 
-		timeSinceLastAttempt := now.Sub(linkInfo.LastConnectAttempt)
-
-		if timeSinceLastAttempt < cb.Config.ConnectAttemptTime {
-			continue
-		}
-
-		linkInfo.LastConnectAttempt = now
+		// Try to link to it.
 		cb.connectToServer(linkInfo)
+		cb.LastConnectAttempt = now
+		break
 	}
 }
 

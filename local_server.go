@@ -990,7 +990,13 @@ func (s *LocalServer) sjoinCommand(m irc.Message) {
 		return
 	}
 
-	chanName := m.Params[1]
+	chanName := canonicalizeChannel(m.Params[1])
+	if !isValidChannel(chanName) {
+		// Be lenient about what channel names may be on other servers.
+		// 403 ERR_NOSUCHCHANNEL
+		s.messageFromServer("403", []string{chanName, "Invalid channel name"})
+		return
+	}
 
 	// Currently I ignore modes. All channels have the same mode, or we pretend so
 	// anyway.
@@ -1292,7 +1298,9 @@ func (s *LocalServer) joinCommand(m irc.Message) {
 
 	chanName := canonicalizeChannel(m.Params[1])
 	if !isValidChannel(chanName) {
-		s.quit("Invalid channel name")
+		// Be lenient about what channel names may be on other servers.
+		// 403 ERR_NOSUCHCHANNEL
+		s.messageFromServer("403", []string{chanName, "Invalid channel name"})
 		return
 	}
 
@@ -1368,6 +1376,11 @@ func (s *LocalServer) nickCommand(m irc.Message) {
 	nickTS, err := strconv.ParseInt(m.Params[1], 10, 64)
 	if err != nil {
 		s.quit("Invalid TS (NICK)")
+		return
+	}
+
+	if !isValidNick(s.Catbox.Config.MaxNickLength, nick) {
+		s.quit("Invalid nick (NICK)")
 		return
 	}
 

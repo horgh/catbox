@@ -959,7 +959,7 @@ func (c *LocalClient) svinfoCommand(m irc.Message) {
 		return
 	}
 
-	// Once we have SVINFO, we'll upgrade to ServerClient, so we will never see
+	// Once we have SVINFO, we'll upgrade to LocalServer, so we will never see
 	// double SVINFO.
 
 	if m.Params[0] != "6" || m.Params[1] != "6" {
