@@ -5,6 +5,30 @@ import (
 	"testing"
 )
 
+func TestCanonicalizeNick(t *testing.T) {
+	tests := []struct {
+		input  string
+		output string
+	}{
+		{"ABC", "abc"},
+		{"abc", "abc"},
+		{"Abc", "abc"},
+		{"a12", "a12"},
+		{"A12", "a12"},
+		{"{}|^~", "{}|^~"},
+		{"[]\\~", "{}|~"},
+		{"-[\\]^_`{|}", "-{|}^_`{|}"},
+	}
+
+	for _, test := range tests {
+		out := canonicalizeNick(test.input)
+		if out != test.output {
+			t.Errorf("canonicalizeNick(%s) = %s, wanted %s", test.input, out,
+				test.output)
+		}
+	}
+}
+
 func TestMakeTS6ID(t *testing.T) {
 	tests := []struct {
 		input   uint64

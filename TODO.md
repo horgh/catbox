@@ -1,8 +1,9 @@
 # TODO
-  * Casemapping for {}| not implemented (see canonicalizeNick())
+  * Make canonicalizeNick and canonicalizeChannel return error if the names are
+    invalid? Right now it is a bit error prone because we can canonicalize
+    invalid names.
   * Consider combining cleanup user logic in server's killCommand() with
     cleanupKilledUser()
-  * Daemonize
   * Log to file
   * Additional automated testing
   * Easy updating
@@ -15,6 +16,10 @@
   * Limit on number of modes applied only important for modes with parameters?
     Or only user status modes?
   * +v/-v
+
+
+## Future
+  * Daemonize. There is no support in Go for this right now.
 
 
 ## RFC

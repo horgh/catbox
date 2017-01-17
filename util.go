@@ -32,14 +32,33 @@ func (h ByHopCount) Swap(i, j int)      { h[i], h[j] = h[j], h[i] }
 func (h ByHopCount) Less(i, j int) bool { return h[i].HopCount < h[j].HopCount }
 
 // canonicalizeNick converts the given nick to its canonical representation
-// (which must be unique).
+// (which must be unique). To get this, we transform all uppercase characters
+// to lowercase.
+//
+// Note IRC has an odd opinion of what is upper and lowercase. In particular,
+// {}|^ are considered the lowercase equivalents of []\~. However, I do not
+// touch ~ as it is an invalid nickname character.
 //
 // Note: We don't check validity or strip whitespace.
-//
-// TODO: This does not implement the oddities surrounding IRC's case
-//   mapping ({}| being lowercase of []\)
 func canonicalizeNick(n string) string {
-	return strings.ToLower(n)
+	b := []byte(strings.ToLower(n))
+
+	for i := 0; i < len(b); i++ {
+		if b[i] == '[' {
+			b[i] = '{'
+			continue
+		}
+		if b[i] == ']' {
+			b[i] = '}'
+			continue
+		}
+		if b[i] == '\\' {
+			b[i] = '|'
+			continue
+		}
+	}
+
+	return string(b)
 }
 
 // canonicalizeChannel converts the given channel to its canonical
@@ -54,7 +73,10 @@ func canonicalizeChannel(c string) string {
 //
 // To be compatible with ratbox, I try to accept the same characters and apply
 // similar restrictions as it does. See its m_nick.c clean_nick() function for
-// its validation.
+// its validation. This appears to be the nick format defined by RFC 2812. RFC
+// 1459 has a more restricted set. In particular, RFC 1459 does not allow
+// "special" characters to be in the first position in the nick, whereas RFC
+// 2812 does.
 func isValidNick(maxLen int, n string) bool {
 	if len(n) == 0 || len(n) > maxLen {
 		return false
