@@ -116,6 +116,14 @@ type KLine struct {
 	Reason string
 }
 
+// Message tells us the message and its destination. It primarily exists so that
+// we can collect these for later processing. It makes it possible for us to
+// have less side effects.
+type Message struct {
+	Target  *LocalClient
+	Message irc.Message
+}
+
 // TS6ID is a client's unique identifier. Unique to this server only.
 type TS6ID string
 
@@ -1064,7 +1072,7 @@ func (cb *Catbox) issueKill(killer, killee *User, message string) {
 // If killer is nil, then the killer is the server.
 func (cb *Catbox) issueKillToAllServers(killer, killee *User, message string) {
 	for _, ls := range cb.LocalServers {
-		cb.issueKillToServer(ls, killer, killee, message)
+		sendMessages(cb.issueKillToServer(ls, killer, killee, message))
 	}
 }
 
@@ -1072,7 +1080,7 @@ func (cb *Catbox) issueKillToAllServers(killer, killee *User, message string) {
 //
 // If killer is nil, then the killer is the server.
 func (cb *Catbox) issueKillToServer(ls *LocalServer, killer, killee *User,
-	message string) {
+	message string) []Message {
 	// Parameters: <target user UID> <reason>
 
 	// Reason has format:
@@ -1097,11 +1105,14 @@ func (cb *Catbox) issueKillToServer(ls *LocalServer, killer, killee *User,
 	cb.noticeOpers(fmt.Sprintf("Sending KILL message to %s for %s. From %s (%s)",
 		ls.Server.Name, killee.DisplayNick, killerName, message))
 
-	ls.maybeQueueMessage(irc.Message{
-		Prefix:  string(cb.Config.TS6SID),
-		Command: "KILL",
-		Params:  []string{string(killee.UID), reason},
-	})
+	return []Message{Message{
+		Target: ls.LocalClient,
+		Message: irc.Message{
+			Prefix:  string(cb.Config.TS6SID),
+			Command: "KILL",
+			Params:  []string{string(killee.UID), reason},
+		},
+	}}
 }
 
 // The user was killed. Clean them up.
@@ -1441,6 +1452,8 @@ func (cb *Catbox) handleCollision(fromServer *LocalServer, newUID TS6UID,
 	}
 
 	// Collision.
+	cb.noticeOpers(fmt.Sprintf("Collision for nick %s (%s and %s)",
+		canonicalizeNick(newNick), existingUID, newUID))
 
 	// The TS6 protocol defines the rules, including when we issue two KILLs
 	// (existing user and new user), and to what servers we send the KILL message.
@@ -1455,7 +1468,11 @@ func (cb *Catbox) handleCollision(fromServer *LocalServer, newUID TS6UID,
 	// from the other side. We'll see an unknown user message for the second
 	// processed.
 
-	existingUser := cb.Users[existingUID]
+	existingUser, exists := cb.Users[existingUID]
+	if !exists {
+		log.Printf("User not found with UID %s. But UID has a nick! (%s)",
+			existingUID, canonicalizeNick(newNick))
+	}
 
 	// If this is a UID command then we do not yet have a User record yet for the
 	// new user. We're in the process of creating it.
@@ -1482,7 +1499,7 @@ func (cb *Catbox) handleCollision(fromServer *LocalServer, newUID TS6UID,
 
 		message := "Nick collision, older killed (received TS is lower)"
 		if command == "UID" {
-			cb.issueKillToServer(fromServer, nil, newUser, message)
+			sendMessages(cb.issueKillToServer(fromServer, nil, newUser, message))
 		} else {
 			cb.issueKillToAllServers(nil, newUser, message)
 			cb.cleanupKilledUser(nil, newUser, message)
@@ -1500,7 +1517,7 @@ func (cb *Catbox) handleCollision(fromServer *LocalServer, newUID TS6UID,
 		cb.cleanupKilledUser(nil, existingUser, message)
 
 		if command == "UID" {
-			cb.issueKillToServer(fromServer, nil, newUser, message)
+			sendMessages(cb.issueKillToServer(fromServer, nil, newUser, message))
 		} else {
 			cb.issueKillToAllServers(nil, newUser, message)
 			cb.cleanupKilledUser(nil, newUser, message)
@@ -1525,10 +1542,16 @@ func (cb *Catbox) handleCollision(fromServer *LocalServer, newUID TS6UID,
 
 	message := "Nick collision, newer killed (received TS is higher)"
 	if command == "UID" {
-		cb.issueKillToServer(fromServer, nil, newUser, message)
+		sendMessages(cb.issueKillToServer(fromServer, nil, newUser, message))
 	} else {
 		cb.issueKillToAllServers(nil, newUser, message)
 		cb.cleanupKilledUser(nil, newUser, message)
 	}
 	return false
+}
+
+func sendMessages(messages []Message) {
+	for _, m := range messages {
+		m.Target.maybeQueueMessage(m.Message)
+	}
 }

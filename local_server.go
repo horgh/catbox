@@ -1364,7 +1364,7 @@ func (s *LocalServer) nickCommand(m irc.Message) {
 		return
 	}
 
-	// Find the user who changed their nick.
+	// Find the user who is changing their nick.
 	user, exists := s.Catbox.Users[TS6UID(m.Prefix)]
 	if !exists {
 		s.quit("Unknown user (NICK)")
@@ -1384,14 +1384,14 @@ func (s *LocalServer) nickCommand(m irc.Message) {
 		return
 	}
 
-	// Is there a nick collision? If we don't accept the NICK command (and kill the
-	// user) then we don't continue.
+	// Is there a nick collision? If we don't accept the NICK command (and kill
+	// the user) then we don't continue.
 
 	// Careful. They could have changed their nick to a different case. e.g.,
 	// "user" to "User". Check who we collided with that it is a different user.
 
 	if canonicalizeNick(nick) != canonicalizeNick(user.DisplayNick) {
-		if !s.Catbox.handleCollision(s, user.UID, user.DisplayNick, user.Username,
+		if !s.Catbox.handleCollision(s, user.UID, nick, user.Username,
 			user.Hostname, nickTS, "NICK") {
 			return
 		}
