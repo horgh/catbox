@@ -1078,19 +1078,22 @@ func (u *LocalUser) pingCommand(m irc.Message) {
 		return
 	}
 
-	// Certain clients don't send PING following any standard.
+	// Clients may send PING where the origin server (param 0) is nonsense.
+	//
 	// For example, Quassel sends a timestamp like "PING 22:46:48.650". Which is
 	// even more interesting when we consider it has : in it, leading to us to
 	// have issues saying "<timestamp> :is not a valid server" (as : is then in
-	// the first parameter).
+	// the first parameter) if we claim it to be invalid.
 	//
-	// Let's just reply with our server name as if they issued a correct PING to
-	// us.
+	// Let's act as if the parameter makes sense. Reply to it as if it is a
+	// server name.
 	//
-	// If we were strict, we should reply with:
-	// 402 <nick> <server> :No such server
+	// Not sending back param 0 will confuse mIRC. It will show the PONG coming
+	// from the server in its status.
+	//
+	// :<us> PONG <source, us> <server we are replying to, argument 0>
 
-	u.messageFromServer("PONG", []string{u.Catbox.Config.ServerName})
+	u.messageFromServer("PONG", []string{u.Catbox.Config.ServerName, m.Params[0]})
 }
 
 func (u *LocalUser) dieCommand(m irc.Message) {

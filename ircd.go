@@ -686,7 +686,14 @@ func (cb *Catbox) checkAndPingClients() {
 			continue
 		}
 
-		client.messageFromServer("PING", []string{cb.Config.ServerName})
+		// Don't send with a prefix. mIRC apparently will not recognize PING if we do.
+		// It will not respond and it will show the PING in its status window.
+		// PING <source to reply to, us>
+		client.maybeQueueMessage(irc.Message{
+			Command: "PING",
+			Params:  []string{cb.Config.ServerName},
+		})
+
 		client.LastPingTime = now
 	}
 
