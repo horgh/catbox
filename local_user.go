@@ -1014,12 +1014,6 @@ func (u *LocalUser) lusersCommand() {
 			len(u.Catbox.LocalUsers), len(u.Catbox.LocalServers)),
 	})
 
-	// Counter variables are accessed by several goroutines. Freeze them so we
-	// get consistent numbers. Even though we're only reading them, we can't be
-	// sure they are not totally out of whack if we don't synchronize.
-	u.Catbox.CountersLock.Lock()
-	defer u.Catbox.CountersLock.Unlock()
-
 	// 265 tells current local user count and max. Not standard.
 	u.messageFromServer("265", []string{
 		fmt.Sprintf("%d", len(u.Catbox.LocalUsers)),
@@ -1036,8 +1030,8 @@ func (u *LocalUser) lusersCommand() {
 			len(u.Catbox.Users), u.Catbox.HighestGlobalUserCount),
 	})
 
-	// 250 tells highest total connections, highest total local users (again,
-	// it does seem like ratbox does this), and the total number of connections
+	// 250 tells highest total connections, highest total local users (again, it
+	// does seem like ratbox does this), and the total number of connections
 	// received. Again this is not standard, but interesting.
 	u.messageFromServer("250", []string{
 		fmt.Sprintf("Highest connection count: %d (%d clients) (%d connections received)",

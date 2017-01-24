@@ -78,11 +78,10 @@ type Catbox struct {
 	// seen at once.
 	HighestConnectionCount int
 
-	// Track how many connections we've received in total.
+	// Track how many connections we've received in total. The definition of a
+	// connections in this context: User/server registrations. Not accepted TCP
+	// connections (which is what it was in the past).
 	ConnectionCount int
-
-	// CountersLock protects the above counters.
-	CountersLock sync.Mutex
 
 	// Our TLS configuration.
 	TLSConfig *tls.Config
@@ -516,8 +515,6 @@ func (cb *Catbox) acceptConnections(listener net.Listener) {
 			log.Printf("Failed to accept connection: %s", err)
 			continue
 		}
-
-		cb.updateCounters(true)
 
 		cb.introduceClient(conn)
 	}
@@ -1281,22 +1278,16 @@ func (cb *Catbox) createWHOISResponse(user, replyUser *User,
 	return msgs
 }
 
-// Update our counters.
+// Update some of our counters.
 //
-// We track the maximum number of local users we've seen, and the maximum number
-// of global users we've seen.
+// We track the maximum number of local users we've seen, and the maximum
+// number of global users we've seen.
 //
-// The main reason is to show in LUSERS output.
+// The reason is to show in LUSERS output.
 //
-// You should call this after you have made any changes to clients/users/servers
-// counts.
-//
-// If this adding a new client connection, pass newClient as true.
-// This should only be the case if we just accepted a new connection locally.
-func (cb *Catbox) updateCounters(newClient bool) {
-	cb.CountersLock.Lock()
-	defer cb.CountersLock.Unlock()
-
+// You should call this after you have made any changes to
+// clients/users/servers counts.
+func (cb *Catbox) updateCounters() {
 	if len(cb.LocalUsers) > cb.HighestLocalUserCount {
 		cb.HighestLocalUserCount = len(cb.LocalUsers)
 	}
@@ -1309,10 +1300,6 @@ func (cb *Catbox) updateCounters(newClient bool) {
 		len(cb.LocalServers)
 	if currentClientCount > cb.HighestConnectionCount {
 		cb.HighestConnectionCount = currentClientCount
-	}
-
-	if newClient {
-		cb.ConnectionCount++
 	}
 }
 

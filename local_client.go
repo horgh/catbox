@@ -385,7 +385,8 @@ func (c *LocalClient) registerUser() {
 		"nos",
 	})
 
-	c.Catbox.updateCounters(false)
+	c.Catbox.updateCounters()
+	c.Catbox.ConnectionCount++
 
 	lu.lusersCommand()
 	lu.motdCommand()
@@ -516,6 +517,8 @@ func (c *LocalClient) registerServer() {
 		linkNotice = fmt.Sprintf("Established link to %s (PLAINTEXT).",
 			c.PreRegServerName)
 	}
+
+	c.Catbox.ConnectionCount++
 
 	newLS.Catbox.noticeOpers(linkNotice)
 

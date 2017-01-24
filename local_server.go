@@ -794,7 +794,7 @@ func (s *LocalServer) uidCommand(m irc.Message) {
 		}
 	}
 
-	s.Catbox.updateCounters(false)
+	s.Catbox.updateCounters()
 }
 
 func (s *LocalServer) privmsgCommand(m irc.Message) {
