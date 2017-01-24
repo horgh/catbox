@@ -1088,8 +1088,8 @@ func (u *LocalUser) pingCommand(m irc.Message) {
 	// Let's act as if the parameter makes sense. Reply to it as if it is a
 	// server name.
 	//
-	// Not sending back param 0 will confuse mIRC. It will show the PONG coming
-	// from the server in its status.
+	// Also, not sending back param 0 will confuse mIRC. It will show the PONG
+	// coming from the server in its status.
 	//
 	// :<us> PONG <source, us> <server we are replying to, argument 0>
 
