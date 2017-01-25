@@ -402,3 +402,150 @@ func TestIsValidNick(t *testing.T) {
 		}
 	}
 }
+
+func TestIssueKillToServer(t *testing.T) {
+	tests := []struct {
+		Killer *User
+		Killee *User
+		Reason string
+	}{
+		// User killing user.
+		{
+			&User{
+				DisplayNick: "killer_",
+				Username:    "killer",
+				Hostname:    "example.com",
+				UID:         TS6UID("000AAAAAA"),
+			},
+			&User{
+				DisplayNick: "killee_",
+				Username:    "killee",
+				Hostname:    "example2.com",
+				UID:         TS6UID("000AAAAAB"),
+			},
+			"go away",
+		},
+
+		// Try server kill.
+		{
+			nil,
+			&User{
+				DisplayNick: "killee_",
+				Username:    "killee",
+				Hostname:    "example2.com",
+				UID:         TS6UID("000AAAAAB"),
+			},
+			"go away",
+		},
+
+		// User kill with blank reason.
+		{
+			&User{
+				DisplayNick: "killer_",
+				Username:    "killer",
+				Hostname:    "example.com",
+				UID:         TS6UID("000AAAAAA"),
+			},
+			&User{
+				DisplayNick: "killee_",
+				Username:    "killee",
+				Hostname:    "example2.com",
+				UID:         TS6UID("000AAAAAB"),
+			},
+			"",
+		},
+
+		// Server kill with blank reason.
+		{
+			nil,
+			&User{
+				DisplayNick: "killee_",
+				Username:    "killee",
+				Hostname:    "example2.com",
+				UID:         TS6UID("000AAAAAB"),
+			},
+			"",
+		},
+	}
+
+	for _, test := range tests {
+		cb := Catbox{
+			Config: &Config{
+				ServerName: "irc.example.com",
+				TS6SID:     "000",
+			},
+		}
+
+		ls := &LocalServer{
+			LocalClient: &LocalClient{},
+			Server:      &Server{Name: "irc.example.com"},
+		}
+
+		msgs := cb.issueKillToServer(ls, test.Killer, test.Killee, test.Reason)
+
+		if len(msgs) != 1 {
+			t.Errorf("issueKillToServer(%s, %s, %s, %s) resulted in %d messages, want %d",
+				ls, test.Killer, test.Killee, test.Reason, len(msgs), 1)
+			continue
+		}
+
+		msg := msgs[0]
+
+		if msg.Target != ls.LocalClient {
+			t.Errorf("issueKillToServer(%s, %s, %s, %s) had unexpected target %s, wanted %s",
+				ls, test.Killer, test.Killee, test.Reason, msg.Target, ls.LocalClient)
+			continue
+		}
+
+		if test.Killer == nil {
+			if msg.Message.Prefix != string(cb.Config.TS6SID) {
+				t.Errorf("issueKillToServer(%s, %s, %s, %s) had unexpected prefix %s, wanted %s",
+					ls, test.Killer, test.Killee, test.Reason, msg.Message.Prefix,
+					cb.Config.TS6SID)
+				continue
+			}
+		} else {
+			if msg.Message.Prefix != string(test.Killer.UID) {
+				t.Errorf("issueKillToServer(%s, %s, %s, %s) had unexpected prefix %s, wanted %s",
+					ls, test.Killer, test.Killee, test.Reason, msg.Message.Prefix,
+					test.Killer.UID)
+				continue
+			}
+		}
+
+		if msg.Message.Command != "KILL" {
+			t.Errorf("issueKillToServer(%s, %s, %s, %s) had unexpected command %s, wanted %s",
+				ls, test.Killer, test.Killee, test.Reason, msg.Message.Command, "KILL")
+			continue
+		}
+
+		if len(msg.Message.Params) != 2 {
+			t.Errorf("issueKillToServer(%s, %s, %s, %s) had unexpected number of params, had %d wanted %d",
+				ls, test.Killer, test.Killee, test.Reason, len(msg.Message.Params), 2)
+			continue
+		}
+
+		if msg.Message.Params[0] != string(test.Killee.UID) {
+			t.Errorf("issueKillToServer(%s, %s, %s, %s) had unexpected killee param, had %s wanted %s",
+				ls, test.Killer, test.Killee, test.Reason, msg.Message.Params[0],
+				test.Killee.UID)
+			continue
+		}
+
+		wantedReason := ""
+		if test.Killer == nil {
+			wantedReason = fmt.Sprintf("%s (%s)", cb.Config.ServerName, test.Reason)
+		} else {
+			wantedReason = fmt.Sprintf("%s!%s!%s!%s (%s)", cb.Config.ServerName,
+				test.Killer.Hostname, test.Killer.Username, test.Killer.DisplayNick,
+				test.Reason)
+		}
+
+		if msg.Message.Params[1] != wantedReason {
+			t.Errorf("issueKillToServer(%s, %s, %s, %s) had unexpected reason param, had %s wanted %s",
+				ls, test.Killer, test.Killee, test.Reason, msg.Message.Params[1],
+				wantedReason)
+			continue
+		}
+	}
+}

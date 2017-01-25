@@ -1100,14 +1100,17 @@ func (cb *Catbox) issueKillToServer(ls *LocalServer, killer, killee *User,
 
 	reason := ""
 	killerName := ""
+	sourceID := ""
 
 	if killer == nil {
 		reason = fmt.Sprintf("%s (%s)", cb.Config.ServerName, message)
 		killerName = cb.Config.ServerName
+		sourceID = string(cb.Config.TS6SID)
 	} else {
 		reason = fmt.Sprintf("%s!%s!%s!%s (%s)", cb.Config.ServerName,
 			killer.Hostname, killer.Username, killer.DisplayNick, message)
 		killerName = killer.DisplayNick
+		sourceID = string(killer.UID)
 	}
 
 	cb.noticeOpers(fmt.Sprintf("Sending KILL message to %s for %s. From %s (%s)",
@@ -1116,7 +1119,7 @@ func (cb *Catbox) issueKillToServer(ls *LocalServer, killer, killee *User,
 	return []Message{Message{
 		Target: ls.LocalClient,
 		Message: irc.Message{
-			Prefix:  string(cb.Config.TS6SID),
+			Prefix:  sourceID,
 			Command: "KILL",
 			Params:  []string{string(killee.UID), reason},
 		},
