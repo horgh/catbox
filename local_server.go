@@ -1148,6 +1148,7 @@ func (s *LocalServer) sjoinCommand(m irc.Message) {
 
 // We receive TB commands during burst if the other side supports the TB
 // capability. They tell us about the topic of a channel.
+//
 // Check the TS and potentially update the topic, tell local users, and
 // propagate.
 func (s *LocalServer) tbCommand(m irc.Message) {
@@ -1193,6 +1194,9 @@ func (s *LocalServer) tbCommand(m irc.Message) {
 		topic = m.Params[3]
 	} else {
 		topic = m.Params[2]
+	}
+	if len(topic) > maxTopicLength {
+		topic = topic[:maxTopicLength]
 	}
 
 	// If the topic matches what we have, nothing to do.
@@ -1636,6 +1640,7 @@ func (s *LocalServer) modeCommand(m irc.Message) {
 	}
 }
 
+// We hear about a topic change.
 func (s *LocalServer) topicCommand(m irc.Message) {
 	// Parameters: <channel> [topic]
 	if len(m.Params) < 1 {
@@ -1659,14 +1664,31 @@ func (s *LocalServer) topicCommand(m irc.Message) {
 		return
 	}
 
-	// We could check the source user has ops (when we support ops).
+	topic := ""
+	if len(m.Params) >= 2 {
+		topic = m.Params[1]
+	}
+	if len(topic) > maxTopicLength {
+		topic = topic[:maxTopicLength]
+	}
+
+	// We could check the source user has ops.
+
 	// We could check the source is on the channel.
 
+	// Make the change.
+
+	channel.Topic = topic
+	channel.TopicTS = time.Now().Unix()
+	channel.TopicSetter = sourceUser.nickUhost()
+
 	// Tell local clients who are in the channel about the topic change.
+
 	params := []string{channel.Name}
-	if len(m.Params) >= 2 && len(m.Params[1]) > 0 {
-		params = append(params, m.Params[1])
+	if len(topic) > 0 {
+		params = append(params, topic)
 	}
+
 	for memberUID := range channel.Members {
 		member := s.Catbox.Users[memberUID]
 		if !member.isLocal() {

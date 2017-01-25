@@ -1660,14 +1660,14 @@ func (u *LocalUser) topicCommand(m irc.Message) {
 		return
 	}
 
-	// Set new topic.
-
 	topic := m.Params[1]
 	if len(topic) > maxTopicLength {
 		topic = topic[:maxTopicLength]
 	}
 
-	// If we have channel operators then we need additional logic.
+	// TODO: When we support channel mode +t we will need additional logic.
+
+	// Set new topic.
 
 	channel.Topic = topic
 	channel.TopicTS = time.Now().Unix()
