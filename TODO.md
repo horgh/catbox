@@ -4,6 +4,7 @@
     invalid names.
   * Consider combining cleanup user logic in server's killCommand() with
     cleanupKilledUser()
+  * Consolidate repeated topic setting logic (user TOPIC, server TOPIC, TB)
   * Log to file
   * Additional automated testing
   * Easy updating
