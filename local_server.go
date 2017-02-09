@@ -1685,6 +1685,8 @@ func (s *LocalServer) topicCommand(m irc.Message) {
 	// Tell local clients who are in the channel about the topic change.
 
 	params := []string{channel.Name}
+
+	// TODO: I think we should include a blank parameter if it is blank.
 	if len(topic) > 0 {
 		params = append(params, topic)
 	}
