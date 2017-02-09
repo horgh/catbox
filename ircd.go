@@ -1069,7 +1069,7 @@ func (cb *Catbox) removeKLine(userMask, hostMask, source string) bool {
 //
 // If killer is nil, then this is a server KILL.
 func (cb *Catbox) issueKill(killer, killee *User, message string) {
-	cb.issueKillToAllServers(killer, killee, message)
+	sendMessages(cb.issueKillToAllServers(killer, killee, message))
 	cb.cleanupKilledUser(killer, killee, message)
 }
 
@@ -1078,10 +1078,13 @@ func (cb *Catbox) issueKill(killer, killee *User, message string) {
 // We send KILL commands to all servers, but do nothing else.
 //
 // If killer is nil, then the killer is the server.
-func (cb *Catbox) issueKillToAllServers(killer, killee *User, message string) {
+func (cb *Catbox) issueKillToAllServers(killer, killee *User,
+	message string) []Message {
+	msgs := []Message{}
 	for _, ls := range cb.LocalServers {
-		sendMessages(cb.issueKillToServer(ls, killer, killee, message))
+		msgs = append(msgs, cb.issueKillToServer(ls, killer, killee, message)...)
 	}
+	return msgs
 }
 
 // Send a KILL command to the given server. Nothing else.
@@ -1493,7 +1496,7 @@ func (cb *Catbox) handleCollision(fromServer *LocalServer, newUID TS6UID,
 			newHostname != existingUser.Hostname {
 			// Since we require TS6, send to all servers.
 			message := "Nick collision, newer killed (received TS is lower)"
-			cb.issueKillToAllServers(nil, existingUser, message)
+			sendMessages(cb.issueKillToAllServers(nil, existingUser, message))
 			cb.cleanupKilledUser(nil, existingUser, message)
 			return true
 		}
@@ -1502,7 +1505,7 @@ func (cb *Catbox) handleCollision(fromServer *LocalServer, newUID TS6UID,
 		if command == "UID" {
 			sendMessages(cb.issueKillToServer(fromServer, nil, newUser, message))
 		} else {
-			cb.issueKillToAllServers(nil, newUser, message)
+			sendMessages(cb.issueKillToAllServers(nil, newUser, message))
 			cb.cleanupKilledUser(nil, newUser, message)
 		}
 		return false
@@ -1514,13 +1517,13 @@ func (cb *Catbox) handleCollision(fromServer *LocalServer, newUID TS6UID,
 		// to server who sent us the new user (unless it's NICK, then to all).
 		message := "Nick collision, both killed"
 
-		cb.issueKillToAllServers(nil, existingUser, message)
+		sendMessages(cb.issueKillToAllServers(nil, existingUser, message))
 		cb.cleanupKilledUser(nil, existingUser, message)
 
 		if command == "UID" {
 			sendMessages(cb.issueKillToServer(fromServer, nil, newUser, message))
 		} else {
-			cb.issueKillToAllServers(nil, newUser, message)
+			sendMessages(cb.issueKillToAllServers(nil, newUser, message))
 			cb.cleanupKilledUser(nil, newUser, message)
 		}
 
@@ -1536,7 +1539,7 @@ func (cb *Catbox) handleCollision(fromServer *LocalServer, newUID TS6UID,
 		newHostname == existingUser.Hostname {
 		// Since we require TS6, send to all servers.
 		message := "Nick collision, older killed (received TS is higher)"
-		cb.issueKillToAllServers(nil, existingUser, message)
+		sendMessages(cb.issueKillToAllServers(nil, existingUser, message))
 		cb.cleanupKilledUser(nil, existingUser, message)
 		return true
 	}
@@ -1545,7 +1548,7 @@ func (cb *Catbox) handleCollision(fromServer *LocalServer, newUID TS6UID,
 	if command == "UID" {
 		sendMessages(cb.issueKillToServer(fromServer, nil, newUser, message))
 	} else {
-		cb.issueKillToAllServers(nil, newUser, message)
+		sendMessages(cb.issueKillToAllServers(nil, newUser, message))
 		cb.cleanupKilledUser(nil, newUser, message)
 	}
 	return false
