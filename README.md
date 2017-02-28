@@ -1,6 +1,5 @@
-![catbox](catbox.png)
+![catbox](catbox-with-text.png)
 
-# catbox
 This is yet another IRC server! I created it because I enjoy working with IRC
 and I thought it would be fun and good practice with Go. Also, I run a small
 IRC network, and I thought it would be nice to have my own server for it. Right
