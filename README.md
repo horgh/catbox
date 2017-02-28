@@ -1,3 +1,5 @@
+![catbox](catbox.png)
+
 # catbox
 This is yet another IRC server! I created it because I enjoy working with IRC
 and I thought it would be fun and good practice with Go. Also, I run a small
@@ -141,3 +143,7 @@ the daemon should not be overwhelmed by a single client.
       SJOIN, TOPIC, UID, SQUIT, ERROR, PING, PONG, MODE (user)
   * I believe "simple modes" are things like +ntisk. As opposed to status modes
     such as +o/+v. Ban/exemption type modes are not simple either.
+
+
+## Logo
+catbox logo (c) 2017 Bee
