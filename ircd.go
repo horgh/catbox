@@ -1375,10 +1375,31 @@ func (cb *Catbox) rehash(byUser *User) {
 		return
 	}
 
+	// Changing these requires closing/reopening listeners:
+	// ListenHost
+	// ListenPort
+	// ListenPortTLS
+	// CertificateFile
+	// KeyFile
+
+	// Changing these may require relinking servers as they are part of the
+	// link handshake:
+	// ServerName
+	// ServerInfo
+
 	cb.Config.MOTD = cfg.MOTD
+
+	// MaxNickLength: I think this is not acceptable to change live. Live clients
+	// might turn out to be invalid, plus there is the issue of remote clients.
+
+	cb.Config.PingTime = cfg.PingTime
+	cb.Config.DeadTime = cfg.DeadTime
+	cb.Config.ConnectAttemptTime = cfg.ConnectAttemptTime
 	cb.Config.Opers = cfg.Opers
 	cb.Config.Servers = cfg.Servers
 	cb.Config.UserConfigs = cfg.UserConfigs
+
+	// TS6SID: Changing this requires relinking. It is part of link handshake.
 
 	if byUser != nil {
 		cb.noticeOpers(fmt.Sprintf("%s rehashed configuration.",

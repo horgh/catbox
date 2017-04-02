@@ -8,6 +8,9 @@
   * Log to file
   * Additional automated testing
   * Easy updating
+  * Add command to dump out config (the current catbox config as seen from
+    the config file). Partly this will be useful because not everything
+    gets reloaded on rehash.
 
   * MODE command on channel should return when channel was created
   * A command (NSA) to retrieve TLS/ciphers in use by all clients/servers. Sent
