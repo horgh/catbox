@@ -193,9 +193,9 @@ func main() {
 	log.SetFlags(log.Ldate | log.Ltime)
 	log.SetOutput(os.Stdout)
 
-	args, err := getArgs()
-	if err != nil {
-		log.Fatal(err)
+	args := getArgs()
+	if args == nil {
+		os.Exit(1)
 	}
 
 	binPath, err := filepath.Abs(os.Args[0])

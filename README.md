@@ -42,7 +42,7 @@ them as you like. All settings are optional and have defaults.
 
 Once you've done this, start the daemon like so:
 
-    catbox -config catbox.conf
+    catbox -conf catbox.conf
 
 
 ## catbox.conf
