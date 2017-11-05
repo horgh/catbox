@@ -33,11 +33,11 @@ ircd-ratbox.
 
 
 # Setup
-  1. Build the server. To do this, run `go build`. You need a working [go
+  1. Build the server. To do this, run `go build`. You need a working [Go
      compiler](https://golang.org/dl/).
-  2. Configure it. This is done through configuration files. Examples of
-     are in the `conf` directory. Copy and edit them as you like. All
-     settings are optional and have defaults.
+  2. Configure it. This is done through configuration files. Examples are
+     in the `conf` directory. Copy and edit them. All settings are optional
+     and have defaults.
   3. Start the daemon: `catbox -conf catbox.conf`
 
 
@@ -47,13 +47,12 @@ ircd-ratbox.
 This file holds global settings for the server.
 
 You'll probably want to change `listen-host`, `listen-port`, and
-`server-name` at the minimum. However, all settings are optional and have
-defaults.
+`server-name` at minimum.
 
 
 ## opers.conf
 This file defines IRC operators. A user can become an operator by using the
-`/OPER` command with a username/password combination listed in this file.
+`OPER` command with a username and password combination listed in this file.
 
 
 ## servers.conf
@@ -61,8 +60,8 @@ This file defines servers to link to and accept links from.
 
 
 ## users.conf
-This file defines privileges and spoofs for users. One privilege is flood
-exemption.
+This file defines privileges and hostname spoofs for users. The only
+privilege right now is flood exemption.
 
 
 # TLS
