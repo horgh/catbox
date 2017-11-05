@@ -5,13 +5,15 @@ This is a minimal IRC daemon. I run a small network using
 capable of linking to it and eventually replacing it. My goal is to have a
 minimal server that will meet this network's needs.
 
-Current status: catbox is capable of linking to itself and to ircd-ratbox
-servers. It is in active use on my network.
+
+# Status
+catbox is capable of linking to itself and to ircd-ratbox servers. It is in
+active use on my network.
 
 
-# Name
-I chose the name because: My domain name is summercat.com, cats love boxes,
-and as a tribute to ircd-ratbox.
+# Why the name?
+My domain name is summercat.com, cats love boxes, and a tribute to
+ircd-ratbox.
 
 
 # Features
@@ -19,31 +21,27 @@ and as a tribute to ircd-ratbox.
   * Server to server communication using the TS6 protocol. In addition to
     being able to link to other catbox servers, it can link with other
     TS6 servers such as ircd-ratbox.
-  * Channels, private messages, etc. Most of the basic IRC commands and
-    features are present.
-  * Channel operators.
+  * Most basic IRC commands and features are present.
   * Channel modes: +n, +s, +o.
   * User modes: +i, +o, +C.
   * Global IRC operators.
-  * Operators can communicate network wide to other operators with WALLOPS.
-  * Private (WHOIS shows no channels, no LIST).
+  * Network wide operator communication with WALLOPS.
+  * Private (WHOIS shows no channels, LIST isn't supported).
   * Server connections are based on hosts rather than IPs. This means
     servers can have dynamic IPs.
   * Network wide connection notices sent to operators.
 
 
 # Setup
-First you need to build the server. To do this, run `go build`. You need a
-working [go compiler](https://golang.org/dl/).
+  1. Build the server. To do this, run `go build`. You need a working [go
+     compiler](https://golang.org/dl/).
+  2. Configure it. This is done through configuration files. Examples of
+     are in the `conf` directory. Copy and edit them as you like. All
+     settings are optional and have defaults.
+  3. Start the daemon: `catbox -conf catbox.conf`
 
-Then you need to configure it. This is done through a number of files.
-Examples of these files are all under the `conf` directory. Copy and edit
-them as you like. All settings are optional and have defaults.
 
-Once you've done this, start the daemon like so:
-
-    catbox -conf catbox.conf
-
+# Configuration
 
 ## catbox.conf
 This file holds global settings for the server.
@@ -67,7 +65,7 @@ This file defines privileges and spoofs for users. One privilege is flood
 exemption.
 
 
-## TLS
+# TLS
 If you want to listen on a TLS port, you must have a certificate and key
 available.
 
