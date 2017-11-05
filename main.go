@@ -1393,11 +1393,12 @@ func (cb *Catbox) rehash(byUser *User) {
 	cb.Config.PingTime = cfg.PingTime
 	cb.Config.DeadTime = cfg.DeadTime
 	cb.Config.ConnectAttemptTime = cfg.ConnectAttemptTime
+
+	// TS6SID: Changing this requires relinking. It is part of link handshake.
+
 	cb.Config.Opers = cfg.Opers
 	cb.Config.Servers = cfg.Servers
 	cb.Config.UserConfigs = cfg.UserConfigs
-
-	// TS6SID: Changing this requires relinking. It is part of link handshake.
 
 	if byUser != nil {
 		cb.noticeOpers(fmt.Sprintf("%s rehashed configuration.",

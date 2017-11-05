@@ -30,6 +30,8 @@ ircd-ratbox.
   * Server connections are based on hosts rather than IPs. This means
     servers can have dynamic IPs.
   * Network wide connection notices sent to operators.
+  * Flood protection.
+  * K: line style connection banning.
 
 
 # Setup
