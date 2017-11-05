@@ -461,12 +461,11 @@ func (cb *Catbox) shutdown() {
 	// down.
 	close(cb.ShutdownChan)
 
-	err := cb.Listener.Close()
-	if err != nil {
+	if err := cb.Listener.Close(); err != nil {
 		log.Printf("Problem closing TCP listener: %s", err)
 	}
-	err = cb.TLSListener.Close()
-	if err != nil {
+
+	if err := cb.TLSListener.Close(); err != nil {
 		log.Printf("Problem closing TLS listener: %s", err)
 	}
 

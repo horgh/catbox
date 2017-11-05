@@ -118,8 +118,7 @@ func (c *LocalClient) getTLSState() (string, string, error) {
 		return "", "", fmt.Errorf("client is not connected with TLS")
 	}
 
-	err := tlsConn.Handshake()
-	if err != nil {
+	if err := tlsConn.Handshake(); err != nil {
 		return "", "", fmt.Errorf("TLS handshake failed: %s", err)
 	}
 
@@ -234,8 +233,7 @@ Loop:
 				log.Printf("Client %s: Warning: Message truncated: %s", c, message)
 			}
 
-			err = c.Conn.Write(buf)
-			if err != nil {
+			if err := c.Conn.Write(buf); err != nil {
 				log.Printf("Client %s: Write problem: %s: %s", c, buf, err)
 				c.Catbox.newEvent(Event{Type: DeadClientEvent, Client: c})
 				break Loop
@@ -248,8 +246,7 @@ Loop:
 		}
 	}
 
-	err := c.Conn.Close()
-	if err != nil {
+	if err := c.Conn.Close(); err != nil {
 		log.Printf("Client %s: Problem closing connection: %s", c, err)
 	}
 

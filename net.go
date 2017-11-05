@@ -50,8 +50,7 @@ func (c Conn) RemoteAddr() net.Addr {
 // Read reads a line from the connection.
 func (c Conn) Read() (string, error) {
 	// Deadline so we will eventually give up.
-	err := c.conn.SetDeadline(time.Now().Add(c.ioWait))
-	if err != nil {
+	if err := c.conn.SetDeadline(time.Now().Add(c.ioWait)); err != nil {
 		return "", fmt.Errorf("unable to set deadline: %s", err)
 	}
 
@@ -66,8 +65,7 @@ func (c Conn) Read() (string, error) {
 // Write writes a string to the connection
 func (c Conn) Write(s string) error {
 	// Deadline so we will eventually give up.
-	err := c.conn.SetDeadline(time.Now().Add(c.ioWait))
-	if err != nil {
+	if err := c.conn.SetDeadline(time.Now().Add(c.ioWait)); err != nil {
 		return fmt.Errorf("unable to set deadline: %s", err)
 	}
 
@@ -80,8 +78,7 @@ func (c Conn) Write(s string) error {
 		return fmt.Errorf("short write")
 	}
 
-	err = c.rw.Flush()
-	if err != nil {
+	if err := c.rw.Flush(); err != nil {
 		return fmt.Errorf("flush error: %s", err)
 	}
 
