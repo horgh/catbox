@@ -1,4 +1,4 @@
-![catbox](images/catbox-with-text.png)
+![catbox](doc/catbox-with-text.png)
 
 This is a minimal IRC daemon. I run a small network using
 [ircd-ratbox](http://ratbox.org/) and had the idea to create an IRC server
