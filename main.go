@@ -209,8 +209,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	err = cb.start()
-	if err != nil {
+	if err := cb.start(); err != nil {
 		log.Fatal(err)
 	}
 
@@ -222,8 +221,7 @@ func main() {
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 
-		err := cmd.Start()
-		if err != nil {
+		if err := cmd.Start(); err != nil {
 			log.Fatalf("Restart failed: %s", err)
 		}
 
@@ -260,28 +258,32 @@ func newCatbox(configFile string) (*Catbox, error) {
 	}
 	cb.Config = cfg
 
-	cert, err := tls.LoadX509KeyPair(cb.Config.CertificateFile, cb.Config.KeyFile)
-	if err != nil {
-		return nil, fmt.Errorf("Unable to load certificate/key: %s", err)
-	}
+	if cb.Config.ListenPortTLS != "-1" || cb.Config.CertificateFile != "" ||
+		cb.Config.KeyFile != "" {
+		cert, err := tls.LoadX509KeyPair(cb.Config.CertificateFile,
+			cb.Config.KeyFile)
+		if err != nil {
+			return nil, fmt.Errorf("Unable to load certificate/key: %s", err)
+		}
 
-	tlsConfig := &tls.Config{
-		Certificates:             []tls.Certificate{cert},
-		PreferServerCipherSuites: true,
-		SessionTicketsDisabled:   true,
-		// Unfortunately it is usual to use self signed certificates with IRC. We
-		// need this to connect to such servers.
-		InsecureSkipVerify: true,
+		tlsConfig := &tls.Config{
+			Certificates:             []tls.Certificate{cert},
+			PreferServerCipherSuites: true,
+			SessionTicketsDisabled:   true,
+			// Unfortunately it is usual to use self signed certificates with IRC. We
+			// need this to connect to such servers.
+			InsecureSkipVerify: true,
 
-		// It would be nice to be able to be more restrictive on TLS version and
-		// ciphers, but in practice many clients do not support the strictest.
-		//CipherSuites: []uint16{
-		//	tls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
-		//	tls.TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
-		//},
-		//MinVersion: tls.VersionTLS12,
+			// It would be nice to be able to be more restrictive on TLS version and
+			// ciphers, but in practice many clients do not support the strictest.
+			//CipherSuites: []uint16{
+			//	tls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
+			//	tls.TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
+			//},
+			//MinVersion: tls.VersionTLS12,
+		}
+		cb.TLSConfig = tlsConfig
 	}
-	cb.TLSConfig = tlsConfig
 
 	return &cb, nil
 }
@@ -292,7 +294,7 @@ func newCatbox(configFile string) (*Catbox, error) {
 // channels.
 func (cb *Catbox) start() error {
 	// Plaintext listener.
-	if cb.Config.ListenPort != "" {
+	if cb.Config.ListenPort != "-1" {
 		ln, err := net.Listen("tcp", fmt.Sprintf("%s:%s", cb.Config.ListenHost,
 			cb.Config.ListenPort))
 		if err != nil {
@@ -305,7 +307,7 @@ func (cb *Catbox) start() error {
 	}
 
 	// TLS listener.
-	if cb.Config.ListenPortTLS != "" {
+	if cb.Config.ListenPortTLS != "-1" {
 		tlsLN, err := tls.Listen("tcp", fmt.Sprintf("%s:%s", cb.Config.ListenHost,
 			cb.Config.ListenPortTLS), cb.TLSConfig)
 		if err != nil {
@@ -317,8 +319,7 @@ func (cb *Catbox) start() error {
 		go cb.acceptConnections(cb.TLSListener)
 	}
 
-	// No ports set? Die!
-	if cb.Config.ListenPort == "" && cb.Config.ListenPortTLS == "" {
+	if cb.Config.ListenPort == "-1" && cb.Config.ListenPortTLS == "-1" {
 		log.Fatalf("You must set at least one listen port.")
 	}
 
@@ -363,6 +364,7 @@ func (cb *Catbox) start() error {
 		}
 	}()
 
+	log.Printf("catbox started")
 	cb.eventLoop()
 
 	// We don't need to drain any channels. None close that will have any

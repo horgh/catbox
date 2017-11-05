@@ -34,6 +34,9 @@ type Config struct {
 	// Time to wait between attempts connecting to servers (minimum).
 	ConnectAttemptTime time.Duration
 
+	// TS6 SID. Must be unique in the network. Format: [0-9][A-Z0-9]{2}
+	TS6SID TS6SID
+
 	// Oper name to password.
 	Opers map[string]string
 
@@ -42,9 +45,6 @@ type Config struct {
 
 	// User configuration info.
 	UserConfigs []UserConfig
-
-	// TS6 SID. Must be unique in the network. Format: [0-9][A-Z0-9]{2}
-	TS6SID TS6SID
 }
 
 // ServerDefinition defines how to link to a server.
@@ -77,117 +77,143 @@ type UserConfig struct {
 //
 // This function populates both the server.Config and server.Opers fields.
 func checkAndParseConfig(file string) (*Config, error) {
-	configMap, err := config.ReadStringMap(file)
+	m, err := config.ReadStringMap(file)
 	if err != nil {
 		return nil, err
 	}
 
-	requiredKeys := []string{
-		"listen-host",
-		"listen-port",
-		"listen-port-tls",
-		"certificate-file",
-		"key-file",
-		"server-name",
-		"server-info",
-		"motd",
-		"max-nick-length",
-		"ping-time",
-		"dead-time",
-		"connect-attempt-time",
-		"opers-config",
-		"servers-config",
-		"users-config",
-		"ts6-sid",
-	}
-
-	// Check each key we want is present and non-blank.
-	for _, key := range requiredKeys {
-		v, exists := configMap[key]
-		if !exists {
-			return nil, fmt.Errorf("missing required key: %s", key)
-		}
-
-		// All options must be non-blank. Except those listed in this check.
-		if len(v) == 0 && key != "listen-port" && key != "listen-port-tls" &&
-			key != "certificate-file" && key != "key-file" {
-			return nil, fmt.Errorf("configuration value is blank: %s", key)
-		}
-	}
-
-	// Populate our struct.
-
 	c := &Config{}
 
-	c.ListenHost = configMap["listen-host"]
-	c.ListenPort = configMap["listen-port"]
-	c.ListenPortTLS = configMap["listen-port-tls"]
-	c.CertificateFile = configMap["certificate-file"]
-	c.KeyFile = configMap["key-file"]
-	c.ServerName = configMap["server-name"]
-	c.ServerInfo = configMap["server-info"]
-	c.MOTD = configMap["motd"]
-
-	nickLen64, err := strconv.ParseInt(configMap["max-nick-length"], 10, 8)
-	if err != nil {
-		return nil, fmt.Errorf("max nick length is not valid: %s", err)
-	}
-	c.MaxNickLength = int(nickLen64)
-
-	c.PingTime, err = time.ParseDuration(configMap["ping-time"])
-	if err != nil {
-		return nil, fmt.Errorf("ping time is in invalid format: %s", err)
+	c.ListenHost = "0.0.0.0"
+	if m["listen-host"] != "" {
+		c.ListenHost = m["listen-host"]
 	}
 
-	c.DeadTime, err = time.ParseDuration(configMap["dead-time"])
-	if err != nil {
-		return nil, fmt.Errorf("dead time is in invalid format: %s", err)
+	c.ListenPort = "6667"
+	if m["listen-port"] != "" {
+		c.ListenPort = m["listen-port"]
 	}
 
-	c.ConnectAttemptTime, err = time.ParseDuration(configMap["connect-attempt-time"])
-	if err != nil {
-		return nil, fmt.Errorf("connect attempt time is in invalid format: %s", err)
+	c.ListenPortTLS = "-1"
+	if m["listen-port-tls"] != "" {
+		c.ListenPortTLS = m["listen-port-tls"]
 	}
 
-	opers, err := config.ReadStringMap(configMap["opers-config"])
-	if err != nil {
-		return nil, fmt.Errorf("unable to load opers config: %s", err)
-	}
-	c.Opers = opers
-
-	c.Servers = make(map[string]*ServerDefinition)
-	servers, err := config.ReadStringMap(configMap["servers-config"])
-	if err != nil {
-		return nil, fmt.Errorf("unable to load servers config: %s", err)
+	if m["certificate-file"] != "" {
+		c.CertificateFile = m["certificate-file"]
 	}
 
-	for name, v := range servers {
-		link, err := parseLink(name, v)
+	if m["key-file"] != "" {
+		c.KeyFile = m["key-file"]
+	}
+
+	c.ServerName = "irc.example.com"
+	if m["server-name"] != "" {
+		c.ServerName = m["server-name"]
+	}
+
+	c.ServerInfo = "IRC"
+	if m["server-info"] != "" {
+		c.ServerInfo = m["server-info"]
+	}
+
+	c.MOTD = "Hello this is catbox"
+	if m["motd"] != "" {
+		c.MOTD = m["motd"]
+	}
+
+	c.MaxNickLength = 9
+	if m["max-nick-length"] != "" {
+		nickLen64, err := strconv.ParseInt(m["max-nick-length"], 10, 8)
 		if err != nil {
-			return nil, fmt.Errorf("malformed server link information: %s: %s", name,
+			return nil, fmt.Errorf("max nick length is not valid: %s", err)
+		}
+		c.MaxNickLength = int(nickLen64)
+	}
+
+	c.PingTime = 30 * time.Second
+	if m["ping-time"] != "" {
+		c.PingTime, err = time.ParseDuration(m["ping-time"])
+		if err != nil {
+			return nil, fmt.Errorf("ping time is in invalid format: %s", err)
+		}
+	}
+
+	c.DeadTime = 240 * time.Second
+	if m["dead-time"] != "" {
+		c.DeadTime, err = time.ParseDuration(m["dead-time"])
+		if err != nil {
+			return nil, fmt.Errorf("dead time is in invalid format: %s", err)
+		}
+	}
+
+	c.ConnectAttemptTime = 60 * time.Second
+	if m["connect-attempt-time"] != "" {
+		c.ConnectAttemptTime, err = time.ParseDuration(m["connect-attempt-time"])
+		if err != nil {
+			return nil, fmt.Errorf("connect attempt time is in invalid format: %s",
 				err)
 		}
-		c.Servers[name] = link
 	}
 
-	usersConfig, err := config.ReadStringMap(configMap["users-config"])
-	if err != nil {
-		return nil, fmt.Errorf("unable to load users config: %s", err)
-	}
+	// opers.conf.
 
-	for name, value := range usersConfig {
-		userConfig, err := parseUserConfig(value)
+	if m["opers-config"] != "" {
+		opers, err := config.ReadStringMap(m["opers-config"])
 		if err != nil {
-			return nil, fmt.Errorf("unable to parse user config %s: %s: %s", name,
-				value, err)
+			return nil, fmt.Errorf("unable to load opers config: %s", err)
 		}
-		c.UserConfigs = append(c.UserConfigs, userConfig)
+		c.Opers = opers
+	} else {
+		c.Opers = map[string]string{}
 	}
 
-	if !isValidSID(configMap["ts6-sid"]) {
-		return nil, fmt.Errorf("invalid TS6 SID")
+	// servers.conf.
+
+	c.Servers = make(map[string]*ServerDefinition)
+
+	if m["servers-config"] != "" {
+		servers, err := config.ReadStringMap(m["servers-config"])
+		if err != nil {
+			return nil, fmt.Errorf("unable to load servers config: %s", err)
+		}
+
+		for name, v := range servers {
+			link, err := parseLink(name, v)
+			if err != nil {
+				return nil, fmt.Errorf("malformed server link information: %s: %s",
+					name, err)
+			}
+			c.Servers[name] = link
+		}
 	}
-	c.TS6SID = TS6SID(configMap["ts6-sid"])
+
+	// users.conf.
+
+	if m["users-config"] != "" {
+		usersConfig, err := config.ReadStringMap(m["users-config"])
+		if err != nil {
+			return nil, fmt.Errorf("unable to load users config: %s", err)
+		}
+
+		for name, value := range usersConfig {
+			userConfig, err := parseUserConfig(value)
+			if err != nil {
+				return nil, fmt.Errorf("unable to parse user config %s: %s: %s", name,
+					value, err)
+			}
+			c.UserConfigs = append(c.UserConfigs, userConfig)
+		}
+	}
+
+	c.TS6SID = TS6SID("000")
+
+	if m["ts6-sid"] != "" {
+		if !isValidSID(m["ts6-sid"]) {
+			return nil, fmt.Errorf("invalid TS6 SID")
+		}
+		c.TS6SID = TS6SID(m["ts6-sid"])
+	}
 
 	return c, nil
 }

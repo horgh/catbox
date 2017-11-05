@@ -38,7 +38,7 @@ working [go compiler](https://golang.org/dl/).
 
 Then you need to configure it. This is done through a number of files.
 Examples of these files are all under the `conf` directory. Copy and edit
-them as you like.
+them as you like. All settings are optional and have defaults.
 
 Once you've done this, start the daemon like so:
 
@@ -49,7 +49,8 @@ Once you've done this, start the daemon like so:
 This file holds global settings for the server.
 
 You'll probably want to change `listen-host`, `listen-port`, and
-`server-name` at the minimum.
+`server-name` at the minimum. However, all settings are optional and have
+defaults.
 
 
 ## opers.conf
