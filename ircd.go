@@ -193,10 +193,6 @@ func main() {
 	log.SetFlags(log.Ldate | log.Ltime)
 	log.SetOutput(os.Stdout)
 
-	if CreatedDate == "" || Version == "" {
-		log.Fatalf("You must build catbox with a CreatedDate/Version. Use `make'.")
-	}
-
 	args, err := getArgs()
 	if err != nil {
 		log.Fatal(err)

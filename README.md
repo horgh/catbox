@@ -33,7 +33,8 @@ and as a tribute to ircd-ratbox.
 
 
 # Setup
-First you need to build the server. To do this, run `make`.
+First you need to build the server. To do this, run `go build`. You need a
+working [go compiler](https://golang.org/dl/).
 
 Then you need to configure it. This is done through a number of files.
 Examples of these files are all under the `conf` directory. Copy and edit
