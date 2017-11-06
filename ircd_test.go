@@ -181,15 +181,15 @@ func TestParseAndResolveUmodeChanges(t *testing.T) {
 		success            bool
 	}{
 		{
-			inputCurrentModes:  map[byte]struct{}{'i': struct{}{}},
+			inputCurrentModes:  map[byte]struct{}{'i': {}},
 			inputModes:         "-i",
 			outputSetModes:     map[byte]struct{}{},
-			outputUnsetModes:   map[byte]struct{}{'i': struct{}{}},
+			outputUnsetModes:   map[byte]struct{}{'i': {}},
 			outputUnknownModes: map[byte]struct{}{},
 			success:            true,
 		},
 		{
-			inputCurrentModes:  map[byte]struct{}{'i': struct{}{}},
+			inputCurrentModes:  map[byte]struct{}{'i': {}},
 			inputModes:         "i",
 			outputSetModes:     map[byte]struct{}{},
 			outputUnsetModes:   map[byte]struct{}{},
@@ -197,7 +197,7 @@ func TestParseAndResolveUmodeChanges(t *testing.T) {
 			success:            true,
 		},
 		{
-			inputCurrentModes:  map[byte]struct{}{'o': struct{}{}},
+			inputCurrentModes:  map[byte]struct{}{'o': {}},
 			inputModes:         "+C-C",
 			outputSetModes:     map[byte]struct{}{},
 			outputUnsetModes:   map[byte]struct{}{},
@@ -205,15 +205,15 @@ func TestParseAndResolveUmodeChanges(t *testing.T) {
 			success:            true,
 		},
 		{
-			inputCurrentModes:  map[byte]struct{}{'o': struct{}{}},
+			inputCurrentModes:  map[byte]struct{}{'o': {}},
 			inputModes:         "+C",
-			outputSetModes:     map[byte]struct{}{'C': struct{}{}},
+			outputSetModes:     map[byte]struct{}{'C': {}},
 			outputUnsetModes:   map[byte]struct{}{},
 			outputUnknownModes: map[byte]struct{}{},
 			success:            true,
 		},
 		{
-			inputCurrentModes:  map[byte]struct{}{'i': struct{}{}},
+			inputCurrentModes:  map[byte]struct{}{'i': {}},
 			inputModes:         "+C",
 			outputSetModes:     map[byte]struct{}{},
 			outputUnsetModes:   map[byte]struct{}{},
@@ -221,7 +221,7 @@ func TestParseAndResolveUmodeChanges(t *testing.T) {
 			success:            true,
 		},
 		{
-			inputCurrentModes:  map[byte]struct{}{'i': struct{}{}},
+			inputCurrentModes:  map[byte]struct{}{'i': {}},
 			inputModes:         "-C",
 			outputSetModes:     map[byte]struct{}{},
 			outputUnsetModes:   map[byte]struct{}{},
@@ -229,7 +229,7 @@ func TestParseAndResolveUmodeChanges(t *testing.T) {
 			success:            true,
 		},
 		{
-			inputCurrentModes:  map[byte]struct{}{'i': struct{}{}},
+			inputCurrentModes:  map[byte]struct{}{'i': {}},
 			inputModes:         "+o",
 			outputSetModes:     map[byte]struct{}{},
 			outputUnsetModes:   map[byte]struct{}{},
@@ -237,23 +237,23 @@ func TestParseAndResolveUmodeChanges(t *testing.T) {
 			success:            true,
 		},
 		{
-			inputCurrentModes:  map[byte]struct{}{'o': struct{}{}},
+			inputCurrentModes:  map[byte]struct{}{'o': {}},
 			inputModes:         "+C1",
-			outputSetModes:     map[byte]struct{}{'C': struct{}{}},
+			outputSetModes:     map[byte]struct{}{'C': {}},
 			outputUnsetModes:   map[byte]struct{}{},
-			outputUnknownModes: map[byte]struct{}{'1': struct{}{}},
+			outputUnknownModes: map[byte]struct{}{'1': {}},
 			success:            true,
 		},
 		{
-			inputCurrentModes:  map[byte]struct{}{'o': struct{}{}},
+			inputCurrentModes:  map[byte]struct{}{'o': {}},
 			inputModes:         "C1",
-			outputSetModes:     map[byte]struct{}{'C': struct{}{}},
+			outputSetModes:     map[byte]struct{}{'C': {}},
 			outputUnsetModes:   map[byte]struct{}{},
-			outputUnknownModes: map[byte]struct{}{'1': struct{}{}},
+			outputUnknownModes: map[byte]struct{}{'1': {}},
 			success:            true,
 		},
 		{
-			inputCurrentModes:  map[byte]struct{}{'o': struct{}{}, 'C': struct{}{}},
+			inputCurrentModes:  map[byte]struct{}{'o': {}, 'C': {}},
 			inputModes:         "+C",
 			outputSetModes:     map[byte]struct{}{},
 			outputUnsetModes:   map[byte]struct{}{},
@@ -261,26 +261,26 @@ func TestParseAndResolveUmodeChanges(t *testing.T) {
 			success:            true,
 		},
 		{
-			inputCurrentModes:  map[byte]struct{}{'o': struct{}{}, 'C': struct{}{}},
+			inputCurrentModes:  map[byte]struct{}{'o': {}, 'C': {}},
 			inputModes:         "-C",
 			outputSetModes:     map[byte]struct{}{},
-			outputUnsetModes:   map[byte]struct{}{'C': struct{}{}},
+			outputUnsetModes:   map[byte]struct{}{'C': {}},
 			outputUnknownModes: map[byte]struct{}{},
 			success:            true,
 		},
 		{
-			inputCurrentModes:  map[byte]struct{}{'o': struct{}{}, 'C': struct{}{}},
+			inputCurrentModes:  map[byte]struct{}{'o': {}, 'C': {}},
 			inputModes:         "-o",
 			outputSetModes:     map[byte]struct{}{},
-			outputUnsetModes:   map[byte]struct{}{'o': struct{}{}, 'C': struct{}{}},
+			outputUnsetModes:   map[byte]struct{}{'o': {}, 'C': {}},
 			outputUnknownModes: map[byte]struct{}{},
 			success:            true,
 		},
 		{
-			inputCurrentModes:  map[byte]struct{}{'o': struct{}{}, 'C': struct{}{}},
+			inputCurrentModes:  map[byte]struct{}{'o': {}, 'C': {}},
 			inputModes:         "-oC",
 			outputSetModes:     map[byte]struct{}{},
-			outputUnsetModes:   map[byte]struct{}{'o': struct{}{}, 'C': struct{}{}},
+			outputUnsetModes:   map[byte]struct{}{'o': {}, 'C': {}},
 			outputUnknownModes: map[byte]struct{}{},
 			success:            true,
 		},
@@ -604,7 +604,7 @@ func TestIssueKillToAllServers(t *testing.T) {
 		// 1 server. User killing user.
 		{
 			map[uint64]*LocalServer{
-				1: &LocalServer{
+				1: {
 					LocalClient: &LocalClient{ID: 1},
 					Server:      &Server{Name: "irc.example.com"},
 				},
@@ -627,7 +627,7 @@ func TestIssueKillToAllServers(t *testing.T) {
 		// 1 server. Server killing user.
 		{
 			map[uint64]*LocalServer{
-				1: &LocalServer{
+				1: {
 					LocalClient: &LocalClient{ID: 1},
 					Server:      &Server{Name: "irc.example.com"},
 				},
@@ -645,11 +645,11 @@ func TestIssueKillToAllServers(t *testing.T) {
 		// 2 servers. User killing user.
 		{
 			map[uint64]*LocalServer{
-				1: &LocalServer{
+				1: {
 					LocalClient: &LocalClient{ID: 1},
 					Server:      &Server{Name: "irc1.example.com"},
 				},
-				2: &LocalServer{
+				2: {
 					LocalClient: &LocalClient{ID: 2},
 					Server:      &Server{Name: "irc2.example.com"},
 				},
@@ -672,11 +672,11 @@ func TestIssueKillToAllServers(t *testing.T) {
 		// 2 servers. Server killing user.
 		{
 			map[uint64]*LocalServer{
-				1: &LocalServer{
+				1: {
 					LocalClient: &LocalClient{ID: 1},
 					Server:      &Server{Name: "irc1.example.com"},
 				},
-				2: &LocalServer{
+				2: {
 					LocalClient: &LocalClient{ID: 2},
 					Server:      &Server{Name: "irc2.example.com"},
 				},

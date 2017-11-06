@@ -1116,7 +1116,7 @@ func (cb *Catbox) issueKillToServer(ls *LocalServer, killer, killee *User,
 	cb.noticeOpers(fmt.Sprintf("Sending KILL message to %s for %s. From %s (%s)",
 		ls.Server.Name, killee.DisplayNick, killerName, message))
 
-	return []Message{Message{
+	return []Message{{
 		Target: ls.LocalClient,
 		Message: irc.Message{
 			Prefix:  sourceID,
