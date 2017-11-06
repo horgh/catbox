@@ -1,5 +1,10 @@
 ![catbox](doc/catbox-with-text.png)
 
+[![Build
+Status](https://travis-ci.org/horgh/catbox.svg)](https://travis-ci.org/horgh/catbox)
+[![Go Report
+Card](https://goreportcard.com/badge/github.com/horgh/catbox)](https://goreportcard.com/report/github.com/horgh/catbox)
+
 This is a minimal IRC daemon. I run a small network using
 [ircd-ratbox](http://ratbox.org/) and had the idea to create an IRC server
 capable of linking to it and eventually replacing it. My goal is to have a
