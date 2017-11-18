@@ -10,15 +10,10 @@ import (
 
 // Conn is a connection to a client/server
 type Conn struct {
-	// conn: The connection if we are actively connected.
-	conn net.Conn
-
-	// rw: Read/write handle to the connection
-	rw *bufio.ReadWriter
-
+	conn   net.Conn
+	rw     *bufio.ReadWriter
 	ioWait time.Duration
-
-	IP net.IP
+	IP     net.IP
 }
 
 // NewConn initializes a Conn struct
@@ -49,8 +44,7 @@ func (c Conn) RemoteAddr() net.Addr {
 
 // Read reads a line from the connection.
 func (c Conn) Read() (string, error) {
-	// Deadline so we will eventually give up.
-	if err := c.conn.SetDeadline(time.Now().Add(c.ioWait)); err != nil {
+	if err := c.conn.SetReadDeadline(time.Now().Add(c.ioWait)); err != nil {
 		return "", fmt.Errorf("unable to set deadline: %s", err)
 	}
 
@@ -64,8 +58,7 @@ func (c Conn) Read() (string, error) {
 
 // Write writes a string to the connection
 func (c Conn) Write(s string) error {
-	// Deadline so we will eventually give up.
-	if err := c.conn.SetDeadline(time.Now().Add(c.ioWait)); err != nil {
+	if err := c.conn.SetWriteDeadline(time.Now().Add(c.ioWait)); err != nil {
 		return fmt.Errorf("unable to set deadline: %s", err)
 	}
 
