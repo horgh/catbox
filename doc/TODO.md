@@ -1,4 +1,6 @@
 # TODO
+  * Make WHO nick work
+    * Some clients try this on connect and receive an error
   * PART command can come from server with just nick as prefix rather than
     UID. Happens using OPME on ratbox. Causes unknown user error and server
     split
