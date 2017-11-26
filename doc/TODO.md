@@ -1,4 +1,7 @@
 # TODO
+  * PART command can come from server with just nick as prefix rather than
+    UID. Happens using OPME on ratbox. Causes unknown user error and server
+    split
   * Op desync issue - should be de-opped if we have an op and link to a
     server where the channel already exists. Can see not-op on one side and
     op on the catbox side
