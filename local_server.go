@@ -966,7 +966,8 @@ func (s *LocalServer) sidCommand(m irc.Message) {
 
 // SJOIN occurs in two contexts:
 // 1. During bursts to inform us of channels and users in the channels.
-// 2. Outside bursts to inform us of channel creation (not joins in general)
+// 2. Outside bursts to inform us of channel creation. For regular joins after
+//    the channel exists we get JOIN.
 func (s *LocalServer) sjoinCommand(m irc.Message) {
 	// Parameters: <channel TS> <channel name> <modes> [mode params] :<UIDs>
 	// e.g., :8ZZ SJOIN 1475187553 #test2 +sn :@8ZZAAAAAB
