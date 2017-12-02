@@ -254,7 +254,7 @@ func newCatbox(configFile string) (*Catbox, error) {
 
 	cfg, err := checkAndParseConfig(configFile)
 	if err != nil {
-		return nil, fmt.Errorf("Configuration problem: %s", err)
+		return nil, fmt.Errorf("configuration problem: %s", err)
 	}
 	cb.Config = cfg
 
@@ -263,7 +263,7 @@ func newCatbox(configFile string) (*Catbox, error) {
 		cert, err := tls.LoadX509KeyPair(cb.Config.CertificateFile,
 			cb.Config.KeyFile)
 		if err != nil {
-			return nil, fmt.Errorf("Unable to load certificate/key: %s", err)
+			return nil, fmt.Errorf("unable to load certificate/key: %s", err)
 		}
 
 		tlsConfig := &tls.Config{
@@ -316,7 +316,7 @@ func (cb *Catbox) start(listenFD int) error {
 		ln, err := net.Listen("tcp", fmt.Sprintf("%s:%s", cb.Config.ListenHost,
 			cb.Config.ListenPort))
 		if err != nil {
-			return fmt.Errorf("Unable to listen: %s", err)
+			return fmt.Errorf("unable to listen: %s", err)
 		}
 		cb.Listener = ln
 
@@ -329,7 +329,7 @@ func (cb *Catbox) start(listenFD int) error {
 		tlsLN, err := tls.Listen("tcp", fmt.Sprintf("%s:%s", cb.Config.ListenHost,
 			cb.Config.ListenPortTLS), cb.TLSConfig)
 		if err != nil {
-			return fmt.Errorf("Unable to listen (TLS): %s", err)
+			return fmt.Errorf("unable to listen (TLS): %s", err)
 		}
 		cb.TLSListener = tlsLN
 
