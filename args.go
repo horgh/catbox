@@ -10,10 +10,13 @@ import (
 // Args are command line arguments.
 type Args struct {
 	ConfigFile string
+	ListenFD   int
 }
 
 func getArgs() *Args {
 	configFile := flag.String("conf", "", "Configuration file.")
+	fd := flag.Int("listen-fd", -1,
+		"File descriptor with listening port to use (optional).")
 
 	flag.Parse()
 
@@ -31,6 +34,7 @@ func getArgs() *Args {
 
 	return &Args{
 		ConfigFile: configPath,
+		ListenFD:   *fd,
 	}
 }
 

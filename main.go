@@ -209,7 +209,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	if err := cb.start(); err != nil {
+	if err := cb.start(args.ListenFD); err != nil {
 		log.Fatal(err)
 	}
 
@@ -292,8 +292,26 @@ func newCatbox(configFile string) (*Catbox, error) {
 //
 // We open the TCP port, start goroutines, and then receive messages on our
 // channels.
-func (cb *Catbox) start() error {
+func (cb *Catbox) start(listenFD int) error {
+	if listenFD == -1 && cb.Config.ListenPort == "-1" &&
+		cb.Config.ListenPortTLS == "-1" {
+		log.Fatalf("You must set a listen port.")
+	}
+
 	// Plaintext listener.
+
+	if listenFD != -1 {
+		f := os.NewFile(uintptr(listenFD), "<fd>")
+		ln, err := net.FileListener(f)
+		if err != nil {
+			return fmt.Errorf("unable to listen: %s", err)
+		}
+		cb.Listener = ln
+
+		cb.WG.Add(1)
+		go cb.acceptConnections(cb.Listener)
+	}
+
 	if cb.Config.ListenPort != "-1" {
 		ln, err := net.Listen("tcp", fmt.Sprintf("%s:%s", cb.Config.ListenHost,
 			cb.Config.ListenPort))
@@ -317,10 +335,6 @@ func (cb *Catbox) start() error {
 
 		cb.WG.Add(1)
 		go cb.acceptConnections(cb.TLSListener)
-	}
-
-	if cb.Config.ListenPort == "-1" && cb.Config.ListenPortTLS == "-1" {
-		log.Fatalf("You must set at least one listen port.")
 	}
 
 	// Alarm is a goroutine to wake up this one periodically so we can do things
