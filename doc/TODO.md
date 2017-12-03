@@ -1,6 +1,8 @@
 # TODO
+* Some OPERSPY stuff like WHO !*
 * Loading config should error if there is an unknown option
 * Make WHO nick work. Some clients try this on connect and receive an error
+* Easy updating
 * PART command can come from server with just nick as prefix rather than
   UID. Happens using OPME on ratbox. Causes unknown user error and server
   split
@@ -14,8 +16,8 @@
   cleanupKilledUser()
 * Consolidate repeated topic setting logic (user TOPIC, server TOPIC, TB)
 * Log to file
-* Additional automated testing
-* Easy updating
+* Additional automated testing. More unit tests here and more integration
+  tests in the boxcat repository.
 * Add command to dump out config (the current catbox config as seen from
   the config file). Partly this will be useful because not everything gets
   reloaded on rehash.
