@@ -39,8 +39,9 @@ ircd-ratbox.
 
 
 # Setup
-1. Build the server. To do this, run `go build`. You need a working [Go
-   compiler](https://golang.org/dl/).
+1. Build the server. You need a working [Go
+   compiler](https://golang.org/dl/). An easy way to do this is to run `go
+   get -u github.com/horgh/catbox`.
 2. Configure it. This is done through configuration files. Examples are in
    the `conf` directory. Copy and edit them. All settings are optional and
    have defaults.
