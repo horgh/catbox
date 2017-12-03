@@ -80,5 +80,10 @@ To generate a self-signed certificate for TLS:
     openssl req -newkey rsa:4096 -x509 -keyout key.pem -out certificate.pem -days 3650 -nodes
 
 
+# Tests
+In addition to the unit level tests here, there are some integration tests
+in [another repository](https://github.com/horgh/boxcat).
+
+
 # Logo
 catbox logo (c) 2017 Bee
