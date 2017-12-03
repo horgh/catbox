@@ -1,4 +1,5 @@
 # TODO
+  * Loading config should error if there is an unknown option
   * Make WHO nick work
     * Some clients try this on connect and receive an error
   * PART command can come from server with just nick as prefix rather than
@@ -26,11 +27,6 @@
     info for a channel or user, or if an operator, for all users.
   * Limit on number of modes applied only important for modes with parameters?
     Or only user status modes?
-  * +v/-v
-
-
-## Future
-  * Daemonize. There is no support in Go for this right now.
 
 
 ## RFC
@@ -58,7 +54,6 @@
   * Server console.
   * Upgrade without losing connections
   * Inform clients when someone whois's them.
-  * Bots built into the ircd
   * Exchange K:Lines during server burst
   * Persistent K:Lines (currently they are in memory only)
 
@@ -66,3 +61,10 @@
 ## Design
   * Drop messageUser/messageFromServer? messageUser all together,
     messageFromServer to be reply()?
+
+
+# No
+* Bots built into the ircd
+* Daemonize.
+  * There is no support in Go for this right now.
+  * Using init system seems sufficient
