@@ -1342,6 +1342,9 @@ func (u *LocalUser) channelModeCommand(channel *Channel, modes string,
 	if len(modes) == 0 {
 		// 324 RPL_CHANNELMODEIS
 		u.messageFromServer("324", []string{channel.Name, "+ns"})
+		// 329 RPL_CREATIONTIME. Not standard but oft used.
+		u.messageFromServer("329", []string{channel.Name,
+			fmt.Sprintf("%d", channel.TS)})
 		return
 	}
 
