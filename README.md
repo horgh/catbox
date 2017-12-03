@@ -22,30 +22,29 @@ ircd-ratbox.
 
 
 # Features
-
-  * Server to server communication using the TS6 protocol. In addition to
-    being able to link to other catbox servers, it can link with other
-    TS6 servers such as ircd-ratbox.
-  * Most basic IRC commands and features are present.
-  * Channel modes: +n, +s, +o.
-  * User modes: +i, +o, +C.
-  * Global IRC operators.
-  * Network wide operator communication with WALLOPS.
-  * Private (WHOIS shows no channels, LIST isn't supported).
-  * Server connections are based on hosts rather than IPs. This means
-    servers can have dynamic IPs.
-  * Network wide connection notices sent to operators.
-  * Flood protection.
-  * K: line style connection banning.
+* Server to server communication using the TS6 protocol. In addition to
+  being able to link to other catbox servers, it can link with other TS6
+  servers such as ircd-ratbox.
+* Most basic IRC commands and features are present.
+* Channel modes: +n, +s, +o.
+* User modes: +i, +o, +C.
+* Global IRC operators.
+* Network wide operator communication with WALLOPS.
+* Private (WHOIS shows no channels, LIST isn't supported).
+* Server connections are based on hosts rather than IPs. This means servers
+  can have dynamic IPs.
+* Network wide connection notices sent to operators.
+* Flood protection.
+* K: line style connection banning.
 
 
 # Setup
-  1. Build the server. To do this, run `go build`. You need a working [Go
-     compiler](https://golang.org/dl/).
-  2. Configure it. This is done through configuration files. Examples are
-     in the `conf` directory. Copy and edit them. All settings are optional
-     and have defaults.
-  3. Start the daemon: `catbox -conf catbox.conf`
+1. Build the server. To do this, run `go build`. You need a working [Go
+   compiler](https://golang.org/dl/).
+2. Configure it. This is done through configuration files. Examples are in
+   the `conf` directory. Copy and edit them. All settings are optional and
+   have defaults.
+3. Start the daemon: `catbox -conf catbox.conf`
 
 
 # Configuration
