@@ -1,4 +1,5 @@
 # TODO
+* Get QUIT messages showing
 * Some OPERSPY stuff like WHO !*
 * Loading config should error if there is an unknown option
 * Make WHO nick work. Some clients try this on connect and receive an error
