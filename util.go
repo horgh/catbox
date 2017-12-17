@@ -152,7 +152,7 @@ func isValidUser(u string) bool {
 	// First character is more restricted:
 	// 0-9A-Za-z[\]^{|}~
 
-	// After the first character, we permit additional chars. These are // the
+	// After the first character, we permit additional chars. These are the
 	// permitted characters:
 	//
 	// . is permitted (up to a limit)
