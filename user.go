@@ -25,8 +25,8 @@ type User struct {
 	// The user's hostname.
 	Hostname string
 
-	// The user's IP. Not always valid (e.g. may be 0 if a spoofed user sent to
-	// us from a different server).
+	// The user's IP. Not always a valid looking IP (e.g. may be 0 if a spoofed
+	// user sent to us from a different server).
 	IP string
 
 	// Each user has a network wide unique identifier. This is part of TS6.

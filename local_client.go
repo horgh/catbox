@@ -284,7 +284,18 @@ func (c *LocalClient) registerUser() {
 
 	lu := NewLocalUser(c)
 
-	hostname := c.Conn.IP.String()
+	// This IP field is not always actually an IP. It can be "0" in the case of a
+	// user with a spoof (this is specified in TS6). It also gets sent in a UID
+	// command, and not as the last parameter . Because of that, we must make
+	// sure it does not start with ":" as that cannot be encoded. Consider IPv6
+	// IPs such as "::1". TS6 specifies that with these we prepend a "0". e.g.,
+	// "0::1".
+	ip := c.Conn.IP.String()
+	if ip[0] == ':' {
+		ip = "0" + ip
+	}
+
+	hostname := ip
 	if len(c.Hostname) > 0 {
 		hostname = c.Hostname
 	}
@@ -296,7 +307,7 @@ func (c *LocalClient) registerUser() {
 		Modes:       make(map[byte]struct{}),
 		Username:    c.PreRegUser,
 		Hostname:    hostname,
-		IP:          c.Conn.IP.String(),
+		IP:          ip,
 		RealName:    c.PreRegRealName,
 		Channels:    make(map[string]*Channel),
 		LocalUser:   lu,
