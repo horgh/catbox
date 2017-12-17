@@ -1,6 +1,6 @@
 # TODO
+* Add timeouts to DNS lookup for hostnames (use context API)
 * Get QUIT messages showing
-* Some OPERSPY stuff like WHO !*
 * Loading config should error if there is an unknown option
 * Make WHO nick work. Some clients try this on connect and receive an error
 * Easy updating
