@@ -1026,7 +1026,7 @@ func (u *LocalUser) lusersCommand() {
 	u.messageFromServer("266", []string{
 		fmt.Sprintf("%d", len(u.Catbox.Users)),
 		fmt.Sprintf("%d", u.Catbox.HighestGlobalUserCount),
-		fmt.Sprintf("Current local global %d, max %d",
+		fmt.Sprintf("Current global users %d, max %d",
 			len(u.Catbox.Users), u.Catbox.HighestGlobalUserCount),
 	})
 
