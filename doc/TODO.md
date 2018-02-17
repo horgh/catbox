@@ -1,4 +1,6 @@
 # TODO
+* TS6 SID is not enforced as unique. Can link two servers together with the
+  same SID.
 * Add timeouts to DNS lookup for hostnames (use context API)
 * Get QUIT messages showing
 * Loading config should error if there is an unknown option
