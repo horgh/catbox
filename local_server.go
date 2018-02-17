@@ -656,6 +656,11 @@ func (s *LocalServer) uidCommand(m irc.Message) {
 	// Parameters: <nick> <hopcount> <nick TS> <umodes> <username> <hostname> <IP> <UID> :<real name>
 	// :8ZZ UID will 1 1475024621 +i will blashyrkh. 0 8ZZAAAAAB :will
 
+	if len(m.Params) != 9 {
+		s.quit("Invalid UID command - invalid parameter count")
+		return
+	}
+
 	// Is this a valid SID (format)?
 	if !isValidSID(m.Prefix) {
 		s.quit("Invalid SID")
