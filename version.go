@@ -5,4 +5,4 @@ package main
 const CreatedDate = "2018-02-17"
 
 // Version is our version.
-const Version = "catbox-1.2"
+const Version = "catbox-1.3"
