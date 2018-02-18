@@ -118,6 +118,11 @@ func (c *LocalClient) getTLSState() (string, string, error) {
 		return "", "", fmt.Errorf("client is not connected with TLS")
 	}
 
+	// Handshake() will read. If we don't have a timeout, we can get stuck here.
+	if err := c.Conn.conn.SetDeadline(time.Now().Add(c.Conn.ioWait)); err != nil {
+		return "", "", fmt.Errorf("error setting deadline: %s", err)
+	}
+
 	if err := tlsConn.Handshake(); err != nil {
 		return "", "", fmt.Errorf("TLS handshake failed: %s", err)
 	}
