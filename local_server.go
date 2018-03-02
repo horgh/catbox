@@ -128,6 +128,7 @@ func (s *LocalServer) serverSplitCleanUp(lostServer *Server) {
 		for _, server := range lostServers {
 			if user.Server == server {
 				keepingUser = false
+				break
 			}
 		}
 
