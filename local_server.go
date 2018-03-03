@@ -688,13 +688,18 @@ func (s *LocalServer) uidCommand(m irc.Message) {
 	}
 	uid := TS6UID(m.Params[7])
 
+	if _, ok := s.Catbox.Users[uid]; ok {
+		s.quit(fmt.Sprintf("%s sent me UID for %s, but I already know it!",
+			s.Server.Name, uid))
+		return
+	}
+
 	nickTS, err := strconv.ParseInt(m.Params[2], 10, 64)
 	if err != nil {
 		s.quit("Invalid nick TS")
 		return
 	}
 
-	// Is this a valid nick?
 	if !isValidNick(s.Catbox.Config.MaxNickLength, m.Params[0]) {
 		log.Printf("Invalid nick (%s)", m.Params[0])
 		s.quit(fmt.Sprintf("Invalid NICK! (%s)", m.Params[0]))
