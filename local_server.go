@@ -649,7 +649,13 @@ func (s *LocalServer) pongCommand(m irc.Message) {
 }
 
 func (s *LocalServer) errorCommand(m irc.Message) {
-	s.quit("Bye")
+	if len(m.Params) != 1 {
+		s.quit(fmt.Sprintf("ERROR from %s with invalid number of parameters: %d",
+			s.Server.Name, len(m.Params)))
+		return
+	}
+
+	s.quit(fmt.Sprintf("ERROR from %s: %s", s.Server.Name, m.Params[0]))
 }
 
 // UID command introduces a client. It is on the server that is the source.
