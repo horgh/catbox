@@ -7,7 +7,6 @@ import (
 	"log"
 	"net"
 	"os"
-	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"sync"
@@ -217,17 +216,19 @@ func main() {
 	if cb.Restart {
 		log.Printf("Shutdown completed. Restarting...")
 
-		cmd := exec.Command(binPath, "-conf", cb.ConfigFile)
-
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
-
-		if err := cmd.Start(); err != nil {
+		if err := syscall.Exec(
+			binPath,
+			[]string{
+				binPath,
+				"-conf",
+				cb.ConfigFile,
+			},
+			nil,
+		); err != nil {
 			log.Fatalf("Restart failed: %s", err)
 		}
 
-		log.Printf("New process started!")
-		return
+		log.Fatalf("not reached")
 	}
 
 	log.Printf("Server shutdown cleanly.")
