@@ -217,7 +217,7 @@ func main() {
 	if cb.Restart {
 		log.Printf("Shutdown completed. Restarting...")
 
-		cmd := exec.Command(binPath, "-config", cb.ConfigFile)
+		cmd := exec.Command(binPath, "-conf", cb.ConfigFile)
 
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
