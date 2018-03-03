@@ -1,15 +1,21 @@
 # TODO
-* Switch config to TOML
+
+## Higher priority
+* Add timeouts to DNS lookup for hostnames (use context API)
+* Get QUIT messages showing reliably
+* Make WHO nick work. Some clients try this on connect and receive an error
+
+
+## May be fixed
 * TS6 SID is not enforced as unique. Can link two servers together with the
   same SID.
-* Add timeouts to DNS lookup for hostnames (use context API)
-* Get QUIT messages showing
+  * This may be fixed as of the change 2018-03-03 to check SID commands
+    more carefully.
+
+
+## Uncategorized/unprioritized
+* Switch config to TOML
 * Loading config should error if there is an unknown option
-* Make WHO nick work. Some clients try this on connect and receive an error
-* Easy updating
-* PART command can come from server with just nick as prefix rather than
-  UID. Happens using OPME on ratbox. Causes unknown user error and server
-  split
 * Op desync issue - should be de-opped if we have an op and link to a
   server where the channel already exists. Can see not-op on one side and
   op on the catbox side. I think this is because of us clearing modes on
@@ -32,6 +38,13 @@
   relevant info for a channel or user, or if an operator, for all users.
 * Limit on number of modes applied only important for modes with
   parameters? Or only user status modes?
+
+
+## Lower priority
+* PART command can come from server with just nick as prefix rather than
+  UID. Happens using OPME on ratbox. Causes unknown user error and server
+  split
+  * Because I'm not linking with ratbox currently.
 
 
 ## RFC
