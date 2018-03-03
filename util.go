@@ -1,12 +1,14 @@
 package main
 
 import (
+	"context"
 	"crypto/tls"
 	"fmt"
 	"net"
 	"regexp"
 	"sort"
 	"strings"
+	"time"
 )
 
 // 50 from RFC
@@ -386,6 +388,11 @@ func maskToRegex(mask string) (*regexp.Regexp, error) {
 	return re, nil
 }
 
+var resolver = net.Resolver{
+	PreferGo:     true,
+	StrictErrors: true,
+}
+
 // Attempt to resolve a client's IP to a hostname.
 //
 // This is a forward confirmed DNS lookup.
@@ -396,22 +403,23 @@ func maskToRegex(mask string) (*regexp.Regexp, error) {
 // then we say the client has that host.
 //
 // If none match, we return blank indicating no hostname found.
-func lookupHostname(ip net.IP) string {
-	// TODO: How do we set a timeout on the lookups?
+func lookupHostname(ctx context.Context, ip net.IP) string {
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
 
-	names, err := net.LookupAddr(ip.String())
+	names, err := resolver.LookupAddr(ctx, ip.String())
 	if err != nil {
 		return ""
 	}
 
 	for _, name := range names {
-		ips, err := net.LookupIP(name)
+		ips, err := resolver.LookupIPAddr(ctx, name)
 		if err != nil {
 			continue
 		}
 
 		for _, foundIP := range ips {
-			if foundIP.Equal(ip) {
+			if foundIP.IP.Equal(ip) {
 				// Drop trailing "."
 				return strings.TrimSuffix(name, ".")
 			}

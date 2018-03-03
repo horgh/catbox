@@ -1,7 +1,6 @@
 # TODO
 
 ## Higher priority
-* Add timeouts to DNS lookup for hostnames (use context API)
 * Get QUIT messages showing reliably
 * Make WHO nick work. Some clients try this on connect and receive an error
 

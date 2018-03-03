@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/tls"
 	"fmt"
 	"log"
@@ -570,7 +571,7 @@ func (cb *Catbox) introduceClient(conn net.Conn) {
 
 		msgs = append(msgs, "*** Looking up your hostname...")
 
-		hostname := lookupHostname(client.Conn.IP)
+		hostname := lookupHostname(context.TODO(), client.Conn.IP)
 		if len(hostname) > 0 {
 			msgs = append(msgs, "*** Found your hostname")
 			client.Hostname = hostname
