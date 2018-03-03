@@ -12,7 +12,8 @@
   split
 * Op desync issue - should be de-opped if we have an op and link to a
   server where the channel already exists. Can see not-op on one side and
-  op on the catbox side
+  op on the catbox side. I think this is because of us clearing modes on
+  SJOIN commands, but those cleared modes only get sent locally.
 * Make canonicalizeNick and canonicalizeChannel return error if the names
   are invalid? Right now it is a bit error prone because we can
   canonicalize invalid names.
