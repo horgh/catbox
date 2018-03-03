@@ -73,7 +73,7 @@ func (c *Channel) removeOps(u *User) {
 // This informs local users about the mode changes, but no one else.
 func (c *Channel) clearModes(cb *Catbox) {
 	// Build all the messages we need prior to sending.
-	msgs := []irc.Message{}
+	var msgs []irc.Message
 
 	// Clear things like +ns
 
@@ -92,7 +92,7 @@ func (c *Channel) clearModes(cb *Catbox) {
 
 	// Clear ops.
 
-	ops := []string{}
+	var ops []string
 	for _, op := range c.Ops {
 		ops = append(ops, op.DisplayNick)
 
@@ -111,7 +111,7 @@ func (c *Channel) clearModes(cb *Catbox) {
 				Params:  params,
 			})
 
-			ops = []string{}
+			ops = nil
 		}
 	}
 
