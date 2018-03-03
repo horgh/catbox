@@ -75,6 +75,7 @@ func (s *LocalServer) quit(msg string) {
 	// When quitting, you may think we should send SQUIT to all servers.
 	// But we don't. Or ircd-ratbox does not. Do the same.
 	// Just send it to our local servers, they propagate it.
+
 	s.messageFromServer("ERROR", []string{msg})
 
 	close(s.WriteChan)
@@ -1726,12 +1727,8 @@ func (s *LocalServer) topicCommand(m irc.Message) {
 }
 
 // SQUIT tells us there is a server departing.
-//
-// This can tell us either a server remote from us is going, or that the local
-// server is delinking. In practice, if the local server is delinking we will
-// be told with an ERROR message, and not see any SQUIT.
 func (s *LocalServer) squitCommand(m irc.Message) {
-	// Parameters: <target server> <comment>
+	// Parameters: <target server SID> <comment/reason>
 	if len(m.Params) < 2 {
 		// 461 ERR_NEEDMOREPARAMS
 		s.messageFromServer("461", []string{"SQUIT", "Not enough parameters"})
@@ -1740,28 +1737,62 @@ func (s *LocalServer) squitCommand(m irc.Message) {
 
 	targetServer, exists := s.Catbox.Servers[TS6SID(m.Params[0])]
 	if !exists {
-		s.quit("Unknown server (SQUIT)")
+		s.quit(fmt.Sprintf("%s issued SQUIT for unknown server %s", m.Prefix,
+			m.Params[0]))
 		return
 	}
 
-	// This should NOT be the local server, or any local server for that matter.
-	// When we're splitting from a local server, we'll be told with an ERROR
-	// command.
-	//
-	// It could be if an operator on another server wants us to split, but I
-	// choose to not support it.
-	for _, server := range s.Catbox.LocalServers {
-		if server.Server == targetServer {
-			s.quit("I won't SQUIT a local server")
+	// SQUIT can originate from operators or servers.
+
+	sourceUser := s.Catbox.Users[TS6UID(m.Prefix)]
+	if sourceUser != nil {
+		if _, ok := s.Catbox.Opers[sourceUser.UID]; !ok {
+			s.quit(fmt.Sprintf("SQUIT for %s from non-operator %s", targetServer.Name,
+				sourceUser.DisplayNick))
 			return
 		}
+
+		// If they are local then we should have heard from the user, not a server.
+		if sourceUser.isLocal() {
+			s.quit(fmt.Sprintf("SQUIT for %s from local operator %s",
+				targetServer.Name, sourceUser.DisplayNick))
+			return
+		}
+
+		// If server is local, delink it. (We inform the other servers in the
+		// normal way when delinking a server). If it's remote, propagate the SQUIT
+		// towards it. We'll delink when we hear from the server that performs the
+		// delinking.
+
+		if targetServer.isLocal() {
+			targetServer.LocalServer.quit(fmt.Sprintf("%s issued SQUIT: %s",
+				sourceUser.DisplayNick, m.Params[1]))
+			return
+		}
+
+		targetServer.ClosestServer.maybeQueueMessage(m)
+		return
 	}
 
-	// It's remote. We need to forget it and tell all local users about relevant
-	// things (split, etc).
+	// The source must be a server.
+	if _, ok := s.Catbox.Servers[TS6SID(m.Prefix)]; !ok {
+		s.quit(fmt.Sprintf("SQUIT from unknown server: %s", m.Prefix))
+		return
+	}
+
+	// We require the target server be remote. (Although maybe we could accept it
+	// for lcocal ones, I don't see a need for it). If a local server delinks, we
+	// should hear an ERROR from it.
+
+	if targetServer.isLocal() {
+		s.quit(fmt.Sprintf("%s asked me to SQUIT local server %s", s.Server.Name,
+			targetServer.Name))
+		return
+	}
+
+	// Forget it and tell local users relevant things (split, etc).
 	s.serverSplitCleanUp(targetServer)
 
-	// Propagate to other servers.
 	for _, server := range s.Catbox.LocalServers {
 		if server == s {
 			continue
@@ -1769,18 +1800,8 @@ func (s *LocalServer) squitCommand(m irc.Message) {
 		server.maybeQueueMessage(m)
 	}
 
-	reason := ""
-	if len(m.Params) > 1 {
-		reason = m.Params[1]
-	}
-
-	from := ""
-	if targetServer.LinkedTo != nil {
-		from = targetServer.LinkedTo.Name
-	}
-
-	s.Catbox.noticeLocalOpers(fmt.Sprintf("Server %s delinked from %s: %s",
-		targetServer.Name, from, reason))
+	s.Catbox.noticeLocalOpers(fmt.Sprintf("%s delinked from %s: %s",
+		targetServer.Name, targetServer.LinkedTo.Name, m.Params[1]))
 }
 
 // KILL tells us about a client getting disconnected forcefully.

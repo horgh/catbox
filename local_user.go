@@ -682,6 +682,11 @@ func (u *LocalUser) handleMessage(m irc.Message) {
 		return
 	}
 
+	if m.Command == "SQUIT" {
+		u.squitCommand(m)
+		return
+	}
+
 	// Unknown command. We don't handle it yet anyway.
 	// 421 ERR_UNKNOWNCOMMAND
 	u.messageFromServer("421", []string{m.Command, "Unknown command"})
@@ -2321,4 +2326,50 @@ func (u *LocalUser) opmeCommand(m irc.Message) {
 	// Tell operators.
 	u.Catbox.noticeOpers(fmt.Sprintf("%s used OPME in %s", u.User.DisplayNick,
 		channel.Name))
+}
+
+func (u *LocalUser) squitCommand(m irc.Message) {
+	if len(m.Params) == 0 {
+		// 461 ERR_NEEDMOREPARAMS
+		u.messageFromServer("461", []string{"SQUIT", "Not enough parameters"})
+		return
+	}
+	serverName := m.Params[0]
+	reason := "No reason given"
+	if len(m.Params) > 1 {
+		reason = m.Params[1]
+	}
+
+	if !u.User.isOperator() {
+		// 481 ERR_NOPRIVILEGES
+		u.messageFromServer("481", []string{
+			"Permission Denied- You're not an IRC operator"})
+		return
+	}
+
+	var server *Server
+	for _, s := range u.Catbox.Servers {
+		if s.Name == serverName {
+			server = s
+			break
+		}
+	}
+
+	if server == nil {
+		// 402 ERR_NOSUCHSERVER
+		u.messageFromServer("402", []string{serverName, "No such server"})
+		return
+	}
+
+	if server.isLocal() {
+		server.LocalServer.quit(fmt.Sprintf("%s issued SQUIT: %s",
+			u.User.DisplayNick, reason))
+		return
+	}
+
+	server.ClosestServer.maybeQueueMessage(irc.Message{
+		Prefix:  string(u.User.UID),
+		Command: "SQUIT",
+		Params:  []string{string(server.SID), reason},
+	})
 }
