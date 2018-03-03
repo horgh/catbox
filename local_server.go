@@ -669,7 +669,6 @@ func (s *LocalServer) uidCommand(m irc.Message) {
 		return
 	}
 
-	// Is this a valid SID (format)?
 	if !isValidSID(m.Prefix) {
 		s.quit("Invalid SID")
 		return
@@ -679,7 +678,7 @@ func (s *LocalServer) uidCommand(m irc.Message) {
 	// Do we know the server the message originates on?
 	usersServer, exists := s.Catbox.Servers[TS6SID(sid)]
 	if !exists {
-		s.quit("UID message from an unknown server (you).")
+		s.quit(fmt.Sprintf("UID message from unknown server %s", sid))
 		return
 	}
 
