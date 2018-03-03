@@ -2,6 +2,26 @@ package irc
 
 import "testing"
 
+func TestSourceNick(t *testing.T) {
+	tests := []struct {
+		input  Message
+		output string
+	}{
+		{Message{}, ""},
+		{Message{Prefix: "blah"}, ""},
+		{Message{Prefix: "!"}, ""},
+		{Message{Prefix: "hi!"}, "hi"},
+		{Message{Prefix: "hi!~hello@hey"}, "hi"},
+	}
+
+	for _, test := range tests {
+		got := test.input.SourceNick()
+		if got != test.output {
+			t.Errorf("%+v.SourceNick() = %s, wanted %s", test.input, got, test.output)
+		}
+	}
+}
+
 func TestParseMessage(t *testing.T) {
 	tests := []struct {
 		input   string

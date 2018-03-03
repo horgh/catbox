@@ -5,13 +5,13 @@
   branch = "master"
   name = "github.com/horgh/config"
   packages = ["."]
-  revision = "d0d61de824f5ef6b621219307ade81053aa8e81a"
+  revision = "3d1f920eb22899d8e6a832e84930da989065a23e"
 
 [[projects]]
   branch = "master"
   name = "github.com/horgh/irc"
   packages = ["."]
-  revision = "6b83b645958d6ae7b604e47a1c0593a3d8eba6ff"
+  revision = "f421bdb90dcc93b6e3724a50b1f2b360a6d72a44"
 
 [solve-meta]
   analyzer-name = "dep"

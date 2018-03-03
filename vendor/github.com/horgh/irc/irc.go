@@ -3,6 +3,7 @@ package irc
 import (
 	"errors"
 	"fmt"
+	"strings"
 )
 
 const (
@@ -40,4 +41,14 @@ type Message struct {
 func (m Message) String() string {
 	return fmt.Sprintf("Prefix [%s] Command [%s] Params%q", m.Prefix, m.Command,
 		m.Params)
+}
+
+// SourceNick retrieves the nickname portion of the prefix. It is valid for
+// this to be blank as not all messages have prefixes.
+func (m Message) SourceNick() string {
+	idx := strings.Index(m.Prefix, "!")
+	if idx == -1 {
+		return ""
+	}
+	return m.Prefix[:idx]
 }
