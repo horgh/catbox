@@ -477,12 +477,16 @@ func (cb *Catbox) shutdown() {
 	// down.
 	close(cb.ShutdownChan)
 
-	if err := cb.Listener.Close(); err != nil {
-		log.Printf("Problem closing TCP listener: %s", err)
+	if cb.Listener != nil {
+		if err := cb.Listener.Close(); err != nil {
+			log.Printf("Error closing plaintext listener: %s", err)
+		}
 	}
 
-	if err := cb.TLSListener.Close(); err != nil {
-		log.Printf("Problem closing TLS listener: %s", err)
+	if cb.TLSListener != nil {
+		if err := cb.TLSListener.Close(); err != nil {
+			log.Printf("Error closing TLS listener: %s", err)
+		}
 	}
 
 	// All clients need to be told. This also closes their write channels.
