@@ -1,4 +1,5 @@
 # TODO
+* Switch config to TOML
 * TS6 SID is not enforced as unique. Can link two servers together with the
   same SID.
 * Add timeouts to DNS lookup for hostnames (use context API)
