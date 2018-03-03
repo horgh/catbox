@@ -945,6 +945,17 @@ func (s *LocalServer) sidCommand(m irc.Message) {
 
 	desc := m.Params[3]
 
+	// If we receive an SID for a server we're already linked with in some way,
+	// delink. This can happen if two servers try to link to the same server at
+	// the "same" time. For example, we might have linked with it, and a remote
+	// one did as well.
+	if newServer, ok := s.Catbox.Servers[sid]; ok {
+		s.quit(fmt.Sprintf(
+			"%s sent me SID about %s (which is linked to %s), but I already know it!",
+			s.Server.Name, newServer.Name, linkedToServer.Name))
+		return
+	}
+
 	newServer := &Server{
 		SID:           sid,
 		Name:          name,
