@@ -1080,11 +1080,18 @@ func (s *LocalServer) sjoinCommand(m irc.Message) {
 	if acceptModes {
 		modeStr := ""
 		for _, mode := range modes {
-			if mode == 'n' || mode == 's' {
-				channel.Modes[byte(mode)] = struct{}{}
-				modeStr += string(mode)
+			if mode != 'n' && mode != 's' {
+				continue
 			}
+
+			if _, ok := channel.Modes[byte(mode)]; ok {
+				continue
+			}
+
+			channel.Modes[byte(mode)] = struct{}{}
+			modeStr += string(mode)
 		}
+
 		if len(modeStr) > 0 {
 			s.Catbox.messageLocalUsersOnChannel(channel, irc.Message{
 				Prefix:  sourceServer.Name,
