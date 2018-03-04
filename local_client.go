@@ -167,7 +167,7 @@ func (c *LocalClient) readLoop() {
 		buf, err := c.Conn.Read()
 		if err != nil {
 			log.Printf("Client %s: Read problem: %s", c, err)
-			c.Catbox.newEvent(Event{Type: DeadClientEvent, Client: c})
+			c.Catbox.newEvent(Event{Type: DeadClientEvent, Client: c, Error: err})
 			break
 		}
 

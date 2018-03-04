@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -139,6 +140,10 @@ type Event struct {
 	Client *LocalClient
 
 	Message irc.Message
+
+	// If we have an error associated with the event, such as in the case of
+	// some DeadClientEvents, populate it here.
+	Error error
 }
 
 // EventType is a type of event we can tell the server about.
@@ -414,7 +419,7 @@ func (cb *Catbox) eventLoop() {
 				}
 				lu, exists := cb.LocalUsers[evt.Client.ID]
 				if exists {
-					lu.quit("I/O error", true)
+					lu.quit(cb.errorToQuitMessage(evt.Error), true)
 					continue
 				}
 				ls, exists := cb.LocalServers[evt.Client.ID]
@@ -467,6 +472,50 @@ func (cb *Catbox) eventLoop() {
 			return
 		}
 	}
+}
+
+// Given a DeadClientEvent's error, translate that to a QUIT message.
+//
+// This is only appropriate for users.
+//
+// The reason we have this is that the errors can be overly verbose. For
+// example:
+//
+// read tcp ip:port->ip:port: i/o timeout
+//
+// read tcp ip:port->ip:port: read: connection reset by peer
+func (cb *Catbox) errorToQuitMessage(err error) string {
+	if err == nil {
+		return "I/O error"
+	}
+
+	msg := err.Error()
+	msg = strings.TrimSpace(msg)
+	if msg == "" {
+		return "I/O error"
+	}
+
+	idx := strings.LastIndex(msg, ":")
+	if idx == -1 {
+		return msg
+	}
+
+	msg = msg[idx+1:]
+	msg = strings.TrimSpace(msg)
+	if msg == "" {
+		return err.Error()
+	}
+
+	// We get i/o timeout from the reader when we hit the max time waiting for a
+	// message. The last message may have been something other than a PONG, but
+	// anyway.
+	if msg == "i/o timeout" {
+		return fmt.Sprintf("Ping timeout: %.f seconds",
+			cb.Config.DeadTime.Seconds())
+	}
+
+	first := strings.ToUpper(string(msg[0]))
+	return first + msg[1:]
 }
 
 // shutdown starts server shutdown.
