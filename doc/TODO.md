@@ -5,6 +5,8 @@
 
 
 ## Uncategorized/unprioritized
+* Command to dump out entire state. Servers, channels, nicks, modes, etc.
+  This could be used for monitoring that every server is in sync.
 * Switch config to TOML
 * Loading config should error if there is an unknown option
 * Op desync issue - should be de-opped if we have an op and link to a
