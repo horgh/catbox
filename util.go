@@ -440,7 +440,7 @@ func tlsVersionToString(version uint16) string {
 	case tls.VersionTLS12:
 		return "TLS 1.2"
 	default:
-		return fmt.Sprintf("Unknown version %x", version)
+		return fmt.Sprintf("Unknown TLS version %x", version)
 	}
 }
 
