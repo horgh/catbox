@@ -2,7 +2,6 @@
 
 ## Higher priority
 * Get QUIT messages showing reliably
-* Make WHO nick work. Some clients try this on connect and receive an error
 
 
 ## Uncategorized/unprioritized

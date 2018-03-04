@@ -1503,7 +1503,6 @@ func (u *LocalUser) channelModeCommand(channel *Channel, modes string,
 }
 
 func (u *LocalUser) whoCommand(m irc.Message) {
-	// Contrary to RFC 2812, I support only 'WHO #channel'.
 	if len(m.Params) < 1 {
 		// 461 ERR_NEEDMOREPARAMS
 		u.messageFromServer("461", []string{m.Command, "Not enough parameters"})
@@ -1518,8 +1517,13 @@ func (u *LocalUser) whoCommand(m irc.Message) {
 
 	channel, exists := u.Catbox.Channels[canonicalizeChannel(m.Params[0])]
 	if !exists {
-		// 403 ERR_NOSUCHCHANNEL. Used to indicate channel name is invalid.
-		u.messageFromServer("403", []string{m.Params[0], "Invalid channel name"})
+		// We only support WHO on channels. It might be a nick or a pattern or "0".
+		// Just act like there's no match. It might be a nick or a pattern. Don't
+		// error as some clients (e.g., IRCCloud) do this upon connect and throw up
+		// an error dialog.
+		//
+		// RPL_ENDOFWHO
+		u.messageFromServer("315", []string{m.Params[0], "End of /WHO list"})
 		return
 	}
 
@@ -1571,7 +1575,7 @@ func (u *LocalUser) whoCommand(m irc.Message) {
 	}
 
 	// 315 RPL_ENDOFWHO
-	u.messageFromServer("315", []string{channel.Name, "End of WHO list"})
+	u.messageFromServer("315", []string{channel.Name, "End of /WHO list"})
 }
 
 // This is only available to opers.
@@ -1581,7 +1585,8 @@ func (u *LocalUser) whoCommand(m irc.Message) {
 func (u *LocalUser) operspyWhoCommand(m irc.Message) {
 	if !u.User.isOperator() {
 		// 481 ERR_NOPRIVILEGES
-		u.messageFromServer("481", []string{"Permission Denied- You're not an IRC operator"})
+		u.messageFromServer("481", []string{
+			"Permission Denied- You're not an IRC operator"})
 		return
 	}
 
