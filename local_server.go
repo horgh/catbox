@@ -959,6 +959,10 @@ func (s *LocalServer) sidCommand(m irc.Message) {
 			s.Server.Name, newServer.Name, linkedToServer.Name))
 		return
 	}
+	if sid == s.Catbox.Config.TS6SID {
+		s.quit(fmt.Sprintf("%s sent me SID command with my own SID!", s.Server.Name))
+		return
+	}
 
 	newServer := &Server{
 		SID:           sid,
