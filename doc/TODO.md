@@ -1,7 +1,10 @@
 # TODO
 
 ## Higher priority
-* Get QUIT messages showing reliably
+* Op desync issue - should be de-opped if we have an op and link to a
+  server where the channel already exists. Can see not-op on one side and
+  op on the catbox side. I think this is because of us clearing modes on
+  SJOIN commands, but those cleared modes only get sent locally.
 
 
 ## Uncategorized/unprioritized
@@ -9,17 +12,12 @@
   This could be used for monitoring that every server is in sync.
 * Switch config to TOML
 * Loading config should error if there is an unknown option
-* Op desync issue - should be de-opped if we have an op and link to a
-  server where the channel already exists. Can see not-op on one side and
-  op on the catbox side. I think this is because of us clearing modes on
-  SJOIN commands, but those cleared modes only get sent locally.
 * Make canonicalizeNick and canonicalizeChannel return error if the names
   are invalid? Right now it is a bit error prone because we can
   canonicalize invalid names.
 * Consider combining cleanup user logic in server's killCommand() with
   cleanupKilledUser()
 * Consolidate repeated topic setting logic (user TOPIC, server TOPIC, TB)
-* Log to file
 * Additional automated testing. More unit tests here and more integration
   tests in the boxcat repository.
 * Add command to dump out config (the current catbox config as seen from
@@ -38,6 +36,7 @@
   UID. Happens using OPME on ratbox. Causes unknown user error and server
   split
   * Because I'm not linking with ratbox currently.
+* Log to file
 
 
 ## RFC
