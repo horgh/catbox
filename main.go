@@ -570,6 +570,21 @@ func (cb *Catbox) introduceClient(conn net.Conn) {
 				return
 			}
 
+			if tlsVersion != "TLS 1.2" {
+				cb.noticeOpers(fmt.Sprintf("Rejecting client %s using %s",
+					client.Conn.IP, tlsVersion))
+				// Send ERROR and start up the writer to try to let them get it. Don't
+				// bother recording the client or starting the reader. We don't care.
+				client.messageFromServer("ERROR",
+					[]string{fmt.Sprintf(
+						"Your SSL/TLS version is %s. This server requires at least TLS 1.2. Contact %s if this is a problem.",
+						tlsVersion, cb.Config.AdminEmail)})
+				close(client.WriteChan)
+				cb.WG.Add(1)
+				go client.writeLoop()
+				return
+			}
+
 			msgs = append(msgs, fmt.Sprintf("*** Connected with %s (%s)", tlsVersion,
 				tlsCipherSuite))
 		}
@@ -938,6 +953,15 @@ func (cb *Catbox) connectToServer(linkInfo *ServerDefinition) {
 				_ = conn.Close()
 				return
 			}
+
+			if tlsVersion != "TLS 1.2" {
+				cb.noticeOpers(fmt.Sprintf(
+					"Disconnecting from %s because of TLS version: %s", linkInfo.Name,
+					tlsVersion))
+				_ = conn.Close()
+				return
+			}
+
 			log.Printf("Connected to %s with %s (%s)", linkInfo.Name, tlsVersion,
 				tlsCipherSuite)
 		}
