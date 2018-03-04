@@ -5,13 +5,6 @@
 * Make WHO nick work. Some clients try this on connect and receive an error
 
 
-## May be fixed
-* TS6 SID is not enforced as unique. Can link two servers together with the
-  same SID.
-  * This may be fixed as of the change 2018-03-03 to check SID commands
-    more carefully.
-
-
 ## Uncategorized/unprioritized
 * Switch config to TOML
 * Loading config should error if there is an unknown option

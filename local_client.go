@@ -848,6 +848,15 @@ func (c *LocalClient) passCommand(m irc.Message) {
 		c.quit("Malformed SID")
 		return
 	}
+	sid := TS6SID(m.Params[3])
+	if sid == c.Catbox.Config.TS6SID {
+		c.quit("You're using my SID!")
+		return
+	}
+	if _, ok := c.Catbox.Servers[sid]; ok {
+		c.quit("I already know that SID!")
+		return
+	}
 
 	// Everything looks OK. Store them.
 
