@@ -37,6 +37,8 @@ type Config struct {
 	// TS6 SID. Must be unique in the network. Format: [0-9][A-Z0-9]{2}
 	TS6SID TS6SID
 
+	AdminEmail string
+
 	// Oper name to password.
 	Opers map[string]string
 
@@ -214,6 +216,8 @@ func checkAndParseConfig(file string) (*Config, error) {
 		}
 		c.TS6SID = TS6SID(m["ts6-sid"])
 	}
+
+	c.AdminEmail = m["admin-email"]
 
 	return c, nil
 }

@@ -1415,6 +1415,8 @@ func (cb *Catbox) rehash(byUser *User) {
 
 	// TS6SID: Changing this requires relinking. It is part of link handshake.
 
+	cb.Config.AdminEmail = cfg.AdminEmail
+
 	cb.Config.Opers = cfg.Opers
 	cb.Config.Servers = cfg.Servers
 	cb.Config.UserConfigs = cfg.UserConfigs
