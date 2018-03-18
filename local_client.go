@@ -240,12 +240,11 @@ Loop:
 
 			if err := c.Conn.Write(buf); err != nil {
 				log.Printf("Client %s: Write problem: %s: %s", c, buf, err)
-				c.Catbox.newEvent(Event{Type: DeadClientEvent, Client: c})
+				c.Catbox.newEvent(Event{Type: DeadClientEvent, Client: c, Error: err})
 				break Loop
 			}
 
 			log.Printf("Client %s: Sent: %s", c, strings.TrimSuffix(buf, "\r\n"))
-
 		case <-c.Catbox.ShutdownChan:
 			break Loop
 		}
