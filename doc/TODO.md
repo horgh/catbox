@@ -5,6 +5,8 @@
   server where the channel already exists. Can see not-op on one side and
   op on the catbox side. I think this is because of us clearing modes on
   SJOIN commands, but those cleared modes only get sent locally.
+* Many log calls should probably go to opers. Right now they will probably
+  always be missed.
 
 
 ## Uncategorized/unprioritized
