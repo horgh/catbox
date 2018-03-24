@@ -1590,6 +1590,7 @@ func (cb *Catbox) handleCollision(fromServer *LocalServer, newUID TS6UID,
 	if !exists {
 		log.Printf("User not found with UID %s. But UID has a nick! (%s)",
 			existingUID, canonicalizeNick(newNick))
+		// TODO(horgh): Should we abort?
 	}
 
 	// If this is a UID command then we do not yet have a User record yet for the
