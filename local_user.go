@@ -2211,6 +2211,7 @@ func (u *LocalUser) inviteCommand(m irc.Message) {
 		// 442 ERR_NOTONCHANNEL
 		u.messageFromServer("442", []string{channelName,
 			"You're not on that channel"})
+		return
 	}
 
 	// Is the user we wish to invite already in the channel?
