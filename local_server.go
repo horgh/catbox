@@ -2159,6 +2159,7 @@ func (s *LocalServer) whoisCommand(m irc.Message) {
 			Params: []string{sourceUser.DisplayNick, m.Params[0],
 				"No such nick/channel"},
 		})
+		return
 	}
 
 	// If it's a local user, reply back to the server.
