@@ -2308,9 +2308,9 @@ func (s *LocalServer) inviteCommand(m irc.Message) {
 
 	// Check channel TS if it's given.
 	if len(m.Params) >= 3 {
-		channelTS, err := strconv.ParseInt(m.Params[3], 10, 64)
+		channelTS, err := strconv.ParseInt(m.Params[2], 10, 64)
 		if err != nil {
-			s.quit(fmt.Sprintf("Invalid channel TS: %s: %s", m.Params[0], err))
+			s.quit(fmt.Sprintf("Invalid channel TS: %s: %s", m.Params[2], err))
 			return
 		}
 
@@ -2321,6 +2321,9 @@ func (s *LocalServer) inviteCommand(m irc.Message) {
 			return
 		}
 	}
+
+	// TODO(horgh): If we had +i we'd have to record the invited user may join
+	// the channel.
 
 	// If it's a local user, tell the user, and that's it.
 	if targetUser.isLocal() {
