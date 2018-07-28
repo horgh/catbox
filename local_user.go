@@ -402,8 +402,7 @@ func (u *LocalUser) quit(msg string, propagate bool) {
 	}
 
 	// Ensure we tell the client (e.g., if in no channels).
-	_, exists = toldClients[u.User.UID]
-	if !exists {
+	if _, exists := toldClients[u.User.UID]; !exists {
 		u.messageUser(u.User, "QUIT", []string{msg})
 	}
 
