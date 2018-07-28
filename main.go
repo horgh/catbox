@@ -467,7 +467,6 @@ func (cb *Catbox) eventLoop() {
 			}
 
 			log.Fatalf("Unexpected event: %d", evt.Type)
-
 		case <-cb.ShutdownChan:
 			return
 		}
