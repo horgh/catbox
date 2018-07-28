@@ -243,6 +243,9 @@ Loop:
 
 			if err := c.Conn.Write(buf); err != nil {
 				log.Printf("Client %s: Write problem: %s: %s", c, buf, err)
+				// Don't kill the client immediately. Give a chance for us to read
+				// anything from it.
+				time.Sleep(5 * time.Second)
 				c.Catbox.newEvent(Event{Type: DeadClientEvent, Client: c, Error: err})
 				break Loop
 			}
