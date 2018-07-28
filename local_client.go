@@ -175,14 +175,14 @@ func (c *LocalClient) readLoop() {
 
 		message, err := irc.ParseMessage(buf)
 		if err != nil {
+			c.Catbox.noticeOpers(fmt.Sprintf("Invalid message from client %s: %s", c,
+				err))
+
 			if err != irc.ErrTruncated {
-				log.Printf("Client %s: Invalid message: %s: %s", c, buf, err)
 				// Should we reply to the client? This silently ignores malformed
 				// messages.
 				continue
 			}
-
-			log.Printf("Client %s: Warning: Message truncated: %s", c, buf)
 		}
 
 		c.Catbox.newEvent(Event{
