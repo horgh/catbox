@@ -229,13 +229,11 @@ Loop:
 
 			buf, err := message.Encode()
 			if err != nil {
+				c.Catbox.noticeOpers(fmt.Sprintf(
+					"Trying to send invalid message to client %s: %s", c, err))
 				if err != irc.ErrTruncated {
-					log.Printf("Client %s: Unable to encode message: %s: %s", c, message,
-						err)
 					continue
 				}
-
-				log.Printf("Client %s: Warning: Message truncated: %s", c, message)
 			}
 
 			if err := c.Conn.Write(buf); err != nil {
