@@ -393,7 +393,6 @@ func (u *LocalUser) quit(msg string, propagate bool) {
 				Command: "QUIT",
 				Params:  []string{msg},
 			})
-
 		}
 
 		channel.removeUser(u.User)
