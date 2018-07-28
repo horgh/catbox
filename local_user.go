@@ -359,8 +359,7 @@ func (u *LocalUser) part(channelName, message string) {
 // Note: Only the server goroutine should call this (due to closing channel).
 func (u *LocalUser) quit(msg string, propagate bool) {
 	// May already be cleaning up.
-	_, exists := u.Catbox.LocalUsers[u.ID]
-	if !exists {
+	if _, exists := u.Catbox.LocalUsers[u.ID]; !exists {
 		return
 	}
 	log.Printf("Losing user %s", u)
