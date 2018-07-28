@@ -1030,7 +1030,7 @@ func (cb *Catbox) connectToServer(linkInfo *ServerDefinition) {
 	}()
 }
 
-// newEvent tells the server something happens.
+// newEvent tells the server something happened.
 //
 // Any goroutine can call this function.
 //
