@@ -50,7 +50,7 @@ func (c Conn) Read() (string, error) {
 
 	line, err := c.rw.ReadString('\n')
 	if err != nil {
-		return "", err
+		return line, err // May be something read even with error.
 	}
 
 	return line, nil

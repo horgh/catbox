@@ -167,6 +167,11 @@ func (c *LocalClient) readLoop() {
 		buf, err := c.Conn.Read()
 		if err != nil {
 			log.Printf("Client %s: Read problem: %s", c, err)
+			// Debug concerns with missing quit messages.
+			if buf != "" {
+				c.Catbox.noticeOpers(fmt.Sprintf("Read error but have [%s]",
+					strings.TrimSpace(buf)))
+			}
 			c.Catbox.newEvent(Event{Type: DeadClientEvent, Client: c, Error: err})
 			break
 		}
