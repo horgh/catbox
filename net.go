@@ -45,7 +45,9 @@ func (c Conn) RemoteAddr() net.Addr {
 // Read reads a line from the connection.
 func (c Conn) Read() (string, error) {
 	if err := c.conn.SetReadDeadline(time.Now().Add(c.ioWait)); err != nil {
-		return "", fmt.Errorf("unable to set deadline: %s", err)
+		// Do not treat this as fatal. There can be something available to read in
+		// the buffer which we want to see.
+		log.Printf("Error setting read deadline: %s", err)
 	}
 
 	line, err := c.rw.ReadString('\n')
@@ -59,7 +61,7 @@ func (c Conn) Read() (string, error) {
 // Write writes a string to the connection
 func (c Conn) Write(s string) error {
 	if err := c.conn.SetWriteDeadline(time.Now().Add(c.ioWait)); err != nil {
-		return fmt.Errorf("unable to set deadline: %s", err)
+		return fmt.Errorf("error setting write deadline: %s", err)
 	}
 
 	sz, err := c.rw.WriteString(s)
