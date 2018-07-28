@@ -382,8 +382,7 @@ func (u *LocalUser) quit(msg string, propagate bool) {
 				continue
 			}
 
-			_, exists := toldClients[member.UID]
-			if exists {
+			if _, exists := toldClients[member.UID]; exists {
 				continue
 			}
 			toldClients[member.UID] = struct{}{}
