@@ -1346,7 +1346,7 @@ func (cb *Catbox) createWHOISResponse(user, replyUser *User,
 
 	// 317 RPL_WHOISIDLE. Only if local.
 	if user.isLocal() {
-		idleDuration := time.Now().Sub(user.LocalUser.LastMessageTime)
+		idleDuration := time.Since(user.LocalUser.LastMessageTime)
 		idleSeconds := int(idleDuration.Seconds())
 
 		msgs = append(msgs, irc.Message{

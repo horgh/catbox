@@ -103,7 +103,7 @@ func TestMODETS(t *testing.T) {
 		},
 	)
 
-	if time.Now().Sub(creationTime) > 30*time.Second {
+	if time.Since(creationTime) > 30*time.Second {
 		t.Fatalf("channel creation time is too far in the past: %s", creationTime)
 	}
 
