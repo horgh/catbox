@@ -185,7 +185,7 @@ LOOP:
 			}
 			if err := c.writeMessage(m); err != nil {
 				c.errChan <- fmt.Errorf("error writing message: %s", err)
-				break
+				break LOOP
 			}
 		}
 	}
