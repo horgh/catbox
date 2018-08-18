@@ -1,0 +1,12 @@
+builds:
+  -
+    goos:
+      - linux
+    goarch:
+      - amd64
+archive:
+  wrap_in_directory: true
+  files:
+    - CHANGELOG.md
+    - COPYING
+    - README.md
