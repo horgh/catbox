@@ -1,10 +1,17 @@
 # TODO
 
 ## Higher priority
+* Valid certs.
+* Set up goreleaser.
+* Show IPs to opers in WHOIS with 378 numeric.
 * Op desync issue - should be de-opped if we have an op and link to a
   server where the channel already exists. Can see not-op on one side and
   op on the catbox side. I think this is because of us clearing modes on
   SJOIN commands, but those cleared modes only get sent locally.
+* PASS command for users to authenticate.
+  * Authenticated user should show in WHOIS with 330 numeric.
+* Automatically spoof people's hosts.
+* WHOWAS.
 * Many log calls should probably go to opers. Right now they will probably
   always be missed.
 
