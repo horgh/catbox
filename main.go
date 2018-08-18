@@ -277,9 +277,6 @@ func newCatbox(configFile string) (*Catbox, error) {
 			GetCertificate:           cb.getCertificate,
 			PreferServerCipherSuites: true,
 			SessionTicketsDisabled:   true,
-			// Unfortunately it is usual to use self signed certificates with IRC. We
-			// need this to connect to such servers.
-			InsecureSkipVerify: true, // nolint: gosec,gas
 			// It would be nice to be able to be more restrictive on ciphers, but in
 			// practice many clients do not support the strictest.
 			//CipherSuites: []uint16{

@@ -3,6 +3,9 @@
 * Rehashing now reloads the TLS certificate and key.
 * Rehashing now automatically happens once a week. This is so we load new
   certificates.
+* Require valid TLS certificates on outbound TLS connections. This means
+  servers we connect to must have valid certificates that match the name we
+  connect to them as.
 
 # 1.9.0 (2018-07-28)
 

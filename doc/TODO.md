@@ -1,7 +1,6 @@
 # TODO
 
 ## Higher priority
-* Valid certs.
 * Set up goreleaser.
 * Show IPs to opers in WHOIS with 378 numeric.
 * Op desync issue - should be de-opped if we have an op and link to a
