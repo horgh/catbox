@@ -39,7 +39,7 @@ func getArgs() *Args {
 }
 
 func printUsage(err error) {
-	_, _ = fmt.Fprintf(os.Stderr, "%s\n", err)
-	_, _ = fmt.Fprintf(os.Stderr, "Usage: %s <arguments>\n", os.Args[0])
+	_, _ = fmt.Fprintf(os.Stderr, "%s\n", err)                           // nolint: gas
+	_, _ = fmt.Fprintf(os.Stderr, "Usage: %s <arguments>\n", os.Args[0]) // nolint: gas
 	flag.PrintDefaults()
 }

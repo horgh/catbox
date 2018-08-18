@@ -221,7 +221,7 @@ func main() {
 	if cb.Restart {
 		log.Printf("Shutdown completed. Restarting...")
 
-		if err := syscall.Exec(
+		if err := syscall.Exec( // nolint: gas
 			binPath,
 			[]string{
 				binPath,
@@ -279,7 +279,7 @@ func newCatbox(configFile string) (*Catbox, error) {
 			SessionTicketsDisabled:   true,
 			// Unfortunately it is usual to use self signed certificates with IRC. We
 			// need this to connect to such servers.
-			InsecureSkipVerify: true, // nolint: gosec
+			InsecureSkipVerify: true, // nolint: gosec,gas
 
 			// It would be nice to be able to be more restrictive on TLS version and
 			// ciphers, but in practice many clients do not support the strictest.
