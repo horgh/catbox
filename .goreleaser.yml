@@ -8,5 +8,6 @@ archive:
   wrap_in_directory: true
   files:
     - CHANGELOG.md
+    - conf/*
     - COPYING
     - README.md
