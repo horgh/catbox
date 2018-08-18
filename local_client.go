@@ -15,7 +15,7 @@ import (
 // LocalClient holds state about a local connection.
 // All connections are in this state until they register as either a user client
 // or as a server.
-type LocalClient struct {
+type LocalClient struct { // nolint: maligned
 	// Conn is the TCP connection to the client.
 	Conn Conn
 

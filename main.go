@@ -149,9 +149,9 @@ type Event struct {
 // EventType is a type of event we can tell the server about.
 type EventType int
 
-const (
+const ( // nolint: deadcode
 	// NullEvent is a default event. This means the event was not populated.
-	NullEvent EventType = iota
+	NullEvent EventType = iota // nolint: megacheck
 
 	// NewClientEvent means a new client connected.
 	NewClientEvent
@@ -279,7 +279,7 @@ func newCatbox(configFile string) (*Catbox, error) {
 			SessionTicketsDisabled:   true,
 			// Unfortunately it is usual to use self signed certificates with IRC. We
 			// need this to connect to such servers.
-			InsecureSkipVerify: true,
+			InsecureSkipVerify: true, // nolint: gosec
 
 			// It would be nice to be able to be more restrictive on TLS version and
 			// ciphers, but in practice many clients do not support the strictest.
@@ -614,7 +614,7 @@ func (cb *Catbox) introduceClient(conn net.Conn) {
 			tlsVersion, tlsCipherSuite, err := client.getTLSState()
 			if err != nil {
 				log.Printf("Client %s: %s", client, err)
-				_ = conn.Close()
+				_ = conn.Close() // nolint: gosec
 				return
 			}
 
@@ -998,7 +998,7 @@ func (cb *Catbox) connectToServer(linkInfo *ServerDefinition) {
 			tlsVersion, tlsCipherSuite, err := client.getTLSState()
 			if err != nil {
 				log.Printf("Disconnecting from server %s: %s", linkInfo.Name, err)
-				_ = conn.Close()
+				_ = conn.Close() // nolint: gosec
 				return
 			}
 
@@ -1006,7 +1006,7 @@ func (cb *Catbox) connectToServer(linkInfo *ServerDefinition) {
 				cb.noticeOpers(fmt.Sprintf(
 					"Disconnecting from %s because of TLS version: %s", linkInfo.Name,
 					tlsVersion))
-				_ = conn.Close()
+				_ = conn.Close() // nolint: gosec
 				return
 			}
 
