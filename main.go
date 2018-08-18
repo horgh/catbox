@@ -278,14 +278,12 @@ func newCatbox(configFile string) (*Catbox, error) {
 			// Unfortunately it is usual to use self signed certificates with IRC. We
 			// need this to connect to such servers.
 			InsecureSkipVerify: true, // nolint: gosec,gas
-
-			// It would be nice to be able to be more restrictive on TLS version and
-			// ciphers, but in practice many clients do not support the strictest.
+			// It would be nice to be able to be more restrictive on ciphers, but in
+			// practice many clients do not support the strictest.
 			//CipherSuites: []uint16{
 			//	tls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
 			//	tls.TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
 			//},
-			//MinVersion: tls.VersionTLS12,
 		}
 		cb.TLSConfig = tlsConfig
 		if err := cb.loadCertificate(); err != nil {
