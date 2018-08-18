@@ -21,6 +21,7 @@ import (
 // Catbox holds information about a harnessed catbox.
 type Catbox struct {
 	Name      string
+	SID       string
 	Port      uint16
 	Stderr    io.ReadCloser
 	Stdout    io.ReadCloser
@@ -33,12 +34,15 @@ type Catbox struct {
 var catboxDir = filepath.Join(os.Getenv("GOPATH"), "src", "github.com", "horgh",
 	"catbox")
 
-func harnessCatbox(name string) (*Catbox, error) {
+func harnessCatbox(
+	name,
+	sid string,
+) (*Catbox, error) {
 	if err := buildCatbox(); err != nil {
 		return nil, fmt.Errorf("error building catbox: %s", err)
 	}
 
-	catbox, err := startCatbox(name)
+	catbox, err := startCatbox(name, sid)
 	if err != nil {
 		return nil, fmt.Errorf("error starting catbox: %s", err)
 	}
@@ -98,7 +102,10 @@ func buildCatbox() error {
 	return nil
 }
 
-func startCatbox(name string) (*Catbox, error) {
+func startCatbox(
+	name,
+	sid string,
+) (*Catbox, error) {
 	tmpDir, err := ioutil.TempDir("", "boxcat-")
 	if err != nil {
 		return nil, fmt.Errorf("error retrieving a temporary directory: %s", err)
@@ -112,7 +119,7 @@ func startCatbox(name string) (*Catbox, error) {
 		return nil, fmt.Errorf("error opening random port: %s", err)
 	}
 
-	catbox, err := runCatbox(catboxConf, listener, port, name)
+	catbox, err := runCatbox(catboxConf, listener, port, name, sid)
 	if err != nil {
 		_ = os.RemoveAll(tmpDir)
 		_ = listener.Close()
@@ -145,9 +152,11 @@ func runCatbox(
 	conf string,
 	ln net.Listener,
 	port uint16,
-	name string,
+	name,
+	sid string,
 ) (*Catbox, error) {
-	if err := writeConf(conf, name, ""); err != nil {
+	var extra string
+	if err := writeConf(conf, name, sid, extra); err != nil {
 		return nil, err
 	}
 
@@ -189,17 +198,28 @@ func runCatbox(
 	}, nil
 }
 
-func writeConf(conf, name, extra string) error {
+func writeConf(
+	filename,
+	serverName,
+	sid,
+	extra string,
+) error {
 	// -1 because we pass in fd.
 	buf := fmt.Sprintf(`
 listen-port = %d
 server-name = %s
+ts6-sid = %s
 connect-attempt-time = 100ms
 %s
-`, -1, name, extra)
+`,
+		-1,
+		serverName,
+		sid,
+		extra,
+	)
 
-	if err := ioutil.WriteFile(conf, []byte(buf), 0644); err != nil {
-		return fmt.Errorf("error writing conf: %s: %s", name, err)
+	if err := ioutil.WriteFile(filename, []byte(buf), 0644); err != nil {
+		return fmt.Errorf("error writing conf: %s: %s", serverName, err)
 	}
 
 	return nil
@@ -251,7 +271,7 @@ func (c *Catbox) linkServer(other *Catbox) error {
 	serversConf := filepath.Join(c.ConfigDir, "servers.conf")
 	extra := fmt.Sprintf("servers-config = %s", serversConf)
 
-	if err := writeConf(conf, c.Name, extra); err != nil {
+	if err := writeConf(conf, c.Name, c.SID, extra); err != nil {
 		return err
 	}
 

@@ -14,13 +14,13 @@ import (
 // Also test that the TS gets propagated between servers and a client on
 // another server gets the same TS
 func TestMODETS(t *testing.T) {
-	catbox1, err := harnessCatbox("irc1.example.org")
+	catbox1, err := harnessCatbox("irc1.example.org", "001")
 	if err != nil {
 		t.Fatalf("error harnessing catbox: %s", err)
 	}
 	defer catbox1.stop()
 
-	catbox2, err := harnessCatbox("irc2.example.org")
+	catbox2, err := harnessCatbox("irc2.example.org", "002")
 	if err != nil {
 		t.Fatalf("error harnessing catbox: %s", err)
 	}

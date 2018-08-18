@@ -11,7 +11,7 @@ import (
 
 // Test one client sending a message to another client.
 func TestPRIVMSG(t *testing.T) {
-	catbox, err := harnessCatbox("irc.example.org")
+	catbox, err := harnessCatbox("irc.example.org", "000")
 	if err != nil {
 		t.Fatalf("error harnessing catbox: %s", err)
 	}
