@@ -67,5 +67,20 @@ This file defines privileges and hostname spoofs for users. The only
 privilege right now is flood exemption.
 
 
+# TLS certificates
+catbox requires valid certificates when connecting to other servers. In
+order to accommodate the fact that certificates don't stay valid forever,
+catbox automatically reloads its certificate once a week. That means you
+can simply copy over your certificate when you renew it.
+
+A setup for a network might look like this:
+
+* You give each server a wildcard certificate for *.example.com.
+* You set up irc.example.com to have multiple A records, one for each
+  server's IP.
+* In servers.conf, you list each server with a hostname just for it. For
+  example, irc1.example.com.
+
+
 # Logo
 catbox logo (c) 2017 Bee
