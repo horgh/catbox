@@ -5,20 +5,12 @@ Status](https://travis-ci.org/horgh/catbox.svg)](https://travis-ci.org/horgh/cat
 [![Go Report
 Card](https://goreportcard.com/badge/github.com/horgh/catbox)](https://goreportcard.com/report/github.com/horgh/catbox)
 
-This is a minimal IRC daemon. I run a small network using
-[ircd-ratbox](http://ratbox.org/) and had the idea to create an IRC server
-capable of linking to it and eventually replacing it. My goal is to have a
-minimal server that will meet this network's needs.
-
-
-# Status
-catbox is capable of linking to itself and to ircd-ratbox servers. It is in
-active use on my network.
+catbox is an IRC daemon. I run a small network using it.
 
 
 # Why the name?
 My domain name is summercat.com, cats love boxes, and a tribute to
-ircd-ratbox.
+ircd-ratbox (the IRC daemon I used in the past).
 
 
 # Features
@@ -36,6 +28,7 @@ ircd-ratbox.
 * Network wide connection notices sent to operators.
 * Flood protection.
 * K: line style connection banning.
+* TLS.
 
 
 # Setup
@@ -56,6 +49,9 @@ This file holds global settings for the server.
 You'll probably want to change `listen-host`, `listen-port`, and
 `server-name` at minimum.
 
+If you want to listen on a TLS port, you must have a certificate and key
+available.
+
 
 ## opers.conf
 This file defines IRC operators. A user can become an operator by using the
@@ -69,20 +65,6 @@ This file defines servers to link to and accept links from.
 ## users.conf
 This file defines privileges and hostname spoofs for users. The only
 privilege right now is flood exemption.
-
-
-# TLS
-If you want to listen on a TLS port, you must have a certificate and key
-available.
-
-To generate a self-signed certificate for TLS:
-
-    openssl req -newkey rsa:4096 -x509 -keyout key.pem -out certificate.pem -days 3650 -nodes
-
-
-# Tests
-In addition to the unit level tests here, there are some integration tests
-in [another repository](https://github.com/horgh/boxcat).
 
 
 # Logo
