@@ -676,7 +676,7 @@ func (s *LocalServer) uidCommand(m irc.Message) {
 	sid := TS6SID(m.Prefix)
 
 	// Do we know the server the message originates on?
-	usersServer, exists := s.Catbox.Servers[TS6SID(sid)]
+	usersServer, exists := s.Catbox.Servers[sid]
 	if !exists {
 		s.quit(fmt.Sprintf("UID message from unknown server %s", sid))
 		return
@@ -763,7 +763,7 @@ func (s *LocalServer) uidCommand(m irc.Message) {
 	u := &User{
 		DisplayNick:   displayNick,
 		HopCount:      int(hopCount),
-		NickTS:        int64(nickTS),
+		NickTS:        nickTS,
 		Modes:         umodes,
 		Username:      username,
 		Hostname:      hostname,

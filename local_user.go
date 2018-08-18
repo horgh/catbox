@@ -181,7 +181,7 @@ func (u *LocalUser) join(channelName string) {
 	// First build the portion that is common to every NAMREPLY so we can get
 	// its length.
 	namMessage := irc.Message{
-		Prefix:  string(u.Catbox.Config.ServerName),
+		Prefix:  u.Catbox.Config.ServerName,
 		Command: "353",
 		// Last parameter is where nicks go. We'll have " :" since it's blank
 		// right now (when we encode to determine base size).
