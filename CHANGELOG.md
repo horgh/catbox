@@ -1,6 +1,8 @@
 # Unreleased
 
 * Rehashing now reloads the TLS certificate and key.
+* Rehashing now automatically happens once a week. This is so we load new
+  certificates.
 
 # 1.9.0 (2018-07-28)
 
