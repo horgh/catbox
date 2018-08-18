@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/horgh/irc"
+	"github.com/pkg/errors"
 )
 
 // Catbox holds the state for this local server.
@@ -85,7 +86,9 @@ type Catbox struct {
 	ConnectionCount int
 
 	// Our TLS configuration.
-	TLSConfig *tls.Config
+	TLSConfig        *tls.Config
+	Certificate      *tls.Certificate
+	CertificateMutex *sync.RWMutex
 
 	// TCP plaintext and TLS listeners.
 	Listener    net.Listener
@@ -267,14 +270,9 @@ func newCatbox(configFile string) (*Catbox, error) {
 
 	if cb.Config.ListenPortTLS != "-1" || cb.Config.CertificateFile != "" ||
 		cb.Config.KeyFile != "" {
-		cert, err := tls.LoadX509KeyPair(cb.Config.CertificateFile,
-			cb.Config.KeyFile)
-		if err != nil {
-			return nil, fmt.Errorf("unable to load certificate/key: %s", err)
-		}
-
+		cb.CertificateMutex = &sync.RWMutex{}
 		tlsConfig := &tls.Config{
-			Certificates:             []tls.Certificate{cert},
+			GetCertificate:           cb.getCertificate,
 			PreferServerCipherSuites: true,
 			SessionTicketsDisabled:   true,
 			// Unfortunately it is usual to use self signed certificates with IRC. We
@@ -290,9 +288,40 @@ func newCatbox(configFile string) (*Catbox, error) {
 			//MinVersion: tls.VersionTLS12,
 		}
 		cb.TLSConfig = tlsConfig
+		if err := cb.loadCertificate(); err != nil {
+			return nil, err
+		}
 	}
 
 	return &cb, nil
+}
+
+// Return the current certificate.
+//
+// We use tls.Config's GetCertificate so that we can swap out the certificate
+// while running without having to recreate the net.Listener.
+func (cb *Catbox) getCertificate(
+	hello *tls.ClientHelloInfo,
+) (*tls.Certificate, error) {
+	cb.CertificateMutex.RLock()
+	defer cb.CertificateMutex.RUnlock()
+	if cb.Certificate == nil {
+		return nil, errors.New("certificate not set")
+	}
+	return cb.Certificate, nil
+}
+
+// Load the certificate and key from files.
+func (cb *Catbox) loadCertificate() error {
+	cert, err := tls.LoadX509KeyPair(cb.Config.CertificateFile, cb.Config.KeyFile)
+	if err != nil {
+		return errors.Wrap(err, "error loading certificate/key")
+	}
+
+	cb.CertificateMutex.Lock()
+	defer cb.CertificateMutex.Unlock()
+	cb.Certificate = &cert
+	return nil
 }
 
 // start starts up the server.
