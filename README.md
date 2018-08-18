@@ -28,7 +28,7 @@ ircd-ratbox (the IRC daemon I used in the past).
 * Network wide connection notices sent to operators.
 * Flood protection.
 * K: line style connection banning.
-* TLS.
+* TLS. Certificate/key hotloading at rehash time as well.
 
 
 # Setup

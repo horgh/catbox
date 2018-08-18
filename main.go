@@ -311,6 +311,10 @@ func (cb *Catbox) getCertificate(
 
 // Load the certificate and key from files.
 func (cb *Catbox) loadCertificate() error {
+	if cb.Config.CertificateFile == "" || cb.Config.KeyFile == "" {
+		return nil
+	}
+
 	cert, err := tls.LoadX509KeyPair(cb.Config.CertificateFile, cb.Config.KeyFile)
 	if err != nil {
 		return errors.Wrap(err, "error loading certificate/key")
@@ -1495,8 +1499,13 @@ func (cb *Catbox) rehash(byUser *User) {
 	// ListenHost
 	// ListenPort
 	// ListenPortTLS
-	// CertificateFile
-	// KeyFile
+
+	cb.Config.CertificateFile = cfg.CertificateFile
+	cb.Config.KeyFile = cfg.KeyFile
+	if err := cb.loadCertificate(); err != nil {
+		cb.noticeOpers(fmt.Sprintf("Error loading certificate/key: %s", err))
+		log.Printf("%+v", err)
+	}
 
 	// Changing these may require relinking servers as they are part of the
 	// link handshake:

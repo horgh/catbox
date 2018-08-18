@@ -1,4 +1,8 @@
-# 1.9.0
+# Unreleased
+
+* Rehashing now reloads the TLS certificate and key.
+
+# 1.9.0 (2018-07-28)
 
 * Started tracking changes in a changelog.
 * If a message is invalid, send a notice to opers about it rather than just
