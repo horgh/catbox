@@ -1,0 +1,8 @@
+{
+  "Disable": [
+    "goconst",
+    "gocyclo",
+    "vetshadow"
+  ],
+  "Vendor": true
+}
