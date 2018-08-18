@@ -6,6 +6,8 @@ import (
 	"log"
 	"net"
 	"time"
+
+	"github.com/pkg/errors"
 )
 
 // Conn is a connection to a client/server
@@ -52,7 +54,8 @@ func (c Conn) Read() (string, error) {
 
 	line, err := c.rw.ReadString('\n')
 	if err != nil {
-		return line, err // May be something read even with error.
+		// There may be something read even with error.
+		return line, errors.Wrap(err, "error reading")
 	}
 
 	return line, nil

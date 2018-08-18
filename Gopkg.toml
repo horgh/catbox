@@ -28,3 +28,7 @@
 [[constraint]]
   branch = "master"
   name = "github.com/horgh/irc"
+
+[[constraint]]
+  name = "github.com/pkg/errors"
+  version = "0.8.0"
