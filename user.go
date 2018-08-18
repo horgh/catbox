@@ -67,10 +67,6 @@ func (u *User) nickUhost() string {
 	return fmt.Sprintf("%s!%s@%s", u.DisplayNick, u.Username, u.Hostname)
 }
 
-func (u *User) userHost() string {
-	return fmt.Sprintf("%s@%s", u.Username, u.Hostname)
-}
-
 func (u *User) isOperator() bool {
 	_, exists := u.Modes['o']
 	return exists

@@ -45,10 +45,6 @@ func (s *Server) isLocal() bool {
 	return s.LocalServer != nil
 }
 
-func (s *Server) isRemote() bool {
-	return !s.isLocal()
-}
-
 // Turn our capabilities into a single space separated string.
 func (s *Server) capabsString() string {
 	str := ""
