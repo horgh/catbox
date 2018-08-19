@@ -32,13 +32,10 @@ ircd-ratbox (the IRC daemon I used in the past).
 
 
 # Installation
-
-# Setup
-1. Get catbox. You can either:
- * Download a release from the Releases tab.
- * Build it from Git. To do that you need a working [Go
-   compiler](https://golang.org/dl/). Then run `go get -u
-   github.com/horgh/catbox`.
+1. First you need to download catbox. You can download a release from the
+   Releases tab on GitHub, or you can build from source. To build from
+   source run `go get -u github.com/horgh/catbox` (you'll need the [Go
+   toolchain](https://golang.org/dl/)).
 2. Configure it. This is done through configuration files. Examples are in
    the `conf` directory. All settings are optional and have defaults.
 3. Start the daemon: `catbox -conf catbox.conf`
