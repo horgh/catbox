@@ -1,3 +1,9 @@
+# Unreleased
+
+* We no longer automatically rehash once a week. I changed my mind about
+  this!
+
+
 # 1.10.10 (2018-08-18)
 
 * Rehashing now reloads the TLS certificate and key.
@@ -6,6 +12,7 @@
 * Require valid TLS certificates on outbound TLS connections. This means
   servers we connect to must have valid certificates that match the name we
   connect to them as.
+
 
 # 1.9.0 (2018-07-28)
 

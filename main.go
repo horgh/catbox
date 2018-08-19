@@ -26,8 +26,7 @@ type Catbox struct {
 	ConfigFile string
 
 	// Config is the currently loaded config.
-	Config         *Config
-	ConfigLoadTime time.Time
+	Config *Config
 
 	// Next client ID to issue. This turns into TS6 ID which gets concatenated
 	// with our SID to make the TS6 UID. We wrap it in a mutex as different
@@ -268,7 +267,6 @@ func newCatbox(configFile string) (*Catbox, error) {
 		return nil, fmt.Errorf("configuration problem: %s", err)
 	}
 	cb.Config = cfg
-	cb.ConfigLoadTime = time.Now()
 
 	if cb.Config.ListenPortTLS != "-1" || cb.Config.CertificateFile != "" ||
 		cb.Config.KeyFile != "" {
@@ -483,7 +481,6 @@ func (cb *Catbox) eventLoop() {
 				cb.checkAndPingClients()
 				cb.connectToServers()
 				cb.floodControl()
-				cb.maybeRehash()
 				continue
 			}
 
@@ -1483,25 +1480,12 @@ func (cb *Catbox) quitRemoteUser(u *User, message string) {
 	delete(cb.Nicks, canonicalizeNick(u.DisplayNick))
 }
 
-// Rehash our config automatically if it's been a long time since we did.
-//
-// This is primarily useful to automatically reload the certificate.
-func (cb *Catbox) maybeRehash() {
-	if time.Since(cb.ConfigLoadTime) < 7*24*time.Hour {
-		return
-	}
-	cb.noticeOpers("Automatically rehashing...")
-	cb.rehash(nil)
-}
-
 // Rehash reloads our config.
 //
 // Only certain config options can change during rehash.
 //
 // We could close listeners and open new ones. But nah.
 func (cb *Catbox) rehash(byUser *User) {
-	cb.ConfigLoadTime = time.Now()
-
 	cfg, err := checkAndParseConfig(cb.ConfigFile)
 	if err != nil {
 		cb.noticeOpers(fmt.Sprintf("Rehash: Configuration problem: %s", err))
