@@ -250,9 +250,8 @@ func logReader(
 		}
 	}
 
-	if err := scanner.Err(); err != nil {
-		log.Fatalf("error scanning: %s", err)
-	}
+	// Don't fail on scanner.Err(). We expect the process to go away at any time
+	// so we can see errors like "file already closed".
 }
 
 func (c *Catbox) stop() {
