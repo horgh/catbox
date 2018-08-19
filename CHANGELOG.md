@@ -4,7 +4,7 @@
   this!
 
 
-# 1.10.10 (2018-08-18)
+# 1.10.0 (2018-08-18)
 
 * Rehashing now reloads the TLS certificate and key.
 * Rehashing now automatically happens once a week. This is so we load new
