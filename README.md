@@ -70,18 +70,24 @@ privilege right now is flood exemption.
 
 
 # TLS certificates
-catbox requires valid certificates when connecting to other servers. In
-order to accommodate the fact that certificates don't stay valid forever,
-catbox automatically reloads its certificate once a week. That means you
-can simply copy over your certificate when you renew it.
+You can load new certificates without restarting by rehashing the
+configuration.
+
+catbox requires valid certificates when connecting to servers.
 
 A setup for a network might look like this:
 
-* You give each server a wildcard certificate for *.example.com.
+* You give each server a certificate valid for both its hostname
+  (server1.example.com) and for the network hostname (irc.example.com)
+  * A wildcard certificate for *.example.com is one possibility.
+  * Another possibility is to give each server a certificate where the CN
+    is the server hostname (server1.example.com) with the network name as a
+    SAN (irc.example.com). This is better than handing out wildcard
+    certificates.
 * You set up irc.example.com to have multiple A records, one for each
   server's IP.
-* In servers.conf, you list each server with a hostname just for it. For
-  example, irc1.example.com.
+* In servers.conf, you list each server with its hostname. For example,
+  irc1.example.com.
 
 
 # Logo
