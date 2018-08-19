@@ -31,15 +31,16 @@ ircd-ratbox (the IRC daemon I used in the past).
 * TLS. Certificate/key hotloading at rehash time as well.
 
 
+# Installation
+
 # Setup
 1. Get catbox. You can either:
-  - Download a release from the Releases tab.
-  - Build it from Git. To do that you need a working [Go
-    compiler](https://golang.org/dl/). Then run `go get -u
-    github.com/horgh/catbox`.
+ * Download a release from the Releases tab.
+ * Build it from Git. To do that you need a working [Go
+   compiler](https://golang.org/dl/). Then run `go get -u
+   github.com/horgh/catbox`.
 2. Configure it. This is done through configuration files. Examples are in
-   the `conf` directory. Copy and edit them. All settings are optional and
-   have defaults.
+   the `conf` directory. All settings are optional and have defaults.
 3. Start the daemon: `catbox -conf catbox.conf`
 
 
