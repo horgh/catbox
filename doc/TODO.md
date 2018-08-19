@@ -12,21 +12,21 @@
 * WHOWAS.
 * Many log calls should probably go to opers. Right now they will probably
   always be missed.
+* Additional tests.
+* Loading config should error if there is an unknown option
+* Channel mode +i
 
 
 ## Uncategorized/unprioritized
 * Command to dump out entire state. Servers, channels, nicks, modes, etc.
   This could be used for monitoring that every server is in sync.
 * Switch config to TOML
-* Loading config should error if there is an unknown option
 * Make canonicalizeNick and canonicalizeChannel return error if the names
   are invalid? Right now it is a bit error prone because we can
   canonicalize invalid names.
 * Consider combining cleanup user logic in server's killCommand() with
   cleanupKilledUser()
 * Consolidate repeated topic setting logic (user TOPIC, server TOPIC, TB)
-* Additional automated testing. More unit tests here and more integration
-  tests in the boxcat repository.
 * Add command to dump out config (the current catbox config as seen from
   the config file). Partly this will be useful because not everything gets
   reloaded on rehash.
@@ -47,7 +47,7 @@
 
 
 ## RFC
-* Channel modes: +v/+b/+i/+k/etc
+* Channel modes: +v/+b/+k/etc
 * KICK
 
 
@@ -66,11 +66,8 @@
 
 
 ## Non-standard
-* Upgrade in place (is this possible with TLS connections without
-  disconnecting them?)
 * Server console.
-* Upgrade without losing connections
-* Inform clients when someone whois's them.
+* Inform clients when someone WHOIS's them.
 * Exchange K:Lines during server burst
 * Persistent K:Lines (currently they are in memory only)
 
@@ -85,3 +82,6 @@
 * Daemonize.
   * There is no support in Go for this right now.
   * Using init system seems sufficient
+* Upgrade in place without losing connections
+  * Not really feasible with current TLS library as connection state can't
+    be kept.
