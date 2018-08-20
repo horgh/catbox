@@ -28,7 +28,7 @@ ircd-ratbox (the IRC daemon I used in the past).
 * Network wide connection notices sent to operators.
 * Flood protection.
 * K: line style connection banning.
-* TLS. Certificate/key hotloading at rehash time as well.
+* TLS.
 
 
 # Installation
@@ -68,24 +68,24 @@ privilege right now is flood exemption.
 
 
 # TLS certificates
+catbox requires valid certificates when connecting to servers.
+
 You can load new certificates without restarting by rehashing the
 configuration.
 
-catbox requires valid certificates when connecting to servers.
-
 A setup for a network might look like this:
 
-* You give each server a certificate valid for both its hostname
-  (server1.example.com) and for the network hostname (irc.example.com)
-  * A wildcard certificate for *.example.com is one possibility.
-  * Another possibility is to give each server a certificate where the CN
-    is the server hostname (server1.example.com) with the network name as a
-    SAN (irc.example.com). This is better than handing out wildcard
-    certificates.
-* You set up irc.example.com to have multiple A records, one for each
-  server's IP.
-* In servers.conf, you list each server with its hostname. For example,
-  irc1.example.com.
+* Give each server a valid certificate. You'll want a certificate with
+  multiple SANs. One should be the server's hostname (server1.example.com),
+  and one should be the network's hostname (irc.example.com). This is
+  important as servers will connect via the server hostname and validate
+  the certificate against that, while clients will connect via the network
+  hostname and validate the certificate against that. A wildcard
+  certificate is a possibility, but there's additional risk in that, so I
+  don't recommend it.
+* Set up irc.example.com to have multiple A records, one for each server's
+  IP.
+* In servers.conf, list each server by its hostname.
 
 
 # Logo
