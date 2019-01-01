@@ -1,7 +1,6 @@
 # Unreleased
 
-* We no longer automatically rehash once a week. I changed my mind about
-  this!
+* No longer automatically rehash once a week. I changed my mind about this!
 
 
 # 1.10.0 (2018-08-18)
