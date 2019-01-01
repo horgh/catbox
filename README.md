@@ -44,27 +44,21 @@ ircd-ratbox (the IRC daemon I used in the past).
 # Configuration
 
 ## catbox.conf
-This file holds global settings for the server.
-
-You'll probably want to change `listen-host`, `listen-port`, and
-`server-name` at minimum.
-
-If you want to listen on a TLS port, you must have a certificate and key
-available.
+Global server settings.
 
 
 ## opers.conf
-This file defines IRC operators. A user can become an operator by using the
-`OPER` command with a username and password combination listed in this file.
+IRC operators.
 
 
 ## servers.conf
-This file defines servers to link to and accept links from.
+The servers to link with.
 
 
 ## users.conf
-This file defines privileges and hostname spoofs for users. The only
-privilege right now is flood exemption.
+Privileges and hostname spoofs for users.
+
+The only privilege right now is flood exemption.
 
 
 ## TLS
