@@ -5,7 +5,8 @@ Status](https://travis-ci.org/horgh/catbox.svg)](https://travis-ci.org/horgh/cat
 [![Go Report
 Card](https://goreportcard.com/badge/github.com/horgh/catbox)](https://goreportcard.com/report/github.com/horgh/catbox)
 
-catbox is an IRC daemon. I run a small network using it.
+catbox is an IRC server with a focus on being small and understandable. The
+goal is security.
 
 
 # Features
