@@ -1,6 +1,6 @@
 language: go
 go:
-  - "1.10.x"
+  - "1.x"
 before_install:
   - go get -u gopkg.in/alecthomas/gometalinter.v2
   - gometalinter.v2 --install
