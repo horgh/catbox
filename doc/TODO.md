@@ -1,6 +1,8 @@
 # TODO
 
 ## Higher priority
+* Wake up less
+* Back off on connection failures
 * Convert tests to use stretchr/testify.
 * Show IPs to opers in WHOIS with 378 numeric.
 * Op desync issue - should be de-opped if we have an op and link to a
