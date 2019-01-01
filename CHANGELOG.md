@@ -1,4 +1,4 @@
-# Unreleased
+# 1.11.0 (2019-01-01)
 
 * No longer automatically rehash once a week. I changed my mind about this!
 
