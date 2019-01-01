@@ -3,7 +3,7 @@
 * Update `CHANGELOG.md`
 * Commit
 * `git push`
-* `git tag -a vx.y.z -m <commit>`
+* `git tag -a vx.y.z -m vx.y.z`
 * `export GITHUB_TOKEN=tokenhere`
 * `goreleaser`
 * Don't need to push tags I believe, goreleaser does it.
