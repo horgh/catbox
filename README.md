@@ -8,11 +8,6 @@ Card](https://goreportcard.com/badge/github.com/horgh/catbox)](https://goreportc
 catbox is an IRC daemon. I run a small network using it.
 
 
-# Why the name?
-My domain name is summercat.com, cats love boxes, and a tribute to
-ircd-ratbox (the IRC daemon I used in the past).
-
-
 # Features
 * Server to server communication using the TS6 protocol. In addition to
   being able to link to other catbox servers, it can link with other TS6
@@ -70,6 +65,11 @@ A setup for a network might look like this:
 
 Clients connect to the network hostname and verify against it. Servers
 connect to each other by server hostname and verify against it.
+
+
+# Why the name?
+My domain name is summercat.com, cats love boxes, and a tribute to
+ircd-ratbox, the IRC daemon I used in the past.
 
 
 # Logo
