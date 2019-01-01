@@ -67,25 +67,16 @@ This file defines privileges and hostname spoofs for users. The only
 privilege right now is flood exemption.
 
 
-# TLS certificates
-catbox requires valid certificates when connecting to servers.
-
-You can load new certificates without restarting by rehashing the
-configuration.
-
+## TLS
 A setup for a network might look like this:
 
-* Give each server a valid certificate. You'll want a certificate with
-  multiple SANs. One should be the server's hostname (server1.example.com),
-  and one should be the network's hostname (irc.example.com). This is
-  important as servers will connect via the server hostname and validate
-  the certificate against that, while clients will connect via the network
-  hostname and validate the certificate against that. A wildcard
-  certificate is a possibility, but there's additional risk in that, so I
-  don't recommend it.
-* Set up irc.example.com to have multiple A records, one for each server's
-  IP.
-* In servers.conf, list each server by its hostname.
+* Give each server a certificate with 2 SANs: Its own hostname, e.g.
+  server1.example.com, and the network hostname, e.g. irc.example.com.
+* Set up irc.example.com with DNS round-robin listing each server's IP.
+* List each server by its own hostname in servers.conf.
+
+Clients connect to the network hostname and verify against it. Servers
+connect to each other by server hostname and verify against it.
 
 
 # Logo
