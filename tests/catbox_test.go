@@ -31,8 +31,7 @@ type Catbox struct {
 	LogChan   <-chan string
 }
 
-var catboxDir = filepath.Join(os.Getenv("GOPATH"), "src", "github.com", "horgh",
-	"catbox")
+const catboxDir = ".."
 
 func harnessCatbox(
 	name,

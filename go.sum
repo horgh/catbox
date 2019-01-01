@@ -1,0 +1,13 @@
+github.com/horgh/config v0.0.0-20180303191532-3d1f920eb228 h1:R302KZFIBabAYgFZ0hgqRTeCF43Lm5rir+UnJYW3idQ=
+github.com/horgh/config v0.0.0-20180303191532-3d1f920eb228/go.mod h1:DSwQKBmwAzGuDhYajjeJshx5PCPCJfSZJXtbV+8/nck=
+github.com/horgh/config v0.0.0-20190101202014-d9e8eabe6dbb h1:u6pj1d0h6XSjJ84iixIMvSZT1fbLC1g4qqkV54EMOfo=
+github.com/horgh/config v0.0.0-20190101202014-d9e8eabe6dbb/go.mod h1:DSwQKBmwAzGuDhYajjeJshx5PCPCJfSZJXtbV+8/nck=
+github.com/horgh/irc v0.0.0-20180101050313-f421bdb90dcc h1:FXH8Jqdcz9BbR94qHrCVGA5FhbcWNC+HpIXYwVgOc2I=
+github.com/horgh/irc v0.0.0-20180101050313-f421bdb90dcc/go.mod h1:UqEB9NVUSZzN4ESuQX3yEvi80Mgg2O4kttl8oU9+nds=
+github.com/horgh/irc v0.0.0-20190101203129-f09ebee6408d h1:ANDjU4bIeLO80xssAxig8qftG6ohyg08IqsIPnKqafg=
+github.com/horgh/irc v0.0.0-20190101203129-f09ebee6408d/go.mod h1:JLhFcwXOnpvhMer1MERfJuFIoJnADayDWe0VkMN3LP4=
+github.com/pkg/errors v0.8.0 h1:WdK/asTD0HN+q6hsWO3/vpuAkAr+tw6aNJNDFFf0+qw=
+github.com/pkg/errors v0.8.0/go.mod h1:bwawxfHBFNV+L2hUp1rHADufV3IMtnDRdf1r5NINEl0=
+gopkg.in/check.v1 v0.0.0-20161208181325-20d25e280405/go.mod h1:Co6ibVJAznAaIkqp8huTwlJQCZ016jof/cbN4VW5Yz0=
+gopkg.in/check.v1 v1.0.0-20180628173108-788fd7840127/go.mod h1:Co6ibVJAznAaIkqp8huTwlJQCZ016jof/cbN4VW5Yz0=
+gopkg.in/yaml.v2 v2.2.2/go.mod h1:hI93XBmqTisBFMUTm0b8Fm+jr3Dg1NNxqwp+5A1VGuI=
