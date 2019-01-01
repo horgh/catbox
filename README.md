@@ -32,13 +32,12 @@ ircd-ratbox (the IRC daemon I used in the past).
 
 
 # Installation
-1. First you need to download catbox. You can download a release from the
-   Releases tab on GitHub, or you can build from source. To build from
-   source run `go get -u github.com/horgh/catbox` (you'll need the [Go
-   toolchain](https://golang.org/dl/)).
-2. Configure it. This is done through configuration files. Examples are in
-   the `conf` directory. All settings are optional and have defaults.
-3. Start the daemon: `catbox -conf catbox.conf`
+1. Download catbox from the Releases tab on GitHub, or build from source
+   (`go build`).
+2. Configure catbox through config files. There are example configs in the
+   `conf` directory. All settings are optional and have defaults.
+3. Run it, e.g. `./catbox -conf catbox.conf`. I typically run catbox
+   inside tmux using [this program](bin/tmux-run.sh).
 
 
 # Configuration
