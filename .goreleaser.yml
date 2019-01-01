@@ -4,6 +4,7 @@ builds:
       - linux
     goarch:
       - amd64
+      - arm
 archive:
   wrap_in_directory: true
   files:
