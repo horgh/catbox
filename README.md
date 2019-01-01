@@ -9,21 +9,17 @@ catbox is an IRC daemon. I run a small network using it.
 
 
 # Features
-* Server to server communication using the TS6 protocol. In addition to
-  being able to link to other catbox servers, it can link with other TS6
-  servers such as ircd-ratbox.
-* Most basic IRC commands and features are present.
-* Channel modes: +n, +s, +o.
-* User modes: +i, +o, +C.
-* Global IRC operators.
-* Network wide operator communication with WALLOPS.
-* Private (WHOIS shows no channels, LIST isn't supported).
-* Server connections are based on hosts rather than IPs. This means servers
-  can have dynamic IPs.
-* Network wide connection notices sent to operators.
-* Flood protection.
-* K: line style connection banning.
-* TLS.
+* Server to server communication using the TS6 protocol
+* Channel modes: +n, +s, +o
+* User modes: +i, +o, +C
+* Global IRC operators
+* Network wide operator communication with WALLOPS
+* Private (WHOIS shows no channels, LIST isn't supported)
+* Server connections are based on hosts rather than IPs
+* Network wide connection notices sent to operators
+* Flood protection
+* K: line style connection banning
+* TLS
 
 
 # Installation
