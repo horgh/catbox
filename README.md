@@ -10,17 +10,17 @@ goal is security.
 
 
 # Features
-* Server to server communication using the TS6 protocol
-* Channel modes: +n, +s, +o
-* User modes: +i, +o, +C
-* Global IRC operators
-* Network wide operator communication with WALLOPS
+* Server to server linking
+* IRC operators
 * Private (WHOIS shows no channels, LIST isn't supported)
-* Server connections are based on hosts rather than IPs
-* Network wide connection notices sent to operators
 * Flood protection
 * K: line style connection banning
 * TLS
+
+catbox implements enough of [RFC 1459](https://tools.ietf.org/html/rfc1459)
+to be recognisable as IRC and be minimally functional. I likely won't add
+much more and don't intend it to be complete. If I don't think something is
+required it likely won't be here.
 
 
 # Installation
