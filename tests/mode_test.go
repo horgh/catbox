@@ -28,8 +28,25 @@ func TestMODETS(t *testing.T) {
 	err = catbox2.linkServer(catbox1)
 	require.NoError(t, err, "link catbox2 to catbox1")
 
+	// Wait until we link.
+	//
+	// Retry rehashing as I observed a failing build where the second server did
+	// not receive the SIGHUP, yet didn't exit. I'm not sure how that can happen
+	// other than perhaps a race in signal.Notify() such that the signal handler
+	// is registered so the HUP gets received but not delivered to the channel.
 	linkRE := regexp.MustCompile(`Established link to irc2\.`)
-	require.True(t, waitForLog(catbox1.LogChan, linkRE), "see servers link")
+	var attempts int
+	for {
+		if waitForLog(catbox1.LogChan, linkRE) {
+			break
+		}
+		attempts++
+		if attempts >= 5 {
+			require.Fail(t, "failed to link")
+		}
+		require.NoError(t, err, catbox1.rehash(), "rehash catbox1")
+		require.NoError(t, err, catbox2.rehash(), "rehash catbox2")
+	}
 
 	client1 := NewClient("client1", "127.0.0.1", catbox1.Port)
 	recvChan1, sendChan1, _, err := client1.Start()

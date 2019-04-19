@@ -16,6 +16,8 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/pkg/errors"
 )
 
 // Catbox holds information about a harnessed catbox.
@@ -281,11 +283,14 @@ func (c *Catbox) linkServer(other *Catbox) error {
 		return fmt.Errorf("error writing server conf: %s: %s", serversConf, err)
 	}
 
-	if err := c.Command.Process.Signal(syscall.SIGHUP); err != nil {
-		return fmt.Errorf("error sending SIGHUP: %s", err)
-	}
+	return c.rehash()
+}
 
-	return nil
+func (c *Catbox) rehash() error {
+	return errors.Wrap(
+		c.Command.Process.Signal(syscall.SIGHUP),
+		"error sending SIGHUP",
+	)
 }
 
 func waitForLog(ch <-chan string, re *regexp.Regexp) bool {
