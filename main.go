@@ -633,10 +633,10 @@ func (cb *Catbox) introduceClient(conn net.Conn) {
 
 		client := NewLocalClient(cb, id, conn)
 
-		msgs := []string{
-			fmt.Sprintf("*** Processing your connection to %s",
-				cb.Config.ServerName),
-		}
+		sendAuthNotice(
+			client,
+			"*** Processing your connection to "+cb.Config.ServerName,
+		)
 
 		if client.isTLS() {
 			tlsVersion, tlsCipherSuite, err := client.getTLSState()
@@ -661,25 +661,20 @@ func (cb *Catbox) introduceClient(conn net.Conn) {
 				return
 			}
 
-			msgs = append(msgs, fmt.Sprintf("*** Connected with %s (%s)", tlsVersion,
-				tlsCipherSuite))
+			sendAuthNotice(
+				client,
+				fmt.Sprintf("*** Connected with %s (%s)", tlsVersion, tlsCipherSuite),
+			)
 		}
 
-		msgs = append(msgs, "*** Looking up your hostname...")
+		sendAuthNotice(client, "*** Looking up your hostname...")
 
 		hostname := lookupHostname(context.TODO(), client.Conn.IP)
 		if len(hostname) > 0 {
-			msgs = append(msgs, "*** Found your hostname")
+			sendAuthNotice(client, "*** Found your hostname")
 			client.Hostname = hostname
 		} else {
-			msgs = append(msgs, "*** Couldn't look up your hostname")
-		}
-
-		for _, msg := range msgs {
-			client.WriteChan <- irc.Message{
-				Command: "NOTICE",
-				Params:  []string{"AUTH", msg},
-			}
+			sendAuthNotice(client, "*** Couldn't look up your hostname")
 		}
 
 		// Inform the main server goroutine about the client.
@@ -696,6 +691,13 @@ func (cb *Catbox) introduceClient(conn net.Conn) {
 		cb.WG.Add(1)
 		go client.writeLoop()
 	}()
+}
+
+func sendAuthNotice(c *LocalClient, m string) {
+	c.WriteChan <- irc.Message{
+		Command: "NOTICE",
+		Params:  []string{"AUTH", m},
+	}
 }
 
 // Return true if the server is shutting down.
