@@ -3,6 +3,7 @@
 * Send messages during connect immediately rather than only after we've
   performed our reverse DNS lookup.
 * Allow setting server name via command line argument.
+* Log server name when starting up.
 
 
 # 1.11.0 (2019-01-01)

@@ -416,7 +416,7 @@ func (cb *Catbox) start(listenFD int) error {
 		}
 	}()
 
-	log.Printf("catbox started")
+	log.Printf("catbox started (%s)", cb.Config.ServerName)
 	cb.eventLoop()
 
 	// We don't need to drain any channels. None close that will have any
