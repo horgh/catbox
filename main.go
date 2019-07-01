@@ -633,6 +633,9 @@ func (cb *Catbox) introduceClient(conn net.Conn) {
 
 		client := NewLocalClient(cb, id, conn)
 
+		cb.WG.Add(1)
+		go client.writeLoop()
+
 		sendAuthNotice(
 			client,
 			"*** Processing your connection to "+cb.Config.ServerName,
@@ -642,7 +645,7 @@ func (cb *Catbox) introduceClient(conn net.Conn) {
 			tlsVersion, tlsCipherSuite, err := client.getTLSState()
 			if err != nil {
 				log.Printf("Client %s: %s", client, err)
-				_ = conn.Close() // nolint: gosec
+				close(client.WriteChan)
 				return
 			}
 
@@ -656,8 +659,6 @@ func (cb *Catbox) introduceClient(conn net.Conn) {
 						"Your SSL/TLS version is %s. This server requires at least TLS 1.2. Contact %s if this is a problem.",
 						tlsVersion, cb.Config.AdminEmail)})
 				close(client.WriteChan)
-				cb.WG.Add(1)
-				go client.writeLoop()
 				return
 			}
 
@@ -678,18 +679,14 @@ func (cb *Catbox) introduceClient(conn net.Conn) {
 		}
 
 		// Inform the main server goroutine about the client.
+		//
 		// Do this after sending any messages to the client's channel as it is
 		// possible the channel will be closed by the server (such as during
 		// shutdown).
 		cb.newEvent(Event{Type: NewClientEvent, Client: client})
 
-		// Start read goroutine (endlessly read messages from the client) and write
-		// goroutine (endlessly write messages to the client).
 		cb.WG.Add(1)
 		go client.readLoop()
-
-		cb.WG.Add(1)
-		go client.writeLoop()
 	}()
 }
 
