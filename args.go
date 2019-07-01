@@ -11,12 +11,21 @@ import (
 type Args struct {
 	ConfigFile string
 	ListenFD   int
+	ServerName string
 }
 
 func getArgs() *Args {
 	configFile := flag.String("conf", "", "Configuration file.")
-	fd := flag.Int("listen-fd", -1,
-		"File descriptor with listening port to use (optional).")
+	fd := flag.Int(
+		"listen-fd",
+		-1,
+		"File descriptor with listening port to use (optional).",
+	)
+	serverName := flag.String(
+		"server-name",
+		"",
+		"Server name. Overrides server-name from config.",
+	)
 
 	flag.Parse()
 
@@ -35,6 +44,7 @@ func getArgs() *Args {
 	return &Args{
 		ConfigFile: configPath,
 		ListenFD:   *fd,
+		ServerName: *serverName,
 	}
 }
 

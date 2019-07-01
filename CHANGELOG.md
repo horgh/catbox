@@ -1,7 +1,8 @@
-# 1.11.1
+# 1.12.0
 
 * Send messages during connect immediately rather than only after we've
   performed our reverse DNS lookup.
+* Allow setting server name via command line argument.
 
 
 # 1.11.0 (2019-01-01)

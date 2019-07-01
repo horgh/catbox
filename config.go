@@ -78,7 +78,10 @@ type UserConfig struct {
 // We parse some values into alternate representations.
 //
 // This function populates both the server.Config and server.Opers fields.
-func checkAndParseConfig(file string) (*Config, error) {
+func checkAndParseConfig(
+	file,
+	serverName string,
+) (*Config, error) {
 	m, err := config.ReadStringMap(file)
 	if err != nil {
 		return nil, err
@@ -112,6 +115,9 @@ func checkAndParseConfig(file string) (*Config, error) {
 	c.ServerName = "irc.example.com"
 	if m["server-name"] != "" {
 		c.ServerName = m["server-name"]
+	}
+	if serverName != "" {
+		c.ServerName = serverName
 	}
 
 	c.ServerInfo = "IRC"

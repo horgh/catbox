@@ -22,6 +22,8 @@ import (
 // I put everything global to a server in an instance of struct rather than
 // have global variables.
 type Catbox struct {
+	Args *Args
+
 	// ConfigFile is the path to the config file.
 	ConfigFile string
 
@@ -212,7 +214,7 @@ func main() {
 			os.Args[0], err)
 	}
 
-	cb, err := newCatbox(args.ConfigFile)
+	cb, err := newCatbox(args)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -242,9 +244,10 @@ func main() {
 	log.Printf("Server shutdown cleanly.")
 }
 
-func newCatbox(configFile string) (*Catbox, error) {
+func newCatbox(args *Args) (*Catbox, error) {
 	cb := Catbox{
-		ConfigFile:   configFile,
+		Args:         args,
+		ConfigFile:   args.ConfigFile,
 		LocalClients: make(map[uint64]*LocalClient),
 		LocalUsers:   make(map[uint64]*LocalUser),
 		LocalServers: make(map[uint64]*LocalServer),
@@ -262,7 +265,7 @@ func newCatbox(configFile string) (*Catbox, error) {
 		ToServerChan: make(chan Event),
 	}
 
-	cfg, err := checkAndParseConfig(configFile)
+	cfg, err := checkAndParseConfig(args.ConfigFile, args.ServerName)
 	if err != nil {
 		return nil, fmt.Errorf("configuration problem: %s", err)
 	}
@@ -1485,7 +1488,7 @@ func (cb *Catbox) quitRemoteUser(u *User, message string) {
 //
 // We could close listeners and open new ones. But nah.
 func (cb *Catbox) rehash(byUser *User) {
-	cfg, err := checkAndParseConfig(cb.ConfigFile)
+	cfg, err := checkAndParseConfig(cb.ConfigFile, cb.Args.ServerName)
 	if err != nil {
 		cb.noticeOpers(fmt.Sprintf("Rehash: Configuration problem: %s", err))
 		return
