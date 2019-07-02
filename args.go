@@ -12,6 +12,7 @@ type Args struct {
 	ConfigFile string
 	ListenFD   int
 	ServerName string
+	SID        string
 }
 
 func getArgs() *Args {
@@ -25,6 +26,11 @@ func getArgs() *Args {
 		"server-name",
 		"",
 		"Server name. Overrides server-name from config.",
+	)
+	sid := flag.String(
+		"sid",
+		"",
+		"SID. Overrides ts6-sid from config.",
 	)
 
 	flag.Parse()
@@ -45,6 +51,7 @@ func getArgs() *Args {
 		ConfigFile: configPath,
 		ListenFD:   *fd,
 		ServerName: *serverName,
+		SID:        *sid,
 	}
 }
 

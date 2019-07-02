@@ -265,7 +265,11 @@ func newCatbox(args *Args) (*Catbox, error) {
 		ToServerChan: make(chan Event),
 	}
 
-	cfg, err := checkAndParseConfig(args.ConfigFile, args.ServerName)
+	cfg, err := checkAndParseConfig(
+		args.ConfigFile,
+		args.ServerName,
+		args.SID,
+	)
 	if err != nil {
 		return nil, fmt.Errorf("configuration problem: %s", err)
 	}
@@ -1488,7 +1492,11 @@ func (cb *Catbox) quitRemoteUser(u *User, message string) {
 //
 // We could close listeners and open new ones. But nah.
 func (cb *Catbox) rehash(byUser *User) {
-	cfg, err := checkAndParseConfig(cb.ConfigFile, cb.Args.ServerName)
+	cfg, err := checkAndParseConfig(
+		cb.ConfigFile,
+		cb.Args.ServerName,
+		cb.Args.SID,
+	)
 	if err != nil {
 		cb.noticeOpers(fmt.Sprintf("Rehash: Configuration problem: %s", err))
 		return

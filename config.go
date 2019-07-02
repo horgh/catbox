@@ -80,7 +80,8 @@ type UserConfig struct {
 // This function populates both the server.Config and server.Opers fields.
 func checkAndParseConfig(
 	file,
-	serverName string,
+	serverName,
+	sid string,
 ) (*Config, error) {
 	m, err := config.ReadStringMap(file)
 	if err != nil {
@@ -221,6 +222,9 @@ func checkAndParseConfig(
 			return nil, fmt.Errorf("invalid TS6 SID")
 		}
 		c.TS6SID = TS6SID(m["ts6-sid"])
+	}
+	if sid != "" {
+		c.TS6SID = TS6SID(sid)
 	}
 
 	c.AdminEmail = m["admin-email"]

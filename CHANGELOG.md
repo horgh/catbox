@@ -4,6 +4,7 @@
   performed our reverse DNS lookup.
 * Allow setting server name via command line argument.
 * Log server name when starting up.
+* Allow setting SID via command line argument.
 
 
 # 1.11.0 (2019-01-01)
