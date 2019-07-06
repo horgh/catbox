@@ -1,5 +1,6 @@
 # 1.11.1
 
+* Update dependencies.
 * Send messages during connect immediately rather than only after we've
   performed our reverse DNS lookup.
 
