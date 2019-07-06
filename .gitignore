@@ -1,2 +1,3 @@
-catbox
 *.swp
+/catbox
+/test-net
