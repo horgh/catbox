@@ -3,6 +3,7 @@
 * Update dependencies.
 * Send messages during connect immediately rather than only after we've
   performed our reverse DNS lookup.
+* Stop logging client reads/writes.
 
 
 # 1.11.0 (2019-01-01)

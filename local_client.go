@@ -176,8 +176,6 @@ func (c *LocalClient) readLoop() {
 			break
 		}
 
-		log.Printf("Client %s: Read: %s", c, strings.TrimSuffix(buf, "\r\n"))
-
 		message, err := irc.ParseMessage(buf)
 		if err != nil {
 			c.Catbox.noticeOpers(fmt.Sprintf("Invalid message from client %s: %s", c,
@@ -249,8 +247,6 @@ Loop:
 				c.Catbox.newEvent(Event{Type: DeadClientEvent, Client: c, Error: err})
 				break Loop
 			}
-
-			log.Printf("Client %s: Sent: %s", c, strings.TrimSuffix(buf, "\r\n"))
 		case <-c.Catbox.ShutdownChan:
 			break Loop
 		}
