@@ -1,4 +1,4 @@
-# 1.11.1
+# 1.12.0 (2019-07-06)
 
 * Update dependencies.
 * Send messages during connect immediately rather than only after we've
