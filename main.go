@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"syscall"
@@ -1705,3 +1706,5 @@ func sendMessages(messages []Message) {
 		m.Target.maybeQueueMessage(m.Message)
 	}
 }
+
+func (cb *Catbox) version() string { return Version + "-" + runtime.Version() }

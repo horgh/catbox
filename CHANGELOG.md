@@ -1,3 +1,8 @@
+# 1.13.0 (2019-07-08)
+
+* Include Go version in version string.
+
+
 # 1.12.0 (2019-07-06)
 
 * Update dependencies.

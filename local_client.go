@@ -379,7 +379,8 @@ func (c *LocalClient) registerUser() {
 	lu.messageFromServer("002", []string{
 		fmt.Sprintf("Your host is %s, running version %s",
 			lu.Catbox.Config.ServerName,
-			Version),
+			lu.Catbox.version(),
+		),
 	})
 
 	// 003 RPL_CREATED
@@ -392,7 +393,7 @@ func (c *LocalClient) registerUser() {
 	lu.messageFromServer("004", []string{
 		// It seems ambiguous if these are to be separate parameters.
 		lu.Catbox.Config.ServerName,
-		Version,
+		lu.Catbox.version(),
 		// User modes we support.
 		"ioC",
 		// Channel modes we support.

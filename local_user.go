@@ -2094,8 +2094,6 @@ func (u *LocalUser) versionCommand(m irc.Message) {
 	// Comments are free form. But I use similar to what ratbox does. See its doc
 	// server-version-info.
 
-	version := fmt.Sprintf("%s.", Version)
-
 	// H HUB, M IDLE_FROM_MSG, TS supports TS, 6 TS6, o TS only
 	comments := fmt.Sprintf("HM TS6o %s", string(u.Catbox.Config.TS6SID))
 
@@ -2104,7 +2102,7 @@ func (u *LocalUser) versionCommand(m irc.Message) {
 		Command: "351",
 		Params: []string{
 			u.User.DisplayNick,
-			version,
+			u.Catbox.version(),
 			u.Catbox.Config.ServerName,
 			comments,
 		},
