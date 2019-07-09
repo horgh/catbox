@@ -1,3 +1,8 @@
+# 1.14.0
+
+* Stop publishing arm releases.
+
+
 # 1.13.0 (2019-07-08)
 
 * Include Go version in version string.
