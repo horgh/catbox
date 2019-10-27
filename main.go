@@ -650,7 +650,7 @@ func (cb *Catbox) introduceClient(conn net.Conn) {
 				return
 			}
 
-			if tlsVersion != "TLS 1.2" {
+			if tlsVersion != "TLS 1.2" && tlsVersion != "TLS 1.3" {
 				cb.noticeOpers(fmt.Sprintf("Rejecting client %s using %s",
 					client.Conn.IP, tlsVersion))
 				// Send ERROR and start up the writer to try to let them get it. Don't
@@ -1030,7 +1030,7 @@ func (cb *Catbox) connectToServer(linkInfo *ServerDefinition) {
 				return
 			}
 
-			if tlsVersion != "TLS 1.2" {
+			if tlsVersion != "TLS 1.2" && tlsVersion != "TLS 1.3" {
 				cb.noticeOpers(fmt.Sprintf(
 					"Disconnecting from %s because of TLS version: %s", linkInfo.Name,
 					tlsVersion))

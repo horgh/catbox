@@ -439,6 +439,8 @@ func tlsVersionToString(version uint16) string {
 		return "TLS 1.1"
 	case tls.VersionTLS12:
 		return "TLS 1.2"
+	case tls.VersionTLS13:
+		return "TLS 1.3"
 	default:
 		return fmt.Sprintf("Unknown TLS version %x", version)
 	}
@@ -490,6 +492,12 @@ func cipherSuiteToString(suite uint16) string {
 		return "TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305"
 	case tls.TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305:
 		return "TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305"
+	case tls.TLS_AES_128_GCM_SHA256:
+		return "TLS_AES_128_GCM_SHA256"
+	case tls.TLS_AES_256_GCM_SHA384:
+		return "TLS_AES_256_GCM_SHA384"
+	case tls.TLS_CHACHA20_POLY1305_SHA256:
+		return "TLS_CHACHA20_POLY1305_SHA256"
 	default:
 		return fmt.Sprintf("Unknown cipher suite %x", suite)
 	}

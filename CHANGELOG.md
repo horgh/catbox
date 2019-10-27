@@ -1,6 +1,7 @@
 # 1.14.0
 
 * Stop publishing arm releases.
+* Support TLS 1.3.
 
 
 # 1.13.0 (2019-07-08)
