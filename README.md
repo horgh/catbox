@@ -28,8 +28,17 @@ required it likely won't be here.
    (`go build`).
 2. Configure catbox through config files. There are example configs in the
    `conf` directory. All settings are optional and have defaults.
-3. Run it, e.g. `./catbox -conf catbox.conf`. I typically run catbox
-   inside tmux using [this program](bin/tmux-run.sh).
+3. Run it, e.g. `./catbox -conf catbox.conf`. You might run it via systemd
+   via a service such as:
+
+```
+[Service]
+ExecStart=/home/ircd/catbox/catbox -conf /home/ircd/catbox/catbox.conf
+Restart=always
+
+[Install]
+WantedBy=default.target
+```
 
 
 # Configuration
